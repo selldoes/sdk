@@ -3,10 +3,11 @@ node_modules/
 
 # Build output
 dist/
+*.tgz
 *.tsbuildinfo
-*.zip
 
-# Local dev preview state
+# Local state
+.selldoes/
 .selldoes-dev/
 
 # Env

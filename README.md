@@ -1,56 +1,61 @@
-# Selldoes plugin SDK
+# selldoes
 
-Build plugins for [Selldoes](https://selldoes.com) — the e-commerce platform.
+Build **plugins** and **themes** for [Selldoes](https://selldoes.com) — one
+package with the SDK types, the theme runtime and the `selldoes` CLI.
 
-| Package | npm | What it is |
+## Quickstart
+
+```bash
+npx selldoes create          # asks: Plugin or Theme?
+cd my-project
+npx selldoes dev
+```
+
+Or install it globally:
+
+```bash
+npm install -g selldoes
+selldoes create
+```
+
+## Commands
+
+| Command | Plugin | Theme |
 |---|---|---|
-| [`sdk/`](sdk/) | `@selldoes/plugin-sdk` | Types for `plugin.json`, `PluginContext`, `PluginExports` + `definePlugin()` |
-| [`cli/`](cli/) | `@selldoes/plugin-cli` | `selldoes-plugin dev/build/pack/validate/publish` — includes the local preview server |
-| [`create-plugin/`](create-plugin/) | `create-selldoes-plugin` | `npm create selldoes-plugin` scaffolder |
+| `selldoes create` | scaffold a plugin | scaffold a theme |
+| `selldoes dev` | preview server (`:4590`) | live store preview (`:4173`) |
+| `selldoes build` | bundle to `dist/<slug>/` | bundle to `dist/` + manifest |
+| `selldoes pack` | build + zip | — |
+| `selldoes validate` | manifest, entries, routes | manifest + page files |
+| `selldoes publish` | marketplace listing | upload (`--public`) |
+| `selldoes apply --store` | — | apply the theme to a store |
+| `selldoes login / whoami / logout` | — | API-key auth |
 
-## Quick start
+## Importing
 
-```bash
-npm create selldoes-plugin@latest my-plugin
-cd my-plugin
-npm install
-npm run dev        # preview at http://127.0.0.1:4590/preview
+```js
+// Plugin runtime — types only, the sandbox provides `ctx` at runtime
+import { definePlugin } from "selldoes"
+
+// Theme runtime — React hooks + components, bundled into your theme
+import { useStore, useProducts, ProductGrid, Price } from "selldoes/theme"
 ```
 
-The preview server runs your plugin the way the Selldoes sandbox does:
-dashboard UI in an iframe, storefront widget and pages, an API console, job and
-hook runners and a mock store — all local, all fake.
+## Docs
 
-Full guide: **[docs/developing-plugins.md](docs/developing-plugins.md)**.
-
-## Working on these packages
-
-```bash
-npm install
-npm run sdk:build     # compile @selldoes/plugin-sdk (tsc)
-npm run pack:all      # npm tarballs in dist/packages/
-```
+- [Developing plugins](docs/developing-plugins.md)
+- [Developing themes](docs/developing-themes.md)
 
 ## Releases
 
-Publishing happens in CI (`.github/workflows/npm-publish.yml`) when a version
-tag is pushed:
-
-| Tag | Publishes |
-|---|---|
-| `sdk-v<version>` | `@selldoes/plugin-sdk` |
-| `cli-v<version>` | `@selldoes/plugin-cli` |
-| `create-v<version>` | `create-selldoes-plugin` |
-
-Bump the matching `package.json` version, commit, then:
-
 ```bash
-git tag sdk-v0.2.1 && git push origin sdk-v0.2.1
+npm run build                  # compile the plugin types to dist/
+git tag v0.3.1 && git push origin v0.3.1
 ```
 
-The workflow builds the SDK, publishes from the package directory with
-`--provenance`, and needs the `NPM_TOKEN` repository secret.
+Publishing runs in CI (`.github/workflows/publish.yml`) with provenance and
+needs the `NPM_TOKEN` repository secret.
 
 ## License
 
-[MIT](LICENSE)
+MIT

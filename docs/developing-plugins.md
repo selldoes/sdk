@@ -1,20 +1,20 @@
 # Developing Selldoes plugins
 
-Everything needed to build, preview and publish a plugin lives in this repo:
+Everything needed lives in one package — [`selldoes`](https://www.npmjs.com/package/selldoes):
 
-| Package | What it is |
+| Import | What it is |
 |---|---|
-| [`@selldoes/plugin-sdk`](../sdk/) | Types for `plugin.json`, `PluginContext`, `PluginExports` + `definePlugin()` |
-| [`@selldoes/plugin-cli`](../cli/) | `selldoes-plugin dev/build/pack/validate/publish` — includes the local preview server |
-| [`create-selldoes-plugin`](../create-plugin/) | `npm create selldoes-plugin` scaffolder |
+| `selldoes` | Types for `plugin.json`, `PluginContext`, `PluginExports` + `definePlugin()` |
+| `selldoes/theme` | The theme runtime (hooks + components) — see [developing-themes.md](developing-themes.md) |
+| `selldoes` CLI | `create`, `dev`, `build`, `pack`, `validate`, `publish` |
 
 ## Quick start
 
 ```bash
-npm create selldoes-plugin@latest my-plugin
+npx selldoes create my-plugin       # asks: Plugin or Theme?
 cd my-plugin
 npm install
-npm run dev
+npx selldoes dev
 ```
 
 ## Anatomy
@@ -32,7 +32,7 @@ my-plugin/
 
 ## The local preview server
 
-`npm run dev` builds the runtime bundle and starts a preview server on
+`selldoes dev` builds the runtime bundle and starts a preview server on
 `http://127.0.0.1:4590/preview`:
 
 | Tab | What it shows |
@@ -140,18 +140,14 @@ for every release.
 
 ## Releases
 
-The SDK packages are published from CI (`.github/workflows/npm-publish.yml`)
+The `selldoes` package is published from CI (`.github/workflows/publish.yml`)
 when a version tag is pushed:
 
-| Tag | Package |
-|---|---|
-| `sdk-v<version>` | `@selldoes/plugin-sdk` |
-| `cli-v<version>` | `@selldoes/plugin-cli` |
-| `create-v<version>` | `create-selldoes-plugin` |
+```bash
+npm version patch              # or edit package.json
+git push && git push --tags    # tag like v0.3.1 → published with provenance
+```
 
-Bump the version in the package's `package.json`, push the tag, and the
-workflow builds and publishes it with provenance (requires the `NPM_TOKEN`
-repository secret).
-
-This repo hosts the SDK, the CLI and the scaffolder only — plugin projects live
-in their own repositories (start one with `npm create selldoes-plugin`).
+The workflow compiles the plugin types (`npm run build`), publishes to npm and
+needs the `NPM_TOKEN` repository secret. Plugin projects live in their own
+repositories — start one with `npx selldoes create`.

@@ -1,21 +1,81 @@
 {
-  "name": "selldoes-sdk",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Selldoes plugin SDK, CLI and scaffolder.",
+  "name": "selldoes",
+  "version": "0.3.0",
+  "description": "Build Selldoes plugins and themes — SDK types, theme runtime and the selldoes CLI (create, dev, build, publish).",
   "license": "MIT",
+  "type": "module",
+  "bin": {
+    "selldoes": "./bin/selldoes.mjs"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./theme": {
+      "default": "./theme/index.js"
+    }
+  },
+  "files": [
+    "bin",
+    "cli",
+    "theme",
+    "dist",
+    "templates",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1",
+    "esbuild": "^0.28.2",
+    "fflate": "^0.8.2"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "selldoes",
+    "plugin",
+    "theme",
+    "template",
+    "sdk",
+    "cli",
+    "ecommerce"
+  ],
   "homepage": "https://selldoes.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/selldoes/sdk.git"
   },
-  "workspaces": [
-    "sdk",
-    "cli",
-    "create-plugin"
-  ],
-  "scripts": {
-    "sdk:build": "npm run build --workspace @selldoes/plugin-sdk",
-    "pack:all": "npm pack --workspace @selldoes/plugin-sdk --workspace @selldoes/plugin-cli --workspace create-selldoes-plugin --pack-destination dist/packages"
+  "bugs": {
+    "url": "https://github.com/selldoes/sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
