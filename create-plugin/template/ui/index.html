@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>__PLUGIN_NAME__</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header>
+      <h1>__PLUGIN_NAME__</h1>
+      <p class="muted">Rendered in a sandboxed iframe inside the dashboard.</p>
+    </header>
+
+    <form id="add">
+      <input id="note" placeholder="Write a note…" required />
+      <button type="submit">Add</button>
+    </form>
+
+    <ul id="notes"></ul>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

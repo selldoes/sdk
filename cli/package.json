@@ -1,0 +1,50 @@
+{
+  "name": "@selldesk/plugin-cli",
+  "version": "0.1.0",
+  "description": "Build, preview and publish SellDesk plugins locally.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "selldesk-plugin": "./bin/selldesk-plugin.mjs"
+  },
+  "main": "./lib/index.mjs",
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./build": "./lib/build.mjs",
+    "./validate": "./lib/validate.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "prepublishOnly": "node bin/selldesk-plugin.mjs --help > /dev/null"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "esbuild": "^0.28.2"
+  },
+  "keywords": [
+    "selldesk",
+    "plugin",
+    "cli",
+    "dev-server"
+  ],
+  "homepage": "https://selldoes.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/selldoes/sdk.git",
+    "directory": "cli"
+  },
+  "bugs": {
+    "url": "https://github.com/selldoes/sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
