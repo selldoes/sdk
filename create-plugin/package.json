@@ -1,6 +1,6 @@
 {
   "name": "create-selldoes-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scaffold a new Selldoes plugin project.",
   "license": "MIT",
   "type": "module",

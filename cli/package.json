@@ -1,6 +1,6 @@
 {
   "name": "@selldoes/plugin-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Build, preview and publish Selldoes plugins locally.",
   "license": "MIT",
   "type": "module",
