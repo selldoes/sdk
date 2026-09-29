@@ -1,6 +1,6 @@
 # __PLUGIN_NAME__
 
-A [SellDesk](https://selldoes.com) plugin.
+A [Selldoes](https://selldoes.com) plugin.
 
 ## Develop locally
 
@@ -40,10 +40,10 @@ globals like `process`, `Buffer` or `require`).
 
 ```bash
 # From your dashboard session (merchant flow):
-SELDESK_SESSION_COOKIE="session=…" npm run publish -- --app-url https://selldoes.com --store 123
+SELLDOES_SESSION_COOKIE="session=…" npm run publish -- --app-url https://selldoes.com --store 123
 
 # CI / first-party (service token):
-npm run publish -- --app-url https://selldoes.com --token $SELDESK_PUBLISH_TOKEN
+npm run publish -- --app-url https://selldoes.com --token $SELLDOES_PUBLISH_TOKEN
 ```
 
 New versions are immutable releases; bump `version` in `plugin.json` before

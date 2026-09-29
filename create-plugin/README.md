@@ -1,11 +1,11 @@
-# create-selldesk-plugin
+# create-selldoes-plugin
 
-Scaffold a new [SellDesk](https://selldoes.com) plugin project.
+Scaffold a new [Selldoes](https://selldoes.com) plugin project.
 
 ```bash
-npm create selldesk-plugin@latest my-plugin
+npm create selldoes-plugin@latest my-plugin
 # or without a dashboard UI:
-npm create selldesk-plugin@latest my-plugin -- --no-ui
+npm create selldoes-plugin@latest my-plugin -- --no-ui
 ```
 
 The generated project includes a manifest, a typed sandbox entry with a working

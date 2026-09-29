@@ -1,11 +1,11 @@
 {
-  "name": "create-selldesk-plugin",
+  "name": "create-selldoes-plugin",
   "version": "0.1.0",
-  "description": "Scaffold a new SellDesk plugin project.",
+  "description": "Scaffold a new Selldoes plugin project.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "create-selldesk-plugin": "./index.mjs"
+    "create-selldoes-plugin": "./index.mjs"
   },
   "files": [
     "index.mjs",
@@ -17,7 +17,7 @@
     "node": ">=18.17"
   },
   "keywords": [
-    "selldesk",
+    "selldoes",
     "plugin",
     "create",
     "scaffold"

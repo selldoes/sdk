@@ -2,18 +2,18 @@
   "name": "__PLUGIN_SLUG__",
   "private": true,
   "version": "0.1.0",
-  "description": "A SellDesk plugin.",
+  "description": "A Selldoes plugin.",
   "scripts": {
-    "dev": "selldesk-plugin dev --open",
-    "build": "selldesk-plugin build",
-    "pack": "selldesk-plugin pack",
-    "validate": "selldesk-plugin validate",
-    "publish": "selldesk-plugin publish",
+    "dev": "selldoes-plugin dev --open",
+    "build": "selldoes-plugin build",
+    "pack": "selldoes-plugin pack",
+    "validate": "selldoes-plugin validate",
+    "publish": "selldoes-plugin publish",
     "typecheck": "tsc -p jsconfig.json"
   },
   "devDependencies": {
-    "@selldesk/plugin-cli": "__CLI_VERSION__",
-    "@selldesk/plugin-sdk": "__SDK_VERSION__",
+    "@selldoes/plugin-cli": "__CLI_VERSION__",
+    "@selldoes/plugin-sdk": "__SDK_VERSION__",
     "@types/node": "^20.14.0",
     "typescript": "^5.6.3"
   }

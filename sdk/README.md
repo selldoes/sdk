@@ -1,6 +1,6 @@
-# @selldesk/plugin-sdk
+# @selldoes/plugin-sdk
 
-Types and helpers for building [SellDesk](https://selldoes.com) plugins.
+Types and helpers for building [Selldoes](https://selldoes.com) plugins.
 
 The SDK is **development-time only** — it is never bundled into a plugin
 release. At runtime the host sandbox passes a `PluginContext` (`ctx.db`,
@@ -8,13 +8,13 @@ release. At runtime the host sandbox passes a `PluginContext` (`ctx.db`,
 to your plugin.
 
 ```bash
-npm install --save-dev @selldesk/plugin-sdk
+npm install --save-dev @selldoes/plugin-sdk
 ```
 
 ```js
-/** @type {import("@selldesk/plugin-sdk").PluginExports} */
+/** @type {import("@selldoes/plugin-sdk").PluginExports} */
 module.exports = {
-  /** @param {import("@selldesk/plugin-sdk").PluginContext} ctx */
+  /** @param {import("@selldoes/plugin-sdk").PluginContext} ctx */
   async init(ctx) {
     await ctx.db.ensureTable("notes", { body: "text" })
   },
@@ -41,13 +41,13 @@ module.exports = {
 Use the CLI:
 
 ```bash
-npm install --save-dev @selldesk/plugin-cli
-npx selldesk-plugin dev       # local preview server
-npx selldesk-plugin build     # bundle into dist/
-npx selldesk-plugin publish   # upload + marketplace listing
+npm install --save-dev @selldoes/plugin-cli
+npx selldoes-plugin dev       # local preview server
+npx selldoes-plugin build     # bundle into dist/
+npx selldoes-plugin publish   # upload + marketplace listing
 ```
 
-Or start from a template: `npm create selldesk-plugin@latest my-plugin`.
+Or start from a template: `npm create selldoes-plugin@latest my-plugin`.
 
 ## License
 

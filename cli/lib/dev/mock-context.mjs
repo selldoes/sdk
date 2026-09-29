@@ -8,7 +8,7 @@ import path from "node:path"
  *
  * Differences from production are deliberate and documented in the CLI README:
  * the runtime executes in Node (not QuickJS), and outbound integrations are
- * mocked unless configured in `selldesk.config.json`.
+ * mocked unless configured in `selldoes.config.json`.
  */
 export function createMockContext({ pluginDir, manifest, db, storeId, config = {}, devDir, log = () => {} }) {
   const tablePrefix = `plugin_${String(manifest.slug).replace(/-/g, "_")}_`
@@ -123,7 +123,7 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
         requirePermission("ai:use", "ctx.ai.complete")
         const prompt = String(opts.prompt ?? "")
         log(`[ai] complete(${prompt.length} chars)${opts.model ? ` model=${opts.model}` : ""}`)
-        let text = config.ai?.mockReply ?? "(mock AI reply — set `ai.mockReply` in selldesk.config.json)"
+        let text = config.ai?.mockReply ?? "(mock AI reply — set `ai.mockReply` in selldoes.config.json)"
         for (const [needle, reply] of Object.entries(config.ai?.responses ?? {})) {
           if (prompt.toLowerCase().includes(String(needle).toLowerCase())) {
             text = String(reply)

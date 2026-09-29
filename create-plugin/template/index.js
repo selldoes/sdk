@@ -1,5 +1,5 @@
 /**
- * __PLUGIN_NAME__ — SellDesk plugin runtime.
+ * __PLUGIN_NAME__ — Selldoes plugin runtime.
  *
  * Runs inside the QuickJS sandbox on the platform. Only what the manifest
  * declares is available: `ctx.db`, `ctx.http`, `ctx.ai`, `ctx.files`,
@@ -9,9 +9,9 @@
  * permission checks and a mock database, so API/UI development is fully local.
  */
 
-/** @typedef {import("@selldesk/plugin-sdk").PluginContext} PluginContext */
-/** @typedef {import("@selldesk/plugin-sdk").PluginApiRequest} PluginApiRequest */
-/** @typedef {import("@selldesk/plugin-sdk").PluginExports} PluginExports */
+/** @typedef {import("@selldoes/plugin-sdk").PluginContext} PluginContext */
+/** @typedef {import("@selldoes/plugin-sdk").PluginApiRequest} PluginApiRequest */
+/** @typedef {import("@selldoes/plugin-sdk").PluginExports} PluginExports */
 
 /** @type {NonNullable<PluginExports["apiRoutes"]>} */
 const apiRoutes = {

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * create-selldesk-plugin — scaffold a new SellDesk plugin project.
+ * create-selldoes-plugin — scaffold a new Selldoes plugin project.
  *
- *   npm create selldesk-plugin@latest my-plugin
- *   npm create selldesk-plugin@latest my-plugin -- --no-ui
+ *   npm create selldoes-plugin@latest my-plugin
+ *   npm create selldoes-plugin@latest my-plugin -- --no-ui
  *
  * Creates a project with:
  *   plugin.json          manifest (API routes, dashboard UI, permissions)
  *   index.js             sandbox runtime entry with typed stubs
  *   ui/                  dashboard UI starter (remove with --no-ui)
- *   selldesk.config.json dev-server settings (store id/slug, mock AI, sample data)
+ *   selldoes.config.json dev-server settings (store id/slug, mock AI, sample data)
  */
 import fs from "node:fs"
 import path from "node:path"
@@ -24,7 +24,7 @@ const flags = new Set(args.filter((argument) => argument.startsWith("--")))
 const positional = args.find((argument) => !argument.startsWith("--"))
 
 if (!positional) {
-  console.error("Usage: npm create selldesk-plugin@latest <my-plugin> [-- --no-ui] [--force]")
+  console.error("Usage: npm create selldoes-plugin@latest <my-plugin> [-- --no-ui] [--force]")
   process.exit(1)
 }
 

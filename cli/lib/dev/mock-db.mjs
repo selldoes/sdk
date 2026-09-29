@@ -3,7 +3,7 @@ import path from "node:path"
 
 /**
  * In-memory, store-scoped mock of the host's `ctx.db` tables, persisted to
- * `<pluginDir>/.selldesk-dev/db.json` so preview data survives restarts.
+ * `<pluginDir>/.selldoes-dev/db.json` so preview data survives restarts.
  *
  * Semantics mirror the production sandbox: every row carries `store_id`,
  * conditions are equality by default and support the same operator objects

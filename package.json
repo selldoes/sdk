@@ -1,8 +1,8 @@
 {
-  "name": "selldesk-sdk",
+  "name": "selldoes-sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "SellDesk plugin SDK, CLI and scaffolder.",
+  "description": "Selldoes plugin SDK, CLI and scaffolder.",
   "license": "MIT",
   "homepage": "https://selldoes.com",
   "repository": {
@@ -15,7 +15,7 @@
     "create-plugin"
   ],
   "scripts": {
-    "sdk:build": "npm run build --workspace @selldesk/plugin-sdk",
-    "pack:all": "npm pack --workspace @selldesk/plugin-sdk --workspace @selldesk/plugin-cli --workspace create-selldesk-plugin --pack-destination dist/packages"
+    "sdk:build": "npm run build --workspace @selldoes/plugin-sdk",
+    "pack:all": "npm pack --workspace @selldoes/plugin-sdk --workspace @selldoes/plugin-cli --workspace create-selldoes-plugin --pack-destination dist/packages"
   }
 }

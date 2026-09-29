@@ -61,7 +61,7 @@ export class PluginRunner {
     this.watchContext = await context(
       this.buildOptions([
         {
-          name: "selldesk-reload",
+          name: "selldoes-reload",
           setup: (buildContext) => {
             buildContext.onEnd((result) => {
               if (result.errors.length > 0) {

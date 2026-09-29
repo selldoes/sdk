@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * selldesk-plugin — build, preview and publish SellDesk plugins.
+ * selldoes-plugin — build, preview and publish Selldoes plugins.
  *
- *   selldesk-plugin dev       [--port 4590] [--open] [--host 127.0.0.1]
- *   selldesk-plugin build     [--zip]
- *   selldesk-plugin pack
- *   selldesk-plugin validate
- *   selldesk-plugin publish   --app-url <url> --token <token> | --cookie <session>
+ *   selldoes-plugin dev       [--port 4590] [--open] [--host 127.0.0.1]
+ *   selldoes-plugin build     [--zip]
+ *   selldoes-plugin pack
+ *   selldoes-plugin validate
+ *   selldoes-plugin publish   --app-url <url> --token <token> | --cookie <session>
  *
  * Run inside a plugin project (a directory containing plugin.json).
  */
@@ -14,26 +14,26 @@ import fs from "node:fs"
 import path from "node:path"
 import { parseArgs, findPluginRoot, openBrowser, die } from "../lib/util.mjs"
 
-const HELP = `selldesk-plugin — build, preview and publish SellDesk plugins
+const HELP = `selldoes-plugin — build, preview and publish Selldoes plugins
 
-Usage: selldesk-plugin <command> [options]
+Usage: selldoes-plugin <command> [options]
 
 Commands
   dev                     Start the local preview server (dashboard UI, storefront widget/pages, API console, jobs, hooks)
   build                   Bundle the plugin into dist/ (use --zip to also write <slug>.zip)
   pack                    Bundle + zip only (no publish)
   validate                Validate plugin.json, entries and route declarations
-  publish                 Build, zip and publish to a SellDesk instance
+  publish                 Build, zip and publish to a Selldoes instance
 
 Options
-  --port <n>              dev server port (default 4590, or selldesk.config.json "port")
+  --port <n>              dev server port (default 4590, or selldoes.config.json "port")
   --host <addr>           dev server host (default 127.0.0.1)
   --open                  open the preview in your browser
   --dir <path>            plugin directory (default: nearest folder with plugin.json)
-  --app-url <url>         SellDesk instance for publish (or SELDESK_APP_URL)
-  --token <token>         service publish token (CI) (or SELDESK_PUBLISH_TOKEN)
-  --cookie <session=…>    dashboard session cookie (or SELDESK_SESSION_COOKIE)
-  --store <id>            store id for session publish / dev store (or selldesk.config.json "storeId")
+  --app-url <url>         Selldoes instance for publish (or SELLDOES_APP_URL)
+  --token <token>         service publish token (CI) (or SELLDOES_PUBLISH_TOKEN)
+  --cookie <session=…>    dashboard session cookie (or SELLDOES_SESSION_COOKIE)
+  --store <id>            store id for session publish / dev store (or selldoes.config.json "storeId")
   --price <amount>        marketplace price (default 0 = free)
   --billing <period>      one_time | monthly | yearly (default one_time)
   --zip                   with build: also produce a zip for manual upload
@@ -86,9 +86,9 @@ switch (command) {
     const { publishPlugin } = await import("../lib/publish.mjs")
     const result = await publishPlugin({
       pluginDir,
-      appUrl: String(flags["app-url"] ?? process.env.SELDESK_APP_URL ?? ""),
-      token: String(flags.token ?? process.env.SELDESK_PUBLISH_TOKEN ?? "") || undefined,
-      cookie: String(flags.cookie ?? process.env.SELDESK_SESSION_COOKIE ?? "") || undefined,
+      appUrl: String(flags["app-url"] ?? process.env.SELLDOES_APP_URL ?? ""),
+      token: String(flags.token ?? process.env.SELLDOES_PUBLISH_TOKEN ?? "") || undefined,
+      cookie: String(flags.cookie ?? process.env.SELLDOES_SESSION_COOKIE ?? "") || undefined,
       storeId: flags.store,
       price: Number(flags.price ?? 0) || 0,
       billingPeriod: String(flags.billing ?? "one_time"),
@@ -104,7 +104,7 @@ switch (command) {
       port: flags.port ? Number(flags.port) : undefined,
       host: flags.host ? String(flags.host) : undefined,
     })
-    console.log(`\n  SellDesk plugin preview → ${server.url}`)
+    console.log(`\n  Selldoes plugin preview → ${server.url}`)
     console.log("  Press Ctrl+C to stop\n")
     if (flags.open) openBrowser(server.url)
     break

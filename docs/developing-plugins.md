@@ -1,17 +1,17 @@
-# Developing SellDesk plugins
+# Developing Selldoes plugins
 
 Everything needed to build, preview and publish a plugin lives in this repo:
 
 | Package | What it is |
 |---|---|
-| [`@selldesk/plugin-sdk`](../sdk/) | Types for `plugin.json`, `PluginContext`, `PluginExports` + `definePlugin()` |
-| [`@selldesk/plugin-cli`](../cli/) | `selldesk-plugin dev/build/pack/validate/publish` — includes the local preview server |
-| [`create-selldesk-plugin`](../create-plugin/) | `npm create selldesk-plugin` scaffolder |
+| [`@selldoes/plugin-sdk`](../sdk/) | Types for `plugin.json`, `PluginContext`, `PluginExports` + `definePlugin()` |
+| [`@selldoes/plugin-cli`](../cli/) | `selldoes-plugin dev/build/pack/validate/publish` — includes the local preview server |
+| [`create-selldoes-plugin`](../create-plugin/) | `npm create selldoes-plugin` scaffolder |
 
 ## Quick start
 
 ```bash
-npm create selldesk-plugin@latest my-plugin
+npm create selldoes-plugin@latest my-plugin
 cd my-plugin
 npm install
 npm run dev
@@ -26,7 +26,7 @@ my-plugin/
   ui/                  dashboard UI (sandboxed iframe), optional
     index.html
     app.js
-  selldesk.config.json dev-server settings (store id/slug, mock AI, sample data)
+  selldoes.config.json dev-server settings (store id/slug, mock AI, sample data)
   jsconfig.json        editor + typecheck config using the SDK types
 ```
 
@@ -43,7 +43,7 @@ my-plugin/
 | **API console** | Pick a declared route, edit query/body, send and inspect JSON |
 | **Jobs** | Run a declared job to completion — chunked (`{ init, step, finalize }`) or a legacy function — with progress, per-item results and logs |
 | **Hooks** | Fire `hooks[name]` with a payload |
-| **Data** | Inspect/reset the mock database (`.selldesk-dev/db.json`) |
+| **Data** | Inspect/reset the mock database (`.selldoes-dev/db.json`) |
 | **Email / Realtime** | Calls made through `ctx.email.send` / `ctx.realtime.publish` |
 
 The mock context enforces the same rules as production: permissions must be
@@ -127,10 +127,10 @@ npm run build          # dist/<slug>/ + bundle.js
 npm run pack           # dist/<slug>.zip for manual upload
 
 # Merchant flow (upload to your store, then submit for review):
-SELDESK_SESSION_COOKIE="session=…" npm run publish -- --app-url https://selldoes.com --store 123
+SELLDOES_SESSION_COOKIE="session=…" npm run publish -- --app-url https://selldoes.com --store 123
 
 # CI / first-party flow (service token):
-npm run publish -- --app-url https://selldoes.com --token $SELDESK_PUBLISH_TOKEN
+npm run publish -- --app-url https://selldoes.com --token $SELLDOES_PUBLISH_TOKEN
 ```
 
 Publishing writes an **immutable release** (`releases/<slug>/<version>/`) and
@@ -145,13 +145,13 @@ when a version tag is pushed:
 
 | Tag | Package |
 |---|---|
-| `sdk-v<version>` | `@selldesk/plugin-sdk` |
-| `cli-v<version>` | `@selldesk/plugin-cli` |
-| `create-v<version>` | `create-selldesk-plugin` |
+| `sdk-v<version>` | `@selldoes/plugin-sdk` |
+| `cli-v<version>` | `@selldoes/plugin-cli` |
+| `create-v<version>` | `create-selldoes-plugin` |
 
 Bump the version in the package's `package.json`, push the tag, and the
 workflow builds and publishes it with provenance (requires the `NPM_TOKEN`
 repository secret).
 
 This repo hosts the SDK, the CLI and the scaffolder only — plugin projects live
-in their own repositories (start one with `npm create selldesk-plugin`).
+in their own repositories (start one with `npm create selldoes-plugin`).

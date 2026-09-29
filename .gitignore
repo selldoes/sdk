@@ -7,7 +7,7 @@ dist/
 *.zip
 
 # Local dev preview state
-.selldesk-dev/
+.selldoes-dev/
 
 # Env
 .env

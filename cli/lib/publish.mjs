@@ -21,10 +21,10 @@ function reportFailure(context, result) {
 }
 
 /**
- * Builds a plugin, zips it and publishes it to a SellDesk instance.
+ * Builds a plugin, zips it and publishes it to a Selldoes instance.
  *
  * Two auth lanes:
- *  - `token`: CI / first-party service token (`x-selldesk-publish-token`).
+ *  - `token`: CI / first-party service token (`x-selldoes-publish-token`).
  *  - `cookie`: a dashboard session cookie (`session=…`). The plugin is first
  *    uploaded to the caller's store (`install-upload`), then published from it.
  */
@@ -38,13 +38,13 @@ export async function publishPlugin({
   billingPeriod = "one_time",
   log = console.log,
 }) {
-  if (!appUrl) throw new Error("--app-url (or SELDESK_APP_URL) is required")
+  if (!appUrl) throw new Error("--app-url (or SELLDOES_APP_URL) is required")
   const manifest = readJson(path.join(pluginDir, "plugin.json"))
   const base = appUrl.replace(/\/$/, "")
 
   log(`Building ${manifest.slug}…`)
   const built = await buildPlugin(pluginDir, {
-    outDir: path.join(pluginDir, ".selldesk-dev", "publish"),
+    outDir: path.join(pluginDir, ".selldoes-dev", "publish"),
     zip: true,
     log,
   })
@@ -54,7 +54,7 @@ export async function publishPlugin({
     const result = await postJson(
       `${base}/api/plugins/marketplace/publish`,
       { slug: manifest.slug, data, price, billingPeriod },
-      { "x-selldesk-publish-token": token },
+      { "x-selldoes-publish-token": token },
     )
     if (!result.ok) {
       reportFailure("Publish failed", result)

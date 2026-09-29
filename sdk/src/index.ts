@@ -1,5 +1,5 @@
 /**
- * @selldesk/plugin-sdk — types and helpers for first-party plugins.
+ * @selldoes/plugin-sdk — types and helpers for first-party plugins.
  *
  * The SDK is development-time only: it is never bundled into a plugin release.
  * Runtime code receives a `PluginContext` from the host sandbox.

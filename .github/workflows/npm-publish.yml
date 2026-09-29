@@ -10,7 +10,7 @@ on:
         options:
           - plugin-sdk
           - plugin-cli
-          - create-selldesk-plugin
+          - create-selldoes-plugin
   push:
     tags:
       - "sdk-v*"
@@ -43,14 +43,14 @@ jobs:
             case "${GITHUB_REF_NAME}" in
               sdk-*) name="plugin-sdk" ;;
               cli-*) name="plugin-cli" ;;
-              create-*) name="create-selldesk-plugin" ;;
+              create-*) name="create-selldoes-plugin" ;;
               *) echo "Unknown tag ${GITHUB_REF_NAME}"; exit 1 ;;
             esac
           fi
           case "$name" in
             plugin-sdk) dir="sdk" ;;
             plugin-cli) dir="cli" ;;
-            create-selldesk-plugin) dir="create-plugin" ;;
+            create-selldoes-plugin) dir="create-plugin" ;;
             *) echo "Unknown package $name"; exit 1 ;;
           esac
           echo "dir=$dir" >> "$GITHUB_OUTPUT"

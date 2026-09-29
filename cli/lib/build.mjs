@@ -7,8 +7,8 @@ const UI_SOURCE_CANDIDATES = ["src/index.tsx", "src/index.ts", "src/index.jsx", 
 
 /** Mirrors the host's upload validator: only these extensions may be zipped. */
 const UPLOADABLE_EXTENSIONS = new Set([".js", ".cjs", ".mjs", ".json", ".ts", ".tsx", ".jsx", ".css", ".md", ".txt", ".html"])
-const PACK_EXCLUDED_DIRS = new Set(["node_modules", "dist", "coverage", ".git", ".github", ".selldesk-dev"])
-const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "selldesk.config.json"])
+const PACK_EXCLUDED_DIRS = new Set(["node_modules", "dist", "coverage", ".git", ".github", ".selldoes-dev"])
+const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "selldoes.config.json"])
 
 /**
  * Zips the plugin **source** for upload/publish. The platform bundles the

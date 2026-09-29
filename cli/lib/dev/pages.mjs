@@ -1,8 +1,8 @@
 /**
- * Server-rendered preview pages for `selldesk-plugin dev`.
+ * Server-rendered preview pages for `selldoes-plugin dev`.
  * Plain HTML + a little inline JS — no build step, no dependencies.
  *
- * Styled with the SellDesk dashboard's design tokens (see the app's
+ * Styled with the Selldoes dashboard's design tokens (see the app's
  * globals.css): light background, white cards, orange primary, Plus Jakarta
  * Sans, 12px radii. Light + dark follow the OS preference.
  */
@@ -233,7 +233,7 @@ export function layout({ manifest, active, body, script = "" }) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHtml(manifest.name)} — SellDesk preview</title>
+<title>${escapeHtml(manifest.name)} — Selldoes preview</title>
 <link rel="icon" href="${FAVICON}" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -243,7 +243,7 @@ export function layout({ manifest, active, body, script = "" }) {
 <body>
 <header class="app">
   <div class="bar">
-    <span class="brand"><span class="logo">${LOGO_SVG}</span> SellDesk <small>plugin preview</small></span>
+    <span class="brand"><span class="logo">${LOGO_SVG}</span> Selldoes <small>plugin preview</small></span>
     <nav>${NAV.map(([key, href, label]) => `<a href="${href}" class="${key === active ? "active" : ""}">${label}</a>`).join("")}</nav>
     <span class="badge version">${escapeHtml(manifest.slug)} v${escapeHtml(manifest.version)}</span>
   </div>
@@ -290,7 +290,7 @@ export function overviewPage({ manifest }) {
              <li><strong>Check the parser</strong> — runs <code>Preview a product parse</code>: shows the exact title, price, variants and
                tracks it reads from one product page. Prefilled with a sample OTRCat product.</li>
              <li><strong>Import</strong> — runs <code>Import products</code>: walks the listing and creates products in the mock store
-               (capped at 3 by <code>selldesk.config.json</code>).</li>
+               (capped at 3 by <code>selldoes.config.json</code>).</li>
            </ol>
            <p class="muted">Everything is local and fake — no real store is touched. Reset the mock store from the
            <a href="/preview/data">Data</a> tab.</p>
@@ -547,7 +547,7 @@ export function jobsPage({ manifest }) {
   const body = jobs.length
     ? `<h2 class="page">Jobs</h2>
        <p class="page">Jobs run against the locally built bundle and the mock store (persisted to
-         <code>.selldesk-dev/db.json</code>). Chunked jobs advance one tick at a time, capped by <em>Max ticks</em>;
+         <code>.selldoes-dev/db.json</code>). Chunked jobs advance one tick at a time, capped by <em>Max ticks</em>;
          raise it for bigger imports.</p>
        ${rows}`
     : `<div class="card"><h3>No jobs</h3><p class="muted">Declare jobs in plugin.json and export
@@ -633,7 +633,7 @@ export function hooksPage({ manifest }) {
 export function dataPage({ manifest }) {
   const body = `
     <h2 class="page">Mock data</h2>
-    <p class="page">Everything the plugin writes locally lives here (<code>.selldesk-dev/db.json</code>).</p>
+    <p class="page">Everything the plugin writes locally lives here (<code>.selldoes-dev/db.json</code>).</p>
     <div class="row" style="margin-bottom:16px">
       <button id="reset" class="btn btn-outline">Reset mock data</button>
       <span class="muted" style="margin:0" id="status"></span>

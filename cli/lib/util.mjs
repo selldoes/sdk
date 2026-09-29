@@ -31,7 +31,7 @@ export function findPluginRoot(cwd = process.cwd()) {
 }
 
 /**
- * Parses `selldesk-plugin <command> [args] [--flag value]` into a structure.
+ * Parses `selldoes-plugin <command> [args] [--flag value]` into a structure.
  * Boolean flags may be used bare (`--zip`) or with a value (`--port 4590`).
  */
 export function parseArgs(argv) {

@@ -67,11 +67,11 @@ function readBody(req) {
  */
 export async function startDevServer({ pluginDir, port, host } = {}) {
   const manifest = readJson(path.join(pluginDir, "plugin.json"))
-  const configPath = path.join(pluginDir, "selldesk.config.json")
+  const configPath = path.join(pluginDir, "selldoes.config.json")
   const config = fs.existsSync(configPath) ? readJson(configPath) : {}
   const storeId = Number(config.storeId ?? 1)
   const storeSlug = String(config.storeSlug ?? "dev-store")
-  const devDir = path.join(pluginDir, ".selldesk-dev")
+  const devDir = path.join(pluginDir, ".selldoes-dev")
 
   const logs = []
   const log = (line) => {
