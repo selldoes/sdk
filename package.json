@@ -1,6 +1,6 @@
 {
   "name": "selldoes",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Build Selldoes plugins and themes — SDK types, theme runtime and the selldoes CLI (create, dev, build, publish).",
   "license": "MIT",
   "type": "module",

@@ -31,7 +31,10 @@ function copyTemplate(fromDir, toDir, replacements) {
   fs.mkdirSync(toDir, { recursive: true })
   for (const entry of fs.readdirSync(fromDir, { withFileTypes: true })) {
     const from = path.join(fromDir, entry.name)
-    const to = path.join(toDir, entry.name)
+    // npm strips `.gitignore` from tarballs, so templates ship it as `gitignore`
+    // and it is restored on scaffold.
+    const targetName = entry.name === "gitignore" ? ".gitignore" : entry.name
+    const to = path.join(toDir, targetName)
     if (entry.isDirectory()) {
       copyTemplate(from, to, replacements)
       continue
