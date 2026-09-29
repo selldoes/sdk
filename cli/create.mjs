@@ -152,17 +152,20 @@ export async function createCommand(args, flags) {
   if (install) {
     const spinner = prompts.spinner()
     spinner.start("Installing dependencies…")
-    const npm = process.platform === "win32" ? "npm.cmd" : "npm"
-    const result = spawnSync(npm, ["install", "--no-audit", "--no-fund"], {
+    // A single command string with `shell: true` — Node on Windows refuses to
+    // spawn `npm.cmd` directly (EINVAL) and deprecates args-with-shell.
+    const result = spawnSync("npm install --no-audit --no-fund", {
       cwd: targetDir,
       encoding: "utf8",
+      shell: true,
+      windowsHide: true,
     })
     if (result.status === 0) {
       spinner.stop("Dependencies installed")
     } else {
       spinner.stop("Install failed — run `npm install` manually")
-      const output = `${result.stdout || ""}${result.stderr || ""}`.trim()
-      if (output) console.error(output.split("\n").slice(-5).join("\n"))
+      const output = `${result.error?.message || ""}\n${result.stdout || ""}${result.stderr || ""}`.trim()
+      if (output) console.error(output.split("\n").slice(-6).join("\n"))
     }
   }
 
