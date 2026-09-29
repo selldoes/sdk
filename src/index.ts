@@ -51,6 +51,8 @@ export interface PluginManifest {
   version: string
   author?: string
   icon?: string
+  /** Custom icon image: a plugin-relative path (e.g. "assets/icon.png") or an absolute URL. */
+  iconUrl?: string
   homepage?: string
   entry?: string
   permissions?: PluginPermission[]

@@ -18,12 +18,25 @@ npm install -g selldoes
 selldoes create
 ```
 
+## Working on this repo
+
+```bash
+npm install
+npm run build:dev-ui   # once: builds the preview UI (cli/plugin/dev/ui-dist)
+npm run dev            # starts examples/demo-plugin → http://127.0.0.1:4590/preview
+```
+
+`examples/demo-plugin` is a full-featured plugin used to exercise every preview
+page (jobs, hooks, API routes, settings, widget, dashboard UI). VS Code users
+can press <kbd>F5</kbd> — launch configs are included, including a compound that
+runs the dev server plus the Vite UI with hot reload.
+
 ## Commands
 
 | Command | Plugin | Theme |
 |---|---|---|
-| `selldoes create` | scaffold a plugin | scaffold a theme |
-| `selldoes dev` | preview server (`:4590`) | live store preview (`:4173`) |
+| `selldoes create` | scaffold a plugin (JS or React UI) | scaffold a theme |
+| `selldoes dev` | preview server (`:4590`) — details editor, marketplace preview, AI rightbar | live store preview (`:4173`) |
 | `selldoes build` | bundle to `dist/<slug>/` | bundle to `dist/` + manifest |
 | `selldoes pack` | build + zip | — |
 | `selldoes validate` | manifest, entries, routes | manifest + page files |

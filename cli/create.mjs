@@ -111,13 +111,29 @@ export async function createCommand(args, flags) {
   if (!/^\d+\.\d+\.\d+/.test(version)) die(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
 
   let withUi = true
+  let uiFlavor = "js"
   if (kind === "plugin") {
-    if (flags["no-ui"] === true) withUi = false
-    else if (flags.ui === true) withUi = true
-    else if (interactive) {
+    if (flags["no-ui"] === true) {
+      withUi = false
+    } else if (typeof flags.ui === "string") {
+      uiFlavor = String(flags.ui).toLowerCase() === "react" ? "react" : "js"
+    } else if (flags.ui === true) {
+      withUi = true
+    } else if (interactive) {
       const answer = await prompts.confirm({ message: "Add a dashboard UI?", initialValue: true })
       if (prompts.isCancel(answer)) cancel()
       withUi = answer
+      if (withUi) {
+        const flavor = await prompts.select({
+          message: "UI style",
+          options: [
+            { value: "js", label: "Plain JS", hint: "no build step — ui/index.html + app.js" },
+            { value: "react", label: "React + TypeScript", hint: "bundled by esbuild, supports npm packages" },
+          ],
+        })
+        if (prompts.isCancel(flavor)) cancel()
+        uiFlavor = String(flavor)
+      }
     }
   }
 
@@ -131,14 +147,52 @@ export async function createCommand(args, flags) {
 
   const name = toTitle(slug)
   const templateDir = fileURLToPath(new URL(`../templates/${kind}/`, import.meta.url))
-  copyTemplate(templateDir, targetDir, {
+  const replacements = {
     __PLUGIN_SLUG__: slug,
     __PLUGIN_NAME__: name,
     __THEME_SLUG__: slug,
     __THEME_NAME__: name,
     __VERSION__: version,
     __SELLDOES_VERSION__: PACKAGE.version,
-  })
+  }
+  copyTemplate(templateDir, targetDir, replacements)
+
+  if (kind === "plugin" && withUi && uiFlavor === "react") {
+    // Swap the plain-JS UI for the React + TypeScript one, and wire up the
+    // dependencies esbuild needs to bundle it (ui/src → assets/index.js).
+    fs.rmSync(path.join(targetDir, "ui"), { recursive: true, force: true })
+    copyTemplate(fileURLToPath(new URL("../templates/plugin-react-ui/", import.meta.url)), path.join(targetDir, "ui"), replacements)
+    const packagePath = path.join(targetDir, "package.json")
+    const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"))
+    pkg.dependencies = { react: "^19.0.0", "react-dom": "^19.0.0", ...(pkg.dependencies ?? {}) }
+    pkg.devDependencies = {
+      ...(pkg.devDependencies ?? {}),
+      "@types/react": "^19.0.0",
+      "@types/react-dom": "^19.0.0",
+    }
+    fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`)
+    fs.writeFileSync(
+      path.join(targetDir, "jsconfig.json"),
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2020",
+            module: "ESNext",
+            moduleResolution: "Bundler",
+            lib: ["ES2020", "DOM", "DOM.Iterable"],
+            jsx: "react-jsx",
+            types: ["node"],
+            strict: true,
+            noEmit: true,
+            skipLibCheck: true,
+          },
+          include: ["index.js", "ui/src/**/*.ts", "ui/src/**/*.tsx"],
+        },
+        null,
+        2,
+      )}\n`,
+    )
+  }
 
   if (kind === "plugin" && !withUi) {
     fs.rmSync(path.join(targetDir, "ui"), { recursive: true, force: true })

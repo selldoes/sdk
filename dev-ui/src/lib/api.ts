@@ -1,0 +1,80 @@
+/** Thin client for the dev server (`/__dev/*` + the plugin API lanes). */
+
+import type {
+  AssistantChatResult,
+  AssistantEdits,
+  Bootstrap,
+  DevStatus,
+  PluginManifest,
+  SettingsResponse,
+  Validation,
+} from "./types"
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init)
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const message = (body as { error?: string }).error || `Request failed (${response.status})`
+    throw new Error(message)
+  }
+  return body as T
+}
+
+function post<T>(path: string, data?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data ?? {}),
+  })
+}
+
+export const dev = {
+  bootstrap: () => request<Bootstrap>("/__dev/bootstrap"),
+  status: () => request<DevStatus>("/__dev/status"),
+  visit: (page: string) => post<{ ok: boolean }>("/__dev/visit", { page }),
+  saveManifest: (manifest: PluginManifest) =>
+    post<{ ok: boolean; manifest: PluginManifest; validation: Validation }>("/__dev/manifest", { manifest }),
+  undoManifest: () => post<{ ok: boolean; manifest: PluginManifest | null }>("/__dev/manifest/undo", {}),
+  uploadAsset: (input: { folder: "assets" | "screenshots"; name: string; data: string }) =>
+    post<{ path: string; url: string }>("/__dev/assets", input),
+  deleteAsset: (path: string) => post<{ ok: boolean }>("/__dev/assets/delete", { path }),
+  settings: () => request<SettingsResponse>("/__dev/settings"),
+  saveSettings: (settings: Record<string, unknown>) => post<{ ok: boolean; settings: Record<string, unknown> }>("/__dev/settings", { settings }),
+  assistant: () => request<{ configured: boolean; provider?: string; model?: string }>("/__dev/assistant"),
+  assistantChat: (messages: { role: string; content: string }[], context: Record<string, unknown>) =>
+    post<AssistantChatResult>("/__dev/assistant/chat", { messages, context }),
+  assistantApply: (edits: AssistantEdits) => post<{ ok: boolean; validation: Validation; applied: string[] }>("/__dev/assistant/apply", { edits }),
+  runJob: (payload: { type: string; input?: unknown; maxTicks?: number }) =>
+    post<{ ok?: boolean; error?: string; run?: JobRun; telemetry?: JobTelemetry }>("/__dev/run-job", payload),
+  runHook: (hook: string, payload: unknown) => post<{ ok?: boolean; error?: string; result?: unknown }>("/__dev/run-hook", { hook, payload }),
+  rebuild: () => post<{ ok: boolean; rebuilds: number }>("/__dev/rebuild", {}),
+  resetData: () => post<{ ok: boolean }>("/__dev/reset-data", {}),
+  tables: () => request<{ tables: Record<string, { rows: number; columns: string[]; sample: unknown[] }> }>("/__dev/state"),
+  outbox: () => request<{ outbox: { to: string; subject: string; text?: string; html?: string; at: string }[] }>("/__dev/outbox"),
+  events: () => request<{ events: { id: number; channel: string; event: string; data: unknown; at: string }[] }>("/__dev/events"),
+  logs: () => request<{ logs: string[]; rebuilds: number }>("/__dev/logs"),
+}
+
+export interface JobRun {
+  kind?: string
+  ticks?: number
+  done?: boolean
+  result?: unknown
+  state?: unknown
+}
+
+export interface JobTelemetry {
+  progress?: { processed?: number; total?: number; failed?: number; skipped?: number; message?: string }[]
+  items?: { ref: string; status: string; error?: string; data?: unknown; productId?: number }[]
+  logs?: { level?: string; message: string }[]
+}
+
+/** Reads a File as base64 (without the data: prefix). */
+export function readFileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "")
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`))
+    reader.readAsDataURL(file)
+  })
+}

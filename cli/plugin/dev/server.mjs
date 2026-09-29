@@ -1,22 +1,19 @@
 import http from "node:http"
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { contentTypeFor, readJson } from "../../util.mjs"
 import { buildPlugin } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
 import { PluginRunner, cleanPath } from "./runner.mjs"
-import {
-  apiPage,
-  dashboardPage,
-  dataPage,
-  emailPage,
-  hooksPage,
-  jobsPage,
-  overviewPage,
-  realtimePage,
-  storefrontPage,
-} from "./pages.mjs"
+import { ManifestStore } from "./manifest-store.mjs"
+import { DevState } from "./dev-state.mjs"
+import { deleteAsset, resolveAsset, saveAsset } from "./assets.mjs"
+import { assistantChat, assistantSummary, normalizeEdits, resolveAssistant } from "./assistant.mjs"
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const UI_DIR = path.join(HERE, "ui-dist")
 
 const UI_CSP = [
   "default-src 'self' data: blob:",
@@ -34,8 +31,8 @@ function json(res, status, data) {
   res.end(body)
 }
 
-function html(res, body) {
-  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" })
+function html(res, status, body) {
+  res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" })
   res.end(body)
 }
 
@@ -44,7 +41,7 @@ function readBody(req) {
     let data = ""
     req.on("data", (chunk) => {
       data += chunk
-      if (data.length > 5_000_000) req.destroy()
+      if (data.length > 8_000_000) req.destroy()
     })
     req.on("end", () => {
       if (!data) return resolve(null)
@@ -57,48 +54,130 @@ function readBody(req) {
   })
 }
 
+/** Serves the built React preview SPA (ui-dist) with an index.html fallback. */
+function servePreview(res, pathname) {
+  if (!fs.existsSync(UI_DIR)) {
+    return html(
+      res,
+      503,
+      `<!doctype html><html><body style="font:14px system-ui;padding:40px;max-width:640px;margin:auto">
+        <h2>Preview UI is not built yet</h2>
+        <p>The <code>selldoes</code> package you are running does not include <code>cli/plugin/dev/ui-dist</code>.</p>
+        <p>If you are working on the SDK itself, build it once:</p>
+        <pre style="background:#f4f4f5;padding:12px;border-radius:8px">npm --prefix dev-ui install\nnpm --prefix dev-ui run build</pre>
+      </body></html>`,
+    )
+  }
+  let relative = decodeURIComponent(pathname.replace(/^\/preview\/?/, ""))
+  if (!relative || !path.extname(relative)) relative = "index.html"
+  let file = path.resolve(UI_DIR, relative)
+  if (!file.startsWith(UI_DIR + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    file = path.join(UI_DIR, "index.html")
+  }
+  res.writeHead(200, { "Content-Type": contentTypeFor(file), "Cache-Control": "no-store" })
+  res.end(fs.readFileSync(file))
+}
+
 /**
  * Starts the local plugin preview server:
  *
- *   /preview/*                 preview pages (dashboard UI, storefront, API console, jobs, hooks, data)
+ *   /preview/**                React preview UI (marketplace, details editor, AI rightbar)
  *   /api/plugin-api/<slug>/**  the plugin's authenticated `apiRoutes` (handlers run locally)
- *   /api/plugin-public/<slug>/** the plugin's `publicRoutes` (storefront widget/pages)
+ *   /api/plugin-public/<slug>/** the plugin's `publicRoutes` + storefront widget/pages
  *   /api/plugins/<slug>/ui/**  the built dashboard UI (sandboxed iframe)
+ *   /__dev/**                  dev endpoints (manifest, assets, assistant, jobs, hooks…)
  */
 export async function startDevServer({ pluginDir, port, host } = {}) {
-  const manifest = readJson(path.join(pluginDir, "plugin.json"))
   const configPath = path.join(pluginDir, "selldoes.config.json")
   const config = fs.existsSync(configPath) ? readJson(configPath) : {}
   const storeId = Number(config.storeId ?? 1)
   const storeSlug = String(config.storeSlug ?? "dev-store")
+  const storeName = String(config.storeName ?? "Dev Store")
   const devDir = path.join(pluginDir, ".selldoes-dev")
 
   const logs = []
   const log = (line) => {
     const entry = `[${new Date().toLocaleTimeString()}] ${line}`
     logs.push(entry)
-    if (logs.length > 200) logs.shift()
+    if (logs.length > 300) logs.shift()
+    if (line.startsWith("[esbuild]")) buildStatus.lastError = line
     process.stdout.write(`  ${entry}\n`)
   }
+
+  const buildStatus = { rebuilds: 0, builtAt: new Date().toISOString(), lastError: null }
+
+  const manifestStore = new ManifestStore({ pluginDir, devDir, log })
+  const state = new DevState({ file: path.join(devDir, "state.json") })
 
   const db = new MockDb({ file: path.join(devDir, "db.json") })
   seedDemoTables(db, storeId)
 
-  const runner = new PluginRunner({ pluginDir, manifest, devDir, log })
+  const runner = new PluginRunner({ pluginDir, manifest: manifestStore.read(), devDir, log })
+  const rebuildAll = async () => {
+    try {
+      runner.manifest = manifestStore.read()
+      await runner.build()
+      await buildUi()
+      buildStatus.rebuilds = runner.rebuilds
+      buildStatus.builtAt = new Date().toISOString()
+      buildStatus.lastError = null
+      log(`rebuilt (bundle${manifestStore.read().ui?.entry ? " + ui" : ""})`)
+    } catch (error) {
+      buildStatus.lastError = error.message
+      throw error
+    }
+  }
+
   await runner.build()
   log(`bundle built (${runner.bundlePath.replace(pluginDir, ".")})`)
-  await runner.watch(() => log("bundle rebuilt"))
+  // The watcher's first pass is the initial build, not a rebuild.
+  let initialWatchPass = true
+  await runner.watch(() => {
+    if (initialWatchPass) {
+      initialWatchPass = false
+      runner.rebuilds = 0
+      buildStatus.rebuilds = 0
+      return
+    }
+    buildStatus.rebuilds = runner.rebuilds
+    buildStatus.builtAt = new Date().toISOString()
+    buildStatus.lastError = null
+    log("bundle rebuilt")
+  })
 
   let uiDir = null
   const buildUi = async () => {
-    if (!manifest.ui?.entry) return
+    const manifest = manifestStore.read()
+    if (!manifest.ui?.entry) {
+      uiDir = null
+      return
+    }
     const built = await buildPlugin(pluginDir, { outDir: path.join(devDir, "dist") })
     uiDir = path.join(built.outDir, "ui")
   }
   await buildUi()
   if (uiDir) log(`ui built (${uiDir.replace(pluginDir, ".")})`)
 
-  const { ctx, outbox, events, jobEvents } = createMockContext({ pluginDir, manifest, db, storeId, config, devDir, log })
+  // ctx.config sees selldoes.config.json plus the values saved from the
+  // settings form in the preview (so plugin code reads what the form shows).
+  const ctxConfig = { ...config, ...state.settings() }
+  let settingsKeys = Object.keys(state.settings())
+  const applySettings = (values) => {
+    for (const key of settingsKeys) delete ctxConfig[key]
+    settingsKeys = Object.keys(values ?? {})
+    for (const [key, value] of Object.entries(values ?? {})) ctxConfig[key] = value
+    state.setSettings(values ?? {})
+  }
+
+  const { ctx, outbox, events, jobEvents } = createMockContext({
+    pluginDir,
+    manifest: manifestStore.read(),
+    db,
+    storeId,
+    config: ctxConfig,
+    devDir,
+    log,
+  })
 
   const resetJobEvents = () => {
     jobEvents.logs.length = 0
@@ -106,36 +185,172 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     jobEvents.progress.length = 0
   }
 
-  const rebuildAll = async () => {
-    await runner.build()
-    await buildUi()
-    log("rebuilt (bundle" + (manifest.ui?.entry ? " + ui" : "") + ")")
-  }
+  const bootstrap = () => ({
+    manifest: manifestStore.read(),
+    validation: manifestStore.validation(),
+    store: { id: storeId, slug: storeSlug, name: storeName },
+    status: buildStatus,
+    activity: { ...state.data, sampleJobs: config.sampleJobs ?? {} },
+    assistant: assistantSummary(resolveAssistant({ config })),
+    snapshots: manifestStore.snapshotCount(),
+  })
 
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`)
       const pathname = url.pathname
 
-      // ── Preview pages ───────────────────────────────────────────────────────
+      // ── Preview SPA ─────────────────────────────────────────────────────────
       if (req.method === "GET" && pathname === "/") {
         res.writeHead(302, { Location: "/preview" })
         res.end()
         return
       }
-      if (req.method === "GET" && pathname === "/preview") return html(res, overviewPage({ manifest }))
-      if (req.method === "GET" && pathname === "/preview/dashboard") return html(res, dashboardPage({ manifest, storeId, storeSlug }))
-      if (req.method === "GET" && pathname === "/preview/storefront") {
-        return html(res, storefrontPage({ manifest, storeSlug, storeId, pagePath: url.searchParams.get("page") }))
+      if (req.method === "GET" && (pathname === "/preview" || pathname.startsWith("/preview/"))) {
+        return servePreview(res, pathname)
       }
-      if (req.method === "GET" && pathname === "/preview/api") return html(res, apiPage({ manifest }))
-      if (req.method === "GET" && pathname === "/preview/jobs") return html(res, jobsPage({ manifest }))
-      if (req.method === "GET" && pathname === "/preview/hooks") return html(res, hooksPage({ manifest }))
-      if (req.method === "GET" && pathname === "/preview/data") return html(res, dataPage({ manifest }))
-      if (req.method === "GET" && pathname === "/preview/email") return html(res, emailPage({ manifest }))
-      if (req.method === "GET" && pathname === "/preview/realtime") return html(res, realtimePage({ manifest }))
 
       // ── Dev endpoints ───────────────────────────────────────────────────────
+      if (req.method === "GET" && pathname === "/__dev/bootstrap") {
+        return json(res, 200, bootstrap())
+      }
+      if (req.method === "GET" && pathname === "/__dev/status") {
+        return json(res, 200, buildStatus)
+      }
+      if (req.method === "POST" && pathname === "/__dev/visit") {
+        const body = await readBody(req)
+        state.visit(body?.page)
+        return json(res, 200, { ok: true })
+      }
+
+      // ── Manifest (details editor) ──────────────────────────────────────────
+      if (req.method === "POST" && pathname === "/__dev/manifest") {
+        const body = await readBody(req)
+        const next = body?.manifest
+        if (!next || typeof next !== "object" || Array.isArray(next)) {
+          return json(res, 400, { error: "A manifest object is required" })
+        }
+        if (String(next.slug) !== String(manifestStore.read().slug)) {
+          return json(res, 400, { error: "The slug is permanent and cannot be changed here" })
+        }
+        const result = manifestStore.write(next)
+        log("plugin.json saved from the Details editor")
+        try {
+          await rebuildAll()
+        } catch (error) {
+          return json(res, 200, { ok: true, ...result, rebuildError: error.message })
+        }
+        return json(res, 200, { ok: true, ...result })
+      }
+      if (req.method === "POST" && pathname === "/__dev/manifest/undo") {
+        const restored = manifestStore.undo()
+        if (!restored) return json(res, 400, { error: "Nothing to undo" })
+        try {
+          await rebuildAll()
+        } catch (error) {
+          return json(res, 200, { ok: true, manifest: restored, rebuildError: error.message })
+        }
+        return json(res, 200, { ok: true, manifest: restored })
+      }
+
+      // ── Assets (icon + screenshots) ────────────────────────────────────────
+      if (req.method === "POST" && pathname === "/__dev/assets") {
+        const body = await readBody(req)
+        try {
+          const saved = saveAsset({ pluginDir, folder: body?.folder, name: body?.name, data: body?.data })
+          log(`asset saved (${saved.path})`)
+          return json(res, 200, saved)
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/assets/delete") {
+        const body = await readBody(req)
+        try {
+          const result = deleteAsset({ pluginDir, relative: body?.path })
+          return json(res, 200, { ok: true, ...result })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "GET" && pathname.startsWith("/__dev/assets/")) {
+        const relative = decodeURIComponent(pathname.slice("/__dev/assets/".length))
+        const file = resolveAsset(pluginDir, relative)
+        if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+          return json(res, 404, { error: "Asset not found" })
+        }
+        res.writeHead(200, { "Content-Type": contentTypeFor(file), "Cache-Control": "no-store" })
+        res.end(fs.readFileSync(file))
+        return
+      }
+
+      // ── Settings (configSchema form in the host-page preview) ──────────────
+      if (req.method === "GET" && pathname === "/__dev/settings") {
+        const manifest = manifestStore.read()
+        return json(res, 200, { configSchema: manifest.configSchema ?? [], settings: state.settings() })
+      }
+      if (req.method === "POST" && pathname === "/__dev/settings") {
+        const body = await readBody(req)
+        applySettings(body?.settings ?? {})
+        log("settings preview saved (merged into ctx.config)")
+        return json(res, 200, { ok: true, settings: state.settings() })
+      }
+
+      // ── AI assistant ───────────────────────────────────────────────────────
+      if (req.method === "GET" && pathname === "/__dev/assistant") {
+        return json(res, 200, assistantSummary(resolveAssistant({ config })))
+      }
+      if (req.method === "POST" && pathname === "/__dev/assistant/chat") {
+        const body = await readBody(req)
+        try {
+          const result = await assistantChat({
+            pluginDir,
+            manifest: manifestStore.read(),
+            validation: manifestStore.validation(),
+            activity: state.data,
+            messages: body?.messages,
+            config,
+            log,
+          })
+          return json(res, 200, { ok: true, ...result })
+        } catch (error) {
+          return json(res, error.code === "not-configured" ? 400 : 502, { error: error.message, code: error.code })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/assistant/apply") {
+        const body = await readBody(req)
+        const edits = normalizeEdits(body?.edits)
+        if (!edits) return json(res, 400, { error: "Nothing to apply" })
+        const current = manifestStore.read()
+        if (edits.manifest && String(edits.manifest.slug) !== String(current.slug)) {
+          return json(res, 400, { error: "The assistant tried to change the slug — that is not allowed" })
+        }
+        const files = edits.files.map((file) => file.path)
+        const touched = edits.manifest ? [...files, "plugin.json"] : files
+        manifestStore.snapshots.create({ reason: "ai edits", files: touched })
+        const applied = []
+        for (const file of edits.files) {
+          const full = path.resolve(pluginDir, file.path)
+          if (!full.startsWith(path.resolve(pluginDir) + path.sep)) continue
+          fs.mkdirSync(path.dirname(full), { recursive: true })
+          fs.writeFileSync(full, file.content)
+          applied.push(file.path)
+        }
+        if (edits.manifest) {
+          fs.writeFileSync(path.join(pluginDir, "plugin.json"), `${JSON.stringify(edits.manifest, null, 2)}\n`)
+          applied.push("plugin.json")
+        }
+        log(`assistant applied ${applied.length} file(s): ${applied.join(", ")}`)
+        const validation = manifestStore.validation()
+        try {
+          await rebuildAll()
+        } catch (error) {
+          return json(res, 200, { ok: true, applied, validation, rebuildError: error.message })
+        }
+        return json(res, 200, { ok: true, applied, validation })
+      }
+
+      // ── Existing dev tools ─────────────────────────────────────────────────
       if (req.method === "GET" && pathname === "/__dev/state") {
         const tables = {}
         for (const [name, table] of Object.entries(db.tables)) {
@@ -167,6 +382,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           resetJobEvents()
           const maxTicks = Math.max(1, Math.min(Number(body?.maxTicks) || 50, 500))
           const run = await runner.runJob(body?.type, body?.input ?? {}, ctx, maxTicks)
+          state.record("jobs", { type: body?.type })
           log(`job ${body?.type} ran ${run.ticks.length} tick(s)${run.done ? " — done" : " — tick limit reached"}`)
           const stateJson = run.state === undefined || run.state === null ? "" : JSON.stringify(run.state)
           return json(res, 200, {
@@ -176,7 +392,6 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
               ticks: run.ticks.length,
               done: run.done,
               result: run.result ?? null,
-              // Full state can be large (URL lists); only send it while it stays small.
               state: stateJson && stateJson.length <= 20000 ? run.state : undefined,
             },
             telemetry: {
@@ -193,6 +408,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         const body = await readBody(req)
         try {
           const result = await runner.runHook(body?.hook, body?.payload ?? {}, ctx)
+          state.record("hooks", { hook: body?.hook })
           log(`hook ${body?.hook} fired`)
           return json(res, 200, { ok: true, result: result ?? null })
         } catch (error) {
@@ -227,6 +443,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       const uiMatch = /^\/api\/(?:plugins|plugin-public)\/([^/]+)\/ui\/(.*)$/.exec(pathname)
       if (req.method === "GET" && uiMatch) {
         const [, slug, ...rest] = uiMatch
+        const manifest = manifestStore.read()
         if (slug !== manifest.slug) return json(res, 404, { error: `Only "${manifest.slug}" runs in this dev server` })
         if (!uiDir) return json(res, 404, { error: "This plugin declares no ui.entry" })
         const root = path.resolve(uiDir)
@@ -247,6 +464,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       // ── Plugin API routes ───────────────────────────────────────────────────
       const apiMatch = /^\/api\/(plugin-api|plugin-public)\/([^/]+)(\/.*)?$/.exec(pathname)
       if (apiMatch) {
+        const manifest = manifestStore.read()
         const kind = apiMatch[1] === "plugin-public" ? "public" : "authenticated"
         const [, , slug, tail] = apiMatch
         if (slug !== manifest.slug) return json(res, 404, { error: `Only "${manifest.slug}" runs in this dev server` })
@@ -266,6 +484,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         try {
           const started = Date.now()
           const result = await runner.invokeRoute(match.path, { method: req.method, path: requestPath, query, body }, ctx)
+          state.record("routes", { path: requestPath })
           log(`${req.method} ${requestPath} → ${Date.now() - started}ms`)
           if (result && typeof result === "object" && "status" in result && "body" in result) {
             return json(res, Number(result.status) || 200, result.body)

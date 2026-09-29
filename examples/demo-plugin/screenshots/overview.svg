@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" font-family="Plus Jakarta Sans, ui-sans-serif, system-ui, sans-serif">
+  <rect width="1280" height="800" fill="#f7f7f8"/>
+  <rect x="64" y="56" width="1152" height="688" rx="20" fill="#ffffff" stroke="#e4e4e7"/>
+  <rect x="64" y="56" width="1152" height="56" rx="20" fill="#fafafa"/>
+  <rect x="64" y="92" width="1152" height="20" fill="#fafafa"/>
+  <circle cx="100" cy="84" r="6" fill="#f87171"/>
+  <circle cx="122" cy="84" r="6" fill="#fbbf24"/>
+  <circle cx="144" cy="84" r="6" fill="#34d399"/>
+  <text x="720" y="90" text-anchor="middle" font-size="15" fill="#71717a">selldoes.com/marketplace</text>
+
+  <rect x="112" y="156" width="88" height="88" rx="20" fill="#ff5c33"/>
+  <path d="M156 178l7.4 15 16.6 2.4-12 11.7 2.8 16.5-14.8-7.8-14.8 7.8 2.8-16.5-12-11.7 16.6-2.4z" fill="#ffffff"/>
+
+  <text x="228" y="190" font-size="34" font-weight="800" fill="#18181b">Demo Plugin</text>
+  <text x="228" y="222" font-size="16" fill="#71717a">by Selldoes · v0.1.0 · Productivity</text>
+  <rect x="228" y="238" width="64" height="24" rx="12" fill="#dcfce7"/>
+  <text x="260" y="255" text-anchor="middle" font-size="13" font-weight="700" fill="#15803d">FREE</text>
+
+  <text x="112" y="306" font-size="17" fill="#3f3f46">A worked example: API routes, chunked jobs, a hook, settings, a storefront widget and a dashboard UI.</text>
+
+  <rect x="112" y="348" width="200" height="170" rx="16" fill="#f4f4f5" stroke="#e4e4e7"/>
+  <rect x="132" y="380" width="120" height="12" rx="6" fill="#d4d4d8"/>
+  <rect x="132" y="406" width="160" height="10" rx="5" fill="#e4e4e7"/>
+  <rect x="132" y="428" width="140" height="10" rx="5" fill="#e4e4e7"/>
+  <rect x="132" y="450" width="96" height="10" rx="5" fill="#e4e4e7"/>
+  <rect x="132" y="478" width="84" height="22" rx="11" fill="#ff5c33" opacity="0.15"/>
+
+  <rect x="332" y="348" width="200" height="170" rx="16" fill="#f4f4f5" stroke="#e4e4e7"/>
+  <rect x="352" y="380" width="120" height="12" rx="6" fill="#d4d4d8"/>
+  <rect x="352" y="406" width="160" height="10" rx="5" fill="#e4e4e7"/>
+  <rect x="352" y="428" width="140" height="10" rx="5" fill="#e4e4e7"/>
+  <rect x="352" y="450" width="96" height="10" rx="5" fill="#e4e4e7"/>
+  <rect x="352" y="478" width="84" height="22" rx="11" fill="#ff5c33" opacity="0.15"/>
+
+  <rect x="560" y="348" width="608" height="300" rx="16" fill="#ffffff" stroke="#e4e4e7"/>
+  <rect x="584" y="376" width="180" height="14" rx="7" fill="#d4d4d8"/>
+  <rect x="584" y="410" width="248" height="36" rx="10" fill="#f4f4f5"/>
+  <rect x="848" y="410" width="90" height="36" rx="10" fill="#ff5c33"/>
+  <rect x="584" y="462" width="560" height="44" rx="10" fill="#f4f4f5"/>
+  <text x="604" y="490" font-size="14" fill="#52525b">TEE-001 · Classic Tee</text>
+  <rect x="584" y="516" width="560" height="44" rx="10" fill="#f4f4f5"/>
+  <text x="604" y="544" font-size="14" fill="#52525b">TOTE-002 · Canvas Tote</text>
+  <rect x="584" y="570" width="560" height="44" rx="10" fill="#f4f4f5"/>
+  <text x="604" y="598" font-size="14" fill="#52525b">MUG-003 · Mug — Logo</text>
+
+  <rect x="112" y="556" width="430" height="92" rx="16" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="136" y="592" font-size="15" font-weight="700" fill="#9a3412">Permissions</text>
+  <text x="136" y="618" font-size="13" fill="#c2410c">db:read · db:write · db:schema · products:read · ai:use</text>
+</svg>

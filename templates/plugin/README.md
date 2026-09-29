@@ -11,11 +11,18 @@ npm run dev
 
 The preview server opens at http://127.0.0.1:4590/preview with:
 
+- **Overview** — a checklist that walks you to publish
+- **Details & permissions** — edit `plugin.json` (description, icon, screenshots, permissions) with undo
+- **In Selldoes** — your marketplace card, listing page and the install dialog store owners see
 - **Dashboard UI** — your `ui/` rendered exactly like the host does
 - **Storefront** — widget and storefront pages with a mock store
 - **API console** — call your declared routes with mock data
 - **Jobs / Hooks** — run and fire them without deploying
-- **Data** — inspect and reset the mock database
+- **Store data** — inspect and reset the mock database
+- **Ask AI** — an assistant that reads your plugin and proposes file edits for review
+
+The AI rightbar needs a provider key: set `OPENROUTER_API_KEY`,
+`OPENAI_API_KEY` or `DEEPINFRA_API_KEY`, then restart `npm run dev`.
 
 ## Scripts
 

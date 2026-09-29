@@ -1,0 +1,20 @@
+{
+  "storeId": 1,
+  "storeSlug": "dev-store",
+  "storeName": "Demo Store",
+  "port": 4590,
+  "ai": {
+    "mockReply": "A cozy classic tee that pairs with everything."
+  },
+  "email": {
+    "disabled": false
+  },
+  "assistant": {
+    "provider": "openrouter",
+    "model": "anthropic/claude-sonnet-4"
+  },
+  "sampleJobs": {
+    "import-products": { "input": {}, "maxTicks": 10 },
+    "generate-blurbs": { "input": { "productId": 1 }, "maxTicks": 1 }
+  }
+}

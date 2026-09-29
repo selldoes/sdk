@@ -1,0 +1,74 @@
+{
+  "slug": "demo-plugin",
+  "name": "Demo Plugin",
+  "description": "A worked example: API routes, chunked jobs, a hook, settings, a storefront widget and a dashboard UI.",
+  "version": "0.1.0",
+  "author": "Selldoes",
+  "icon": "sparkles",
+  "category": "productivity",
+  "permissions": ["db:read", "db:write", "db:schema", "products:read", "ai:use"],
+  "allowedTables": ["products"],
+  "entry": "./index.js",
+  "dashboardPages": [
+    {
+      "label": "Demo Plugin",
+      "path": "/",
+      "icon": "sparkles"
+    }
+  ],
+  "ui": {
+    "entry": "ui/index.html",
+    "title": "Demo Plugin"
+  },
+  "apiRoutes": [
+    { "path": "/notes", "methods": ["GET", "POST", "DELETE"] },
+    { "path": "/stats", "methods": ["GET"] },
+    { "path": "/settings", "methods": ["GET"] },
+    { "path": "/blurb", "methods": ["POST"] }
+  ],
+  "publicRoutes": [{ "path": "/hello", "methods": ["GET"] }],
+  "storefrontWidget": {
+    "entry": "ui/widget.html",
+    "width": 64,
+    "height": 64
+  },
+  "jobs": [
+    {
+      "type": "import-products",
+      "name": "Import products",
+      "description": "Walks the catalog in chunks and reports one item per product."
+    },
+    {
+      "type": "generate-blurbs",
+      "name": "Generate blurbs",
+      "description": "Writes a short product blurb with ctx.ai (mock reply unless configured)."
+    }
+  ],
+  "hooks": {
+    "demo:ping": { "handler": "index.js" }
+  },
+  "configSchema": [
+    {
+      "key": "greeting",
+      "label": "Greeting",
+      "type": "string",
+      "default": "Hello from the demo plugin!",
+      "description": "Shown by the dashboard UI and the storefront widget."
+    },
+    {
+      "key": "maxPerRun",
+      "label": "Items per tick",
+      "type": "number",
+      "default": 3,
+      "description": "How many products the import job processes per tick."
+    },
+    {
+      "key": "notify",
+      "label": "Log progress",
+      "type": "boolean",
+      "default": true
+    }
+  ],
+  "tags": ["demo", "example"],
+  "screenshots": ["screenshots/overview.svg"]
+}

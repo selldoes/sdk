@@ -1,11 +1,17 @@
 {
   "storeId": 1,
   "storeSlug": "dev-store",
+  "storeName": "Dev Store",
   "port": 4590,
   "ai": {
     "mockReply": "(mock AI reply — set ai.mockReply in selldoes.config.json)"
   },
   "email": {
     "disabled": false
-  }
+  },
+  "assistant": {
+    "provider": "openrouter",
+    "model": "anthropic/claude-sonnet-4"
+  },
+  "sampleJobs": {}
 }

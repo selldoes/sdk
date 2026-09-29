@@ -6,7 +6,27 @@ import { fileExists, readJson } from "../util.mjs"
 const UI_SOURCE_CANDIDATES = ["src/index.tsx", "src/index.ts", "src/index.jsx", "src/index.js", "index.tsx", "index.ts", "index.jsx", "index.js"]
 
 /** Mirrors the host's upload validator: only these extensions may be zipped. */
-const UPLOADABLE_EXTENSIONS = new Set([".js", ".cjs", ".mjs", ".json", ".ts", ".tsx", ".jsx", ".css", ".md", ".txt", ".html"])
+const UPLOADABLE_EXTENSIONS = new Set([
+  ".js",
+  ".cjs",
+  ".mjs",
+  ".json",
+  ".ts",
+  ".tsx",
+  ".jsx",
+  ".css",
+  ".md",
+  ".txt",
+  ".html",
+  // Listing media (icons + screenshots) ships with the plugin source.
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".svg",
+  ".avif",
+])
 const PACK_EXCLUDED_DIRS = new Set(["node_modules", "dist", "coverage", ".git", ".github", ".selldoes-dev"])
 const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "selldoes.config.json"])
 

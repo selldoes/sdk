@@ -1,0 +1,11 @@
+{
+  "files.exclude": {
+    "cli/plugin/dev/ui-dist": true,
+    "**/.selldoes-dev": true
+  },
+  "search.exclude": {
+    "cli/plugin/dev/ui-dist": true,
+    "**/.selldoes-dev": true,
+    "**/node_modules": true
+  }
+}

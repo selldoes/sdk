@@ -33,18 +33,61 @@ my-plugin/
 ## The local preview server
 
 `selldoes dev` builds the runtime bundle and starts a preview server on
-`http://127.0.0.1:4590/preview`:
+`http://127.0.0.1:4590/preview` — a React UI that mirrors the Selldoes
+dashboard:
 
-| Tab | What it shows |
+| Page | What it shows |
 |---|---|
-| **Overview** | Manifest summary, rebuild button, developer notes |
-| **Dashboard UI** | Your `ui/entry` in a sandboxed iframe, exactly like the host, talking to `/api/plugin-api/<slug>/**` with a mock store |
+| **Overview** | A generated checklist (describe → preview → test → publish), quick job runs and what the manifest exposes |
+| **Details & permissions** | Edit `plugin.json` from a form: name, description, icon (built-in picker or uploaded image), screenshots, category, tags and permissions (with the platform's risk/impact text). Saves are validated and undoable |
+| **In Selldoes** | Exactly what store owners see: marketplace card, listing page (with screenshots), the install dialog and where your dashboard pages land in the sidebar |
+| **Dashboard page** | Your `ui/entry` in a sandboxed iframe; without a UI, a faithful replica of the host's settings + jobs page |
 | **Storefront** | A demo store with your `storefrontWidget` and every `storefrontPages` entry |
+| **Jobs** | Run a declared job — chunked (`{ init, step, finalize }`) or a legacy function — with progress, per-item results and logs |
 | **API console** | Pick a declared route, edit query/body, send and inspect JSON |
-| **Jobs** | Run a declared job to completion — chunked (`{ init, step, finalize }`) or a legacy function — with progress, per-item results and logs |
 | **Hooks** | Fire `hooks[name]` with a payload |
-| **Data** | Inspect/reset the mock database (`.selldoes-dev/db.json`) |
+| **Store data** | Inspect/reset the mock database (`.selldoes-dev/db.json`) |
 | **Email / Realtime** | Calls made through `ctx.email.send` / `ctx.realtime.publish` |
+| **Validate & publish** | Validation errors/warnings and the exact CLI commands per release step |
+
+Everything the Details editor writes goes through `plugin.json` (backed up to
+`.selldoes-dev/undo/`, restorable from the same page). Screenshots and custom
+icons are stored in `screenshots/` and `assets/` inside the plugin and ship
+with it.
+
+### The AI rightbar
+
+The **Ask AI** panel (top right) reads your manifest, validation output, file
+tree and recent activity, then proposes edits as file diffs you approve before
+anything is written. Set a provider key and restart `selldoes dev`:
+
+```bash
+export OPENROUTER_API_KEY="sk-or-…"   # or OPENAI_API_KEY / DEEPINFRA_API_KEY
+```
+
+or in `selldoes.config.json`:
+
+```json
+{ "assistant": { "provider": "openrouter", "model": "anthropic/claude-sonnet-4" } }
+```
+
+`assistant.apiKey` also works — keep that file out of git when it holds a key.
+Every applied change is snapshotted under `.selldoes-dev/undo/`.
+
+### Dev-server settings
+
+`selldoes.config.json` also controls:
+
+- `storeId` / `storeSlug` / `storeName` — the mock store identity.
+- `port`, `host` — where the server listens.
+- `ai.mockReply`, `email.disabled` — runtime mocks for `ctx.ai` / `ctx.email`.
+- `sampleJobs` — prefill for the Jobs page and quick runs, e.g.
+  `{ "import-products": { "input": { "url": "https://…" }, "maxTicks": 10 } }`.
+- `assistant` — provider/model for the AI rightbar.
+
+Settings entered into a plugin's `configSchema` form (Dashboard page → the
+host-page replica) are persisted to `.selldoes-dev/settings.json` and merged
+into `ctx.config`, so plugin code reads the same values the form shows.
 
 The mock context enforces the same rules as production: permissions must be
 declared, tables must be in `allowedTables` (or plugin-owned), rows are
@@ -70,7 +113,10 @@ code in Node, while production uses a QuickJS sandbox — avoid Node globals
 Manifest extras: `ui` (dashboard iframe), `storefrontWidget` (bubble on every
 storefront page), `storefrontPages` (public pages such as `/kb`),
 `publicRoutes` (visitor-callable API, no session), `delivery` (order-detail
-sections), `jobs`, `hooks`, `configSchema`, `allowedTables`.
+sections), `jobs`, `hooks`, `configSchema`, `allowedTables`, plus listing
+metadata: `icon` (a built-in icon name), `iconUrl` (a custom image inside the
+plugin, e.g. `assets/icon.png`), `screenshots`, `tags` and `category`. The
+Details editor in `selldoes dev` writes these for you.
 
 ## Background jobs
 

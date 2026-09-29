@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo Plugin</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Demo Plugin</h1>
+        <p class="muted" id="greeting">Loading…</p>
+      </div>
+      <button id="refresh" class="ghost" type="button">Refresh</button>
+    </header>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Notes</h2>
+        <span class="muted">Stored in the plugin's own table (ctx.db)</span>
+      </div>
+      <form id="add">
+        <input id="note" placeholder="Write a note…" required />
+        <button type="submit">Add</button>
+      </form>
+      <ul id="notes"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Catalog</h2>
+        <span class="muted">Read with products:read — “Blurb” calls ctx.ai</span>
+      </div>
+      <ul id="products"></ul>
+    </section>
+
+    <p class="error" id="error" hidden></p>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

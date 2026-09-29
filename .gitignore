@@ -6,6 +6,9 @@ dist/
 *.tgz
 *.tsbuildinfo
 
+# Preview UI bundle (built by `npm run build:dev-ui`, shipped via prepack)
+cli/plugin/dev/ui-dist/
+
 # Local state
 .selldoes/
 .selldoes-dev/

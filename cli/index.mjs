@@ -52,6 +52,7 @@ Options
   -y, --yes                 create: accept all defaults (plugin unless --theme)
   --plugin / --theme        create: skip the type prompt
   --no-ui                   create: plugin without a dashboard UI
+  --ui js|react             create: dashboard UI flavor (default js; react = TSX bundled by esbuild)
   --no-install              create: skip npm install
   --version <v>             create: project version (default 0.1.0)
 `

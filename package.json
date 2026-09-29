@@ -33,8 +33,12 @@
     "node": ">=18.17"
   },
   "scripts": {
+    "dev": "node bin/selldoes.mjs dev --dir examples/demo-plugin",
+    "dev:open": "node bin/selldoes.mjs dev --dir examples/demo-plugin --open",
     "build": "tsc -p tsconfig.json",
-    "prepublishOnly": "npm run build"
+    "build:dev-ui": "npm --prefix dev-ui run build",
+    "dev-ui": "npm --prefix dev-ui run dev",
+    "prepack": "npm run build && npm run build:dev-ui"
   },
   "devDependencies": {
     "react": "^19.0.0",
