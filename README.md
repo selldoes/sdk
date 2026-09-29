@@ -30,6 +30,13 @@ selldoes create
 | `selldoes publish` | marketplace listing | upload (`--public`) |
 | `selldoes apply --store` | — | apply the theme to a store |
 | `selldoes login / whoami / logout` | — | API-key auth |
+| `selldoes update` | check npm and update the CLI | same |
+
+Every command except `help`, `version` and `update` checks npm for a newer
+release (capped at one second, best-effort) and prints a one-line notice when
+one exists. Update in place with `selldoes update` — it asks before installing —
+or manually with `npm install -g selldoes@latest`. Set
+`SELLDOES_NO_UPDATE_CHECK=1` to silence the check.
 
 ## Importing
 

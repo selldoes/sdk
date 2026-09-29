@@ -74,3 +74,11 @@ project.
 Override per command with `--base <url>` / `--api-key <key>` or the
 `SELLDOES_BASE` / `SELLDOES_API_KEY` environment variables. `whoami` shows the
 connected account and stores; `logout` clears the saved credentials.
+
+## Updating the CLI
+
+`selldoes update` checks npm and updates your installation — it asks before
+running the install, `--check` only reports (exit 1 when outdated) and `--yes`
+skips the prompt. Every command except `help`, `version` and `update` also
+prints a one-line notice when a newer version exists; disable that with
+`SELLDOES_NO_UPDATE_CHECK=1`.

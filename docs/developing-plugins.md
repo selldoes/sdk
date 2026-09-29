@@ -138,6 +138,22 @@ upserts the marketplace listing as `pending`. Once an admin approves, installed
 stores see **Update available → Update now**. Bump `version` in `plugin.json`
 for every release.
 
+## Keeping the CLI up to date
+
+Every command except `help`, `version` and `update` checks npm for a newer
+`selldoes` and prints a one-line notice when one exists. Update in place:
+
+```bash
+selldoes update           # checks, then asks before installing
+selldoes update --check   # report only (exit 1 when outdated)
+selldoes update --yes     # no prompt (scripts/CI)
+```
+
+The check is capped at one second and never blocks work when offline. Set
+`SELLDOES_NO_UPDATE_CHECK=1` to disable it. `selldoes update` detects whether
+you run a global install (`npm install -g`) or a project dependency
+(`npm install -D`) and uses the matching command.
+
 ## Releases
 
 The `selldoes` package is published from CI (`.github/workflows/publish.yml`)

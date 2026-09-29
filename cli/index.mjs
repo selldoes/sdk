@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { parseArgs, findPluginRoot, openBrowser, die } from "./util.mjs"
+import { getUpdateInfo, printUpdateNotice } from "./update-check.mjs"
 
 const HELP = `selldoes — build Selldoes plugins and themes
 
@@ -28,6 +29,9 @@ Account (themes)
   logout                    Remove saved credentials
   whoami                    Show the connected account + stores
 
+Maintenance
+  update                    Check npm and update the CLI (asks before installing)
+
 Options
   --dir <path>              Project directory (default: nearest plugin.json / manifest.json)
   --port <n> --host <addr>  Dev server address (plugin default 4590, theme default 4173)
@@ -40,6 +44,9 @@ Options
   --billing <period>        one_time | monthly | yearly (default one_time)
   --base <url>              SellDesk base URL for themes (or SELLDOES_BASE)
   --api-key <key>           Theme API key (or SELLDOES_API_KEY)
+  --check                   update: report only, never install (exit 1 when outdated)
+  --yes                     update: skip the confirmation prompt
+  --global / --local        update: force the install target
   --public                  Theme: make the uploaded theme public
   --force                   create: overwrite a non-empty directory
   -y, --yes                 create: accept all defaults (plugin unless --theme)
@@ -79,11 +86,27 @@ export async function main() {
         ? "version"
         : command
 
+  const checkForUpdates =
+    normalized !== "help" &&
+    normalized !== "version" &&
+    normalized !== "update" &&
+    !process.env.SELLDOES_NO_UPDATE_CHECK
+  const updatePromise = checkForUpdates ? getUpdateInfo() : null
+
   try {
+    const update = updatePromise ? await updatePromise : null
+    if (update?.outdated) printUpdateNotice(update)
+
     switch (normalized) {
       case "help":
         console.log(HELP)
         return
+
+      case "update": {
+        const { updateCommand } = await import("./update.mjs")
+        await updateCommand(args, flags)
+        return
+      }
 
       case "version": {
         const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"))
