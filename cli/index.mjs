@@ -72,9 +72,15 @@ function resolveProjectDir(flags) {
 export async function main() {
   const argv = process.argv.slice(2)
   const { command, args, flags } = parseArgs(argv)
+  const normalized =
+    command === "--help" || command === "-h"
+      ? "help"
+      : command === "--version" || command === "-v"
+        ? "version"
+        : command
 
   try {
-    switch (command) {
+    switch (normalized) {
       case "help":
         console.log(HELP)
         return
