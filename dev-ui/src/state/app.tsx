@@ -25,6 +25,9 @@ interface AppContextValue {
   assistantQuick: string[]
   assistantContext: string
   setAssistantPage: (page: { quick?: string[]; context?: string }) => void
+  /** What the editor is focused on — travels with the next AI message. */
+  assistantTarget: AssistantTarget | null
+  setAssistantTarget: (target: AssistantTarget | null) => void
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
   theme: "light" | "dark"
@@ -38,6 +41,19 @@ interface AppContextValue {
   noProject: boolean
   workspaceDialogOpen: boolean
   setWorkspaceDialogOpen: (open: boolean) => void
+  /** Overlays owned by the shell. */
+  terminalOpen: boolean
+  setTerminalOpen: (open: boolean) => void
+  paletteOpen: boolean
+  setPaletteOpen: (open: boolean) => void
+  searchOpen: boolean
+  setSearchOpen: (open: boolean) => void
+}
+
+export interface AssistantTarget {
+  file: string
+  language: string
+  selection: { startLine: number; endLine: number; text: string } | null
 }
 
 const AppContext = React.createContext<AppContextValue | null>(null)
@@ -67,6 +83,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = React.useState<WsBootstrap | null>(null)
   const [noProject, setNoProject] = React.useState(false)
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = React.useState(false)
+  const [assistantTarget, setAssistantTarget] = React.useState<AssistantTarget | null>(null)
+  const [terminalOpen, setTerminalOpen] = React.useState(false)
+  const [paletteOpen, setPaletteOpen] = React.useState(false)
+  const [searchOpen, setSearchOpen] = React.useState(false)
 
   React.useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark")
@@ -144,6 +164,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     assistantQuick,
     assistantContext,
     setAssistantPage,
+    assistantTarget,
+    setAssistantTarget,
     sidebarOpen,
     setSidebarOpen,
     theme,
@@ -155,6 +177,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     noProject,
     workspaceDialogOpen,
     setWorkspaceDialogOpen,
+    terminalOpen,
+    setTerminalOpen,
+    paletteOpen,
+    setPaletteOpen,
+    searchOpen,
+    setSearchOpen,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

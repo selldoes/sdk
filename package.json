@@ -1,6 +1,6 @@
 {
   "name": "selldoes",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Build Selldoes plugins and themes — SDK types, theme runtime and the selldoes CLI (create, dev, build, publish).",
   "license": "MIT",
   "type": "module",
@@ -38,6 +38,7 @@
     "build": "tsc -p tsconfig.json",
     "build:dev-ui": "npm --prefix dev-ui run build",
     "dev-ui": "npm --prefix dev-ui run dev",
+    "test": "node --test",
     "prepack": "npm run build && npm run build:dev-ui"
   },
   "devDependencies": {
@@ -48,7 +49,11 @@
   "dependencies": {
     "@clack/prompts": "^1.8.1",
     "esbuild": "^0.28.2",
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.0.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

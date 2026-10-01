@@ -15,6 +15,10 @@ Workspace (the SDK is your workspace — projects live anywhere on disk)
   home                     Terminal launcher: recent projects, import, create
   import <path>            Add an existing plugin/theme project to your workspace
                            (a folder with plugin.json/manifest.json, or a .zip)
+  open [file[:line[:col]]] Open the project (or a file at a line) in your editor.
+                           --editor <cmd> picks a specific editor; --terminal
+                           opens an OS terminal at the project root instead;
+                           --print prints the command without launching it
 
 Create
   create [dir]              Scaffold a new plugin or theme (interactive)
@@ -65,6 +69,10 @@ Options
   --dir <path>              Project directory (default: nearest plugin.json / manifest.json)
   --port <n> --host <addr>  Dev server address (plugin default 4590, theme default 4173)
   --open                    Open the preview in your browser (plugin dev)
+  --file <path[:line]>      open: file to reveal (also a positional argument)
+  --editor <command>        open: editor command (default: $SELDOES_EDITOR, code, cursor, windsurf)
+  --terminal                open: launch an OS terminal at the project root instead
+  --print                   open: print the launch command without running it
   --app-url <url>           SellDesk instance (or SELLDOES_APP_URL; saved by login)
   --token <token>           Developer token sk_dev_… (or SELLDOES_DEV_TOKEN; saved by login)
   --store <id|slug>         Store id (plugin publish) or store slug (theme dev/apply)
@@ -174,6 +182,12 @@ export async function main() {
       case "import": {
         const { importCommand } = await import("./home.mjs")
         await importCommand(args, flags)
+        return
+      }
+
+      case "open": {
+        const { openCommand } = await import("./open.mjs")
+        await openCommand(args, flags)
         return
       }
 

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom"
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 import { AlertCircle, Puzzle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -8,9 +8,13 @@ import { Topbar } from "@/components/layout/topbar"
 import { GlossaryDialog } from "@/components/layout/glossary"
 import { AssistantPanel } from "@/components/layout/assistant"
 import { WorkspaceDialog } from "@/components/layout/workspace-dialog"
+import { CommandPalette, SearchDialog } from "@/components/command-palette"
+import { TerminalDrawer } from "@/components/terminal-drawer"
 import { AppProvider, Toaster, useApp } from "@/state/app"
 import { PAGE_TITLES } from "@/lib/pages"
 import { OverviewPage } from "@/pages/overview"
+import { CodePage } from "@/pages/code"
+import { ConsolePage } from "@/pages/console"
 import { DetailsPage } from "@/pages/details"
 import { ListingPage } from "@/pages/listing"
 import { DashboardPage } from "@/pages/dashboard"
@@ -104,6 +108,8 @@ function Shell() {
             <Gate>
               <Routes>
                 <Route path="/" element={<OverviewPage />} />
+                <Route path="/code" element={<CodePage />} />
+                <Route path="/console" element={<ConsolePage />} />
                 <Route path="/details" element={<DetailsPage />} />
                 <Route path="/listing" element={<ListingPage />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
@@ -121,10 +127,77 @@ function Shell() {
         </main>
       </div>
       <AssistantPanel />
+      <TerminalDrawer />
+      <CommandPalette />
+      <SearchDialog />
       <WorkspaceDialog />
       <GlossaryDialog open={glossaryOpen} onOpenChange={setGlossaryOpen} />
+      <Shortcuts />
+      <LandingMemory />
     </div>
   )
+}
+
+/** Global keybindings: Ctrl/Cmd+K palette, Ctrl/Cmd+Shift+F search, Ctrl/Cmd+` terminal. */
+function Shortcuts() {
+  const { setPaletteOpen, setSearchOpen, setTerminalOpen, terminalOpen } = useApp()
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey
+      if (!mod) return
+      const key = event.key.toLowerCase()
+      if (key === "k" || (key === "p" && !event.shiftKey)) {
+        event.preventDefault()
+        setPaletteOpen(true)
+      } else if (key === "f" && event.shiftKey) {
+        event.preventDefault()
+        setSearchOpen(true)
+      } else if (event.key === "`") {
+        event.preventDefault()
+        setTerminalOpen(!terminalOpen)
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [setPaletteOpen, setSearchOpen, setTerminalOpen, terminalOpen])
+  return null
+}
+
+/** Remembers the last page per project (and jumps there on project switch). */
+function LandingMemory() {
+  const { workspace, bootstrap } = useApp()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const projectKey = workspace?.current?.project.id ?? bootstrap?.manifest.slug ?? null
+  const previousKey = React.useRef<string | null>(null)
+  const validPaths = React.useMemo(() => new Set(Object.keys(PAGE_TITLES)), [])
+
+  React.useEffect(() => {
+    if (!projectKey) return
+    const storageKey = `selldoes-dev-last-page:${projectKey}`
+    const remember = () => {
+      const stored = localStorage.getItem(storageKey)
+      if (stored && validPaths.has(stored) && stored !== location.pathname) {
+        navigate(stored, { replace: true })
+      }
+    }
+    if (previousKey.current === null) {
+      previousKey.current = projectKey
+      remember()
+      return
+    }
+    if (previousKey.current !== projectKey) {
+      previousKey.current = projectKey
+      remember()
+    }
+  }, [projectKey, location.pathname, navigate, validPaths])
+
+  React.useEffect(() => {
+    if (!projectKey) return
+    localStorage.setItem(`selldoes-dev-last-page:${projectKey}`, location.pathname)
+  }, [projectKey, location.pathname])
+
+  return null
 }
 
 export default function App() {

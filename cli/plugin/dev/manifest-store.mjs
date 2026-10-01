@@ -73,12 +73,26 @@ export class SnapshotStore {
     }
   }
 
-  /** Restores the most recent snapshot. Returns its meta or null. */
-  restoreLatest() {
-    const snapshots = this.list()
-    const name = snapshots[snapshots.length - 1]
+  /** Lists snapshot folders with their meta, oldest first. */
+  listDetailed() {
+    const names = this.list()
+    const out = []
+    for (const name of names) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(this.root, name, "meta.json"), "utf8"))
+        out.push({ name, ...meta })
+      } catch {
+        out.push({ name })
+      }
+    }
+    return out
+  }
+
+  /** Restores a named snapshot. Returns its meta or null. */
+  restore(name) {
     if (!name) return null
-    const folder = path.join(this.root, name)
+    const folder = path.join(this.root, String(name))
+    if (!fs.existsSync(folder)) return null
     const meta = JSON.parse(fs.readFileSync(path.join(folder, "meta.json"), "utf8"))
     for (const entry of meta.files ?? []) {
       const full = path.resolve(this.pluginDir, entry.path)
@@ -93,6 +107,12 @@ export class SnapshotStore {
     }
     fs.rmSync(folder, { recursive: true, force: true })
     return meta
+  }
+
+  /** Restores the most recent snapshot. Returns its meta or null. */
+  restoreLatest() {
+    const snapshots = this.list()
+    return this.restore(snapshots[snapshots.length - 1])
   }
 }
 

@@ -75,4 +75,6 @@ export const ws = {
   previews: () => request<{ previews: WsPreview[] }>("/__ws/previews"),
   close: (id: string) => post<{ ok: boolean }>("/__ws/close", { id }),
   remove: (projectId: string) => post<{ ok: boolean }>("/__ws/remove", { projectId }),
+  openEditor: (input: { projectId?: string; file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>
+    post<{ opened: boolean; editor?: string; terminal?: string; error?: string }>("/__ws/open-editor", input),
 }

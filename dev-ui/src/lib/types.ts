@@ -84,6 +84,7 @@ export interface DevStatus {
   rebuilds: number
   builtAt: string
   lastError?: string | null
+  errors?: string[]
 }
 
 export interface DevActivity {
@@ -133,4 +134,84 @@ export interface AssistantChatResult {
 export interface SettingsResponse {
   configSchema: PluginConfigField[]
   settings: Record<string, unknown>
+}
+
+// ─── Code editor ─────────────────────────────────────────────────────────────
+
+export interface FileTreeEntry {
+  path: string
+  type: "file" | "dir"
+  size?: number
+  mtimeMs?: number
+}
+
+export interface FileTree {
+  root: string
+  entries: FileTreeEntry[]
+}
+
+export interface FileRead {
+  path: string
+  content: string
+  size: number
+  mtimeMs: number
+}
+
+export interface FileWriteResult {
+  ok: boolean
+  path: string
+  size: number
+  unchanged?: boolean
+  rebuildError?: string | null
+  validation?: Validation
+}
+
+export interface SearchHit {
+  path: string
+  line: number
+  column: number
+  preview: string
+}
+
+export interface SearchResult {
+  hits: SearchHit[]
+  files: number
+  truncated: boolean
+}
+
+export interface SnapshotInfo {
+  name: string
+  reason?: string
+  at?: string
+  files?: { path: string; existed: boolean }[]
+}
+
+export interface AssistantConfigResponse {
+  assistant: {
+    provider?: string | null
+    model?: string | null
+    baseUrl?: string | null
+    apiKey?: string | null
+    apiKeySet?: boolean
+  }
+  env: Record<string, boolean | string | null>
+}
+
+export interface GitFile {
+  status: string
+  path: string
+}
+
+export interface GitStatus {
+  repo: boolean
+  branch?: string
+  ahead?: number
+  behind?: number
+  files?: GitFile[]
+  error?: string
+}
+
+export interface GitCommit {
+  hash: string
+  message: string
 }

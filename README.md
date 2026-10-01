@@ -3,9 +3,11 @@
 Build **plugins** and **themes** for [Selldoes](https://selldoes.com) — one
 package with the SDK types, the theme runtime and the `selldoes` CLI.
 
-**v0.4.0 — the SDK is your workspace.** You don't develop *inside* plugin
-folders anymore: the CLI remembers your projects, the web workspace is the
-front door, and AI does the heavy lifting.
+**v0.5.0 — the workspace is an IDE.** The web workspace now ships a real code
+editor: a Monaco **Code** page with SDK IntelliSense, save → rebuild, git,
+search and an integrated terminal; a **Console** with clickable build errors;
+and an AI assistant that edits with your selection as context, snapshots every
+change and lets you restore any point in time.
 
 ## Quickstart
 
@@ -28,6 +30,7 @@ selldoes login --token sk_dev_…      # connect your developer account (portal 
 selldoes packages && selldoes pull my-plugin   # pull a package you own and keep developing it
 selldoes create my-plugin --ai "a plugin that shows a live visitor counter"   # AI scaffold
 selldoes ask "add a /stats route that counts rows"                           # assistant in the terminal
+selldoes open index.js:12            # jump to a file/line in VS Code, Cursor or Windsurf
 ```
 
 ## How it fits together
@@ -35,8 +38,9 @@ selldoes ask "add a /stats route that counts rows"                           # a
 | Surface | What it's for |
 |---|---|
 | **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). Click it to switch projects in-place, create new (template or Describe-AI), import (folder/zip), pull from your account. Empty workspace → the onboarding dialog opens over the shell |
+| **Code + Console** (shell pages) | Monaco editor over the project (SDK types, save → rebuild, git diffs/commit, quick open, search, terminal drawer) and a live log console whose build errors jump to the offending line |
 | **Preview** (proxied per project, spawned on `4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply. The shell proxies to whichever project is selected |
-| **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant |
+| **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant, `selldoes open` |
 
 State lives in `~/.selldoes/workspace.json` (your projects) and
 `~/.selldoes.json` (developer token / theme API key) — per machine, not per
@@ -65,6 +69,7 @@ UI and never touch Vite.
 | `selldoes` | Web workspace + browser (`--no-open`, `--port <n>`, `--dev` = SDK-dev mode) |
 | `selldoes home` | Terminal launcher: recents, import, create, your packages |
 | `selldoes import <path>` | Register a folder or `.zip` in the workspace |
+| `selldoes open [file[:line]]` | Open the project (or a file/line) in your editor; `--terminal` for an OS terminal |
 | `selldoes create [dir]` | Scaffold from a template (interactive) |
 | `selldoes create [dir] --ai "…"` | Scaffold with AI — validated before a single file is written |
 | `selldoes ask ["…"]` | Terminal assistant: chat about the current plugin, apply edits with `--yes` |
@@ -83,9 +88,13 @@ workspace's "Describe AI" create, and `selldoes ask`:
 - **Providers**: OpenRouter, OpenAI, DeepInfra, **Anthropic**, **Gemini** and
   **Ollama** (local models, no key). Set a key in the environment or in
   `selldoes.config.json` (`assistant.provider` / `assistant.apiKey` /
-  `assistant.model` / `assistant.baseUrl`).
+  `assistant.model` / `assistant.baseUrl`) — or use the settings dialog in the
+  assistant panel, which applies without a restart.
 - **Nothing is written without approval**: edits are proposed as per-file
-  diffs, and every apply is snapshotted for undo.
+  diffs, and every apply is snapshotted for undo (restore any snapshot from
+  the panel's **History** tab).
+- **Selection-aware**: the code you select in the editor rides along with your
+  next message; chat history persists per project.
 - **Closed loop**: after applying, the assistant runs your plugin's test job
   (when declared) and feeds the outcome back into the chat.
 

@@ -2,11 +2,19 @@
 
 import type {
   AssistantChatResult,
+  AssistantConfigResponse,
   AssistantEdits,
   Bootstrap,
   DevStatus,
+  FileRead,
+  FileTree,
+  FileWriteResult,
+  GitCommit,
+  GitStatus,
   PluginManifest,
+  SearchResult,
   SettingsResponse,
+  SnapshotInfo,
   Validation,
 } from "./types"
 
@@ -47,6 +55,48 @@ export const dev = {
     post<AssistantChatResult>("/__dev/assistant/chat", { messages, context }),
   assistantApply: (edits: AssistantEdits, options?: { testJob?: boolean }) =>
     post<ApplyResult>("/__dev/assistant/apply", { edits, testJob: options?.testJob === true }),
+
+  // ── Code editor ───────────────────────────────────────────────────────────
+  files: () => request<FileTree>("/__dev/files"),
+  readFile: (path: string) => request<FileRead>(`/__dev/files/read?path=${encodeURIComponent(path)}`),
+  writeFile: (path: string, content: string) => post<FileWriteResult>("/__dev/files/write", { path, content }),
+  createFile: (path: string, type: "file" | "dir") => post<{ ok: boolean; path: string; type: "file" | "dir" }>("/__dev/files/create", { path, type }),
+  renameFile: (from: string, to: string) => post<{ ok: boolean; from: string; to: string }>("/__dev/files/rename", { from, to }),
+  deleteFile: (path: string) => post<{ ok: boolean; path: string }>("/__dev/files/delete", { path }),
+  search: (query: string, options?: { caseSensitive?: boolean; regex?: boolean }) =>
+    request<SearchResult>(
+      `/__dev/search?q=${encodeURIComponent(query)}${options?.caseSensitive ? "&case=1" : ""}${options?.regex ? "&regex=1" : ""}`,
+    ),
+  sdkTypes: () => request<{ path: string | null; content: string }>("/__dev/sdk-types"),
+  snapshots: () => request<{ snapshots: SnapshotInfo[] }>("/__dev/snapshots"),
+  restoreSnapshot: (name: string) => post<{ ok: boolean; meta: SnapshotInfo; validation: Validation }>("/__dev/snapshots/restore", { name }),
+
+  // ── Assistant settings + chat history ─────────────────────────────────────
+  config: () => request<AssistantConfigResponse>("/__dev/config"),
+  saveConfig: (assistant: Record<string, unknown>) => post<{ ok: boolean } & AssistantConfigResponse>("/__dev/config", { assistant }),
+  testAssistant: () => post<{ ok: boolean; provider?: string; model?: string }>("/__dev/assistant/test", {}),
+  chatHistory: () => request<{ items: unknown[] }>("/__dev/assistant/history"),
+  saveChatHistory: (items: unknown[]) =>
+    request<{ ok: boolean; count: number }>("/__dev/assistant/history", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    }),
+
+  // ── Git ───────────────────────────────────────────────────────────────────
+  gitStatus: () => request<GitStatus>("/__dev/git/status"),
+  gitDiff: (path?: string, staged?: boolean) =>
+    request<{ diff: string }>(`/__dev/git/diff?${path ? `path=${encodeURIComponent(path)}&` : ""}${staged ? "staged=1" : ""}`),
+  gitShow: (path: string, rev = "HEAD") => request<{ content: string }>(`/__dev/git/show?path=${encodeURIComponent(path)}&rev=${encodeURIComponent(rev)}`),
+  gitLog: () => request<{ repo: boolean; commits: GitCommit[] }>("/__dev/git/log"),
+  gitStage: (paths: string[]) => post<GitStatus>("/__dev/git/stage", { paths }),
+  gitUnstage: (paths: string[]) => post<GitStatus>("/__dev/git/unstage", { paths }),
+  gitCommit: (message: string, paths?: string[]) => post<GitStatus>("/__dev/git/commit", { message, paths }),
+  gitInit: () => post<GitStatus>("/__dev/git/init", {}),
+
+  // ── External editor / OS terminal ─────────────────────────────────────────
+  openEditor: (input: { file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>
+    post<{ opened: boolean; editor?: string; terminal?: string; error?: string }>("/__dev/open", input),
   runJob: (payload: { type: string; input?: unknown; maxTicks?: number }) =>
     post<{ ok?: boolean; error?: string; run?: JobRun; telemetry?: JobTelemetry }>("/__dev/run-job", payload),
   runHook: (hook: string, payload: unknown) => post<{ ok?: boolean; error?: string; result?: unknown }>("/__dev/run-hook", { hook, payload }),

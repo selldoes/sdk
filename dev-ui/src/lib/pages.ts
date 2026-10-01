@@ -1,6 +1,8 @@
 /** Page titles shared by the topbar, the document title and page headers. */
 export const PAGE_TITLES: Record<string, string> = {
   "/": "Overview",
+  "/code": "Code",
+  "/console": "Console",
   "/details": "Details & permissions",
   "/listing": "In Selldoes",
   "/dashboard": "Dashboard page",

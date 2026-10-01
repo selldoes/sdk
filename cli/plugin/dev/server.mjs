@@ -3,6 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { contentTypeFor, readJson } from "../../util.mjs"
+import { openInEditor, openTerminal } from "../../open-editor.mjs"
 import { buildPlugin } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
@@ -11,6 +12,10 @@ import { ManifestStore } from "./manifest-store.mjs"
 import { DevState } from "./dev-state.mjs"
 import { deleteAsset, resolveAsset, saveAsset } from "./assets.mjs"
 import { assistantChat, assistantSummary, normalizeEdits, resolveAssistant } from "./assistant.mjs"
+import { createFilesService } from "./files.mjs"
+import { createGit } from "./git.mjs"
+import { createStream, watchProject } from "./stream.mjs"
+import { attachTerminalServer } from "../../terminal.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const UI_DIR = path.join(HERE, "ui-dist")
@@ -85,16 +90,27 @@ function servePreview(res, pathname) {
  *   /api/plugin-api/<slug>/**  the plugin's authenticated `apiRoutes` (handlers run locally)
  *   /api/plugin-public/<slug>/** the plugin's `publicRoutes` + storefront widget/pages
  *   /api/plugins/<slug>/ui/**  the built dashboard UI (sandboxed iframe)
- *   /__dev/**                  dev endpoints (manifest, assets, assistant, jobs, hooks…)
+ *   /__dev/**                  dev endpoints (manifest, assets, assistant, jobs,
+ *                              hooks, files, snapshots, git, config, search,
+ *                              stream (SSE), open-in-editor…)
+ *   WS /__dev/terminal         integrated terminal session for this project
  */
 export async function startDevServer({ pluginDir, port, host } = {}) {
   const configPath = path.join(pluginDir, "selldoes.config.json")
-  const config = fs.existsSync(configPath) ? readJson(configPath) : {}
+  const readConfig = () => {
+    try {
+      return fs.existsSync(configPath) ? readJson(configPath) : {}
+    } catch {
+      return {}
+    }
+  }
+  const config = readConfig()
   const storeId = Number(config.storeId ?? 1)
   const storeSlug = String(config.storeSlug ?? "dev-store")
   const storeName = String(config.storeName ?? "Dev Store")
   const devDir = path.join(pluginDir, ".selldoes-dev")
 
+  const stream = createStream()
   const logs = []
   const log = (line) => {
     const entry = `[${new Date().toLocaleTimeString()}] ${line}`
@@ -102,9 +118,10 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     if (logs.length > 300) logs.shift()
     if (line.startsWith("[esbuild]")) buildStatus.lastError = line
     process.stdout.write(`  ${entry}\n`)
+    stream.broadcast("log", { line: entry })
   }
 
-  const buildStatus = { rebuilds: 0, builtAt: new Date().toISOString(), lastError: null }
+  const buildStatus = { rebuilds: 0, builtAt: new Date().toISOString(), lastError: null, errors: [] }
 
   const manifestStore = new ManifestStore({ pluginDir, devDir, log })
   const state = new DevState({ file: path.join(devDir, "state.json") })
@@ -121,9 +138,17 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       buildStatus.rebuilds = runner.rebuilds
       buildStatus.builtAt = new Date().toISOString()
       buildStatus.lastError = null
+      buildStatus.errors = []
       log(`rebuilt (bundle${manifestStore.read().ui?.entry ? " + ui" : ""})`)
+      stream.broadcast("build", { ...buildStatus })
     } catch (error) {
       buildStatus.lastError = error.message
+      buildStatus.errors = String(error.message)
+        .split("\n")
+        .filter((line) => /:\d+:\d+/.test(line))
+        .slice(0, 20)
+      if (buildStatus.errors.length === 0) buildStatus.errors = [error.message]
+      stream.broadcast("build", { ...buildStatus })
       throw error
     }
   }
@@ -142,7 +167,9 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     buildStatus.rebuilds = runner.rebuilds
     buildStatus.builtAt = new Date().toISOString()
     buildStatus.lastError = null
+    buildStatus.errors = []
     log("bundle rebuilt")
+    stream.broadcast("build", { ...buildStatus })
   })
 
   let uiDir = null
@@ -185,13 +212,24 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     jobEvents.progress.length = 0
   }
 
+  // ── Editor services (files, git, live stream) ─────────────────────────────
+  const filesService = createFilesService({
+    pluginDir,
+    sdkRoot: path.resolve(HERE, "..", "..", ".."),
+    snapshots: manifestStore.snapshots,
+    rebuild: rebuildAll,
+    log,
+  })
+  const gitService = createGit({ pluginDir })
+  const projectWatcher = watchProject(pluginDir, (paths) => stream.broadcast("files", { paths }))
+
   const bootstrap = () => ({
     manifest: manifestStore.read(),
     validation: manifestStore.validation(),
     store: { id: storeId, slug: storeSlug, name: storeName },
     status: buildStatus,
     activity: { ...state.data, sampleJobs: config.sampleJobs ?? {} },
-    assistant: assistantSummary(resolveAssistant({ config })),
+    assistant: assistantSummary(resolveAssistant({ config: readConfig() })),
     snapshots: manifestStore.snapshotCount(),
   })
 
@@ -235,6 +273,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         const result = manifestStore.write(next)
         log("plugin.json saved from the Details editor")
+        stream.broadcast("snapshots", {})
         try {
           await rebuildAll()
         } catch (error) {
@@ -245,6 +284,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       if (req.method === "POST" && pathname === "/__dev/manifest/undo") {
         const restored = manifestStore.undo()
         if (!restored) return json(res, 400, { error: "Nothing to undo" })
+        stream.broadcast("snapshots", {})
         try {
           await rebuildAll()
         } catch (error) {
@@ -298,7 +338,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
 
       // ── AI assistant ───────────────────────────────────────────────────────
       if (req.method === "GET" && pathname === "/__dev/assistant") {
-        return json(res, 200, assistantSummary(resolveAssistant({ config })))
+        return json(res, 200, assistantSummary(resolveAssistant({ config: readConfig() })))
       }
       if (req.method === "POST" && pathname === "/__dev/assistant/chat") {
         const body = await readBody(req)
@@ -309,7 +349,8 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             validation: manifestStore.validation(),
             activity: state.data,
             messages: body?.messages,
-            config,
+            context: body?.context,
+            config: readConfig(),
             log,
           })
           return json(res, 200, { ok: true, ...result })
@@ -341,6 +382,8 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           applied.push("plugin.json")
         }
         log(`assistant applied ${applied.length} file(s): ${applied.join(", ")}`)
+        stream.broadcast("snapshots", {})
+        stream.broadcast("files", { paths: applied })
         const validation = manifestStore.validation()
         let rebuildError = null
         try {
@@ -389,6 +432,233 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           ...(rebuildError ? { rebuildError } : {}),
           ...(test ? { test } : {}),
         })
+      }
+
+      // ── Provider settings + connection test ───────────────────────────────
+      const maskKey = (value) => {
+        const key = String(value ?? "")
+        if (!key) return null
+        if (key.length <= 8) return "•••"
+        return `${key.slice(0, 4)}…${key.slice(-4)}`
+      }
+      const configPayload = () => {
+        const fileConfig = readConfig()
+        const assistant = fileConfig.assistant ?? {}
+        return {
+          assistant: {
+            provider: assistant.provider ?? null,
+            model: assistant.model ?? null,
+            baseUrl: assistant.baseUrl ?? null,
+            apiKey: maskKey(assistant.apiKey),
+            apiKeySet: Boolean(assistant.apiKey),
+          },
+          env: {
+            OPENROUTER_API_KEY: Boolean(process.env.OPENROUTER_API_KEY),
+            ANTHROPIC_API_KEY: Boolean(process.env.ANTHROPIC_API_KEY),
+            GEMINI_API_KEY: Boolean(process.env.GEMINI_API_KEY),
+            OPENAI_API_KEY: Boolean(process.env.OPENAI_API_KEY),
+            DEEPINFRA_API_KEY: Boolean(process.env.DEEPINFRA_API_KEY),
+            OLLAMA_HOST: process.env.OLLAMA_HOST ?? null,
+          },
+        }
+      }
+      if (pathname === "/__dev/config") {
+        if (req.method === "GET") return json(res, 200, configPayload())
+        if (req.method === "POST") {
+          const body = await readBody(req)
+          const assistant = body?.assistant && typeof body.assistant === "object" ? body.assistant : null
+          if (!assistant) return json(res, 400, { error: "Missing assistant settings" })
+          const fileConfig = readConfig()
+          const merged = { ...(fileConfig.assistant ?? {}), ...assistant }
+          for (const [key, value] of Object.entries(merged)) {
+            if (value === undefined || value === null || value === "") delete merged[key]
+          }
+          const next = { ...fileConfig, assistant: merged }
+          fs.writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`)
+          log("assistant settings saved to selldoes.config.json")
+          return json(res, 200, { ok: true, ...configPayload() })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/assistant/test") {
+        const resolved = resolveAssistant({ config: readConfig() })
+        if (!resolved.configured) return json(res, 400, { error: "No provider key configured", code: "not-configured" })
+        try {
+          const headers = { "Content-Type": "application/json" }
+          if (resolved.api === "anthropic") {
+            headers["x-api-key"] = resolved.apiKey
+            headers["anthropic-version"] = "2023-06-01"
+          } else if (resolved.apiKey) {
+            headers.Authorization = `Bearer ${resolved.apiKey}`
+          }
+          const response = await fetch(`${resolved.baseUrl}/models`, { headers, signal: AbortSignal.timeout(10_000) })
+          const data = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? `HTTP ${response.status}`)
+          return json(res, 200, { ok: true, provider: resolved.provider, model: resolved.model })
+        } catch (error) {
+          return json(res, 502, { error: error.message, code: "unreachable" })
+        }
+      }
+
+      // ── Chat history (persisted per project) ──────────────────────────────
+      const historyPath = path.join(devDir, "assistant-chat.json")
+      if (req.method === "GET" && pathname === "/__dev/assistant/history") {
+        try {
+          return json(res, 200, JSON.parse(fs.readFileSync(historyPath, "utf8")))
+        } catch {
+          return json(res, 200, { items: [] })
+        }
+      }
+      if ((req.method === "PUT" || req.method === "POST") && pathname === "/__dev/assistant/history") {
+        const body = await readBody(req)
+        const items = Array.isArray(body?.items) ? body.items.slice(-60) : []
+        const serialized = JSON.stringify({ items })
+        if (serialized.length > 500_000) return json(res, 400, { error: "Chat history is too large" })
+        fs.mkdirSync(devDir, { recursive: true })
+        fs.writeFileSync(historyPath, serialized)
+        return json(res, 200, { ok: true, count: items.length })
+      }
+
+      // ── Live stream (files, build, logs, snapshots) ───────────────────────
+      if (req.method === "GET" && pathname === "/__dev/stream") {
+        return stream.handle(req, res)
+      }
+
+      // ── Code editor: files, search, SDK types, snapshots ──────────────────
+      if (req.method === "GET" && pathname === "/__dev/files") {
+        return json(res, 200, filesService.tree())
+      }
+      if (req.method === "GET" && pathname === "/__dev/files/read") {
+        try {
+          return json(res, 200, filesService.read(url.searchParams.get("path") ?? ""))
+        } catch (error) {
+          return json(res, 404, { error: error.message })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/files/write") {
+        const body = await readBody(req)
+        try {
+          const result = await filesService.write(body?.path, body?.content)
+          stream.broadcast("snapshots", {})
+          return json(res, 200, { ok: true, ...result, validation: manifestStore.validation() })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/files/create") {
+        const body = await readBody(req)
+        try {
+          const result = filesService.create(body?.path, body?.type === "dir" ? "dir" : "file")
+          stream.broadcast("snapshots", {})
+          stream.broadcast("files", { paths: [result.path] })
+          return json(res, 200, { ok: true, ...result })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/files/rename") {
+        const body = await readBody(req)
+        try {
+          const result = filesService.rename(body?.from, body?.to)
+          stream.broadcast("snapshots", {})
+          stream.broadcast("files", { paths: [result.from, result.to] })
+          return json(res, 200, { ok: true, ...result })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/files/delete") {
+        const body = await readBody(req)
+        try {
+          const result = filesService.remove(body?.path)
+          stream.broadcast("snapshots", {})
+          stream.broadcast("files", { paths: [result.path] })
+          return json(res, 200, { ok: true, ...result })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "GET" && pathname === "/__dev/search") {
+        try {
+          const result = filesService.search(url.searchParams.get("q") ?? "", {
+            caseSensitive: url.searchParams.get("case") === "1",
+            regex: url.searchParams.get("regex") === "1",
+          })
+          return json(res, 200, result)
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "GET" && pathname === "/__dev/sdk-types") {
+        const types = filesService.sdkTypes()
+        if (!types.path) return json(res, 404, { error: "SDK type definitions not found" })
+        return json(res, 200, types)
+      }
+      if (req.method === "GET" && pathname === "/__dev/snapshots") {
+        return json(res, 200, { snapshots: filesService.snapshots() })
+      }
+      if (req.method === "POST" && pathname === "/__dev/snapshots/restore") {
+        const body = await readBody(req)
+        try {
+          const meta = filesService.restoreSnapshot(body?.name)
+          await rebuildAll().catch(() => {})
+          stream.broadcast("snapshots", {})
+          stream.broadcast("files", { paths: (meta?.files ?? []).map((file) => file.path) })
+          return json(res, 200, { ok: true, meta, validation: manifestStore.validation() })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+
+      // ── Git ────────────────────────────────────────────────────────────────
+      if (pathname.startsWith("/__dev/git/")) {
+        const action = pathname.slice("/__dev/git/".length)
+        try {
+          if (req.method === "GET" && action === "status") return json(res, 200, await gitService.status())
+          if (req.method === "GET" && action === "show") {
+            return json(res, 200, await gitService.show(url.searchParams.get("path"), url.searchParams.get("rev") ?? "HEAD"))
+          }
+          if (req.method === "GET" && action === "diff") {
+            return json(res, 200, await gitService.diff(url.searchParams.get("path"), url.searchParams.get("staged") === "1"))
+          }
+          if (req.method === "GET" && action === "log") return json(res, 200, await gitService.log())
+          if (req.method === "POST" && action === "stage") {
+            const body = await readBody(req)
+            return json(res, 200, await gitService.stage(body?.paths))
+          }
+          if (req.method === "POST" && action === "unstage") {
+            const body = await readBody(req)
+            return json(res, 200, await gitService.unstage(body?.paths))
+          }
+          if (req.method === "POST" && action === "commit") {
+            const body = await readBody(req)
+            return json(res, 200, await gitService.commit(body?.message, body?.paths))
+          }
+          if (req.method === "POST" && action === "init") {
+            return json(res, 200, await gitService.init())
+          }
+          return json(res, 404, { error: `Unknown git route: ${action}` })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+
+      // ── Open in external editor / OS terminal ─────────────────────────────
+      if (req.method === "POST" && pathname === "/__dev/open") {
+        const body = await readBody(req)
+        try {
+          const result = body?.terminal
+            ? await openTerminal({ dir: pluginDir })
+            : await openInEditor({
+                dir: pluginDir,
+                file: body?.file,
+                line: body?.line,
+                column: body?.column,
+                editor: body?.editor,
+              })
+          return json(res, 200, result)
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
       }
 
       // ── Existing dev tools ─────────────────────────────────────────────────
@@ -546,6 +816,13 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   const listenPort = Number(port ?? config.port ?? 4590)
   const listenHost = String(host ?? "127.0.0.1")
 
+  const terminals = attachTerminalServer({
+    server,
+    path: "/__dev/terminal",
+    resolveCwd: () => pluginDir,
+    log,
+  })
+
   await new Promise((resolve, reject) => {
     server.once("error", reject)
     server.listen(listenPort, listenHost, resolve)
@@ -555,6 +832,9 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
 
   const shutdown = async () => {
     await runner.stopWatching()
+    projectWatcher.close()
+    terminals.closeAll()
+    stream.closeAll()
     db.saveNow()
     server.close(() => process.exit(0))
     setTimeout(() => process.exit(0), 500).unref()

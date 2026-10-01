@@ -84,6 +84,8 @@ dashboard:
 | Page | What it shows |
 |---|---|
 | **Overview** | A generated checklist (describe → preview → test → publish), quick job runs and what the manifest exposes |
+| **Code** | The built-in editor: file tree, tabs, Monaco with the SDK's own types (IntelliSense for `definePlugin`, routes, jobs), save → rebuild, git changes with diffs and commit, quick open |
+| **Console** | Live dev-server logs and build errors — click a `file:line` error to open it in the editor |
 | **Details & permissions** | Edit `plugin.json` from a form: name, description, icon (built-in picker or uploaded image), screenshots, category, tags and permissions (with the platform's risk/impact text). Saves are validated and undoable |
 | **In Selldoes** | Exactly what store owners see: marketplace card, listing page (with screenshots), the install dialog and where your dashboard pages land in the sidebar |
 | **Dashboard page** | Your `ui/entry` in a sandboxed iframe; without a UI, a faithful replica of the host's settings + jobs page |
@@ -99,6 +101,34 @@ Everything the Details editor writes goes through `plugin.json` (backed up to
 `.selldoes-dev/undo/`, restorable from the same page). Screenshots and custom
 icons are stored in `screenshots/` and `assets/` inside the plugin and ship
 with it.
+
+### The code editor
+
+The **Code** page is a complete edit loop in the browser:
+
+- **Monaco** (the VS Code editor) with the SDK's shipped `dist/index.d.ts`, so
+  `import { definePlugin } from "selldoes"` autocompletes and `plugin.json`
+  validates against a schema.
+- **File tree + tabs**; `plugin.json`, entry files and UI sources are all
+  editable. Cmd/Ctrl+P quick-opens any file, Cmd/Ctrl+Shift+F searches the
+  project, and Cmd/Ctrl+K opens the shell's command palette.
+- **Save = rebuild.** Cmd/Ctrl+S writes the file (snapshotted first), triggers
+  the esbuild rebuild and reports validation + build errors right in the
+  editor; build errors also appear as Monaco markers when the location is
+  known.
+- **External changes stay in sync** (file watcher → SSE): AI applies and edits
+  from your own editor refresh clean tabs, and dirty tabs get a conflict
+  banner instead of being clobbered.
+- **Git panel**: changed files with status chips, stage/unstage, side-by-side
+  diff against `HEAD`, commit, and "Initialize repository" when there is none.
+- **Undo / History**: every save, manifest edit, AI apply and delete is
+  snapshotted; the AI panel's **History** tab restores any point.
+- Prefer your own editor? **Open in editor** (topbar, tab header, or
+  `selldoes open <file>:<line>`) jumps straight to VS Code / Cursor / Windsurf
+  (`$SELDOES_EDITOR` overrides detection).
+- **Terminal** (Cmd/Ctrl+`) runs a real shell in the project folder — a PTY
+  when `node-pty` is available, a piped fallback otherwise; “open OS terminal”
+  is always one click away.
 
 ### The AI rightbar
 
@@ -122,7 +152,12 @@ or in `selldoes.config.json`:
 
 `assistant.baseUrl` overrides the endpoint (proxies, gateways, mock servers).
 Keep that file out of git when it holds a key. Every applied change is
-snapshotted under `.selldoes-dev/undo/`.
+snapshotted under `.selldoes-dev/undo/`. The gear icon in the panel opens a
+**settings dialog** (provider, model, key, base URL, "test connection") that
+writes `selldoes.config.json` and applies immediately — no restart. Chat
+history persists per project, and selecting code in the editor attaches the
+file + selection to your next message ("Explain" / "Improve" shortcuts
+included).
 
 **Closed loop**: the Apply card can run your plugin's test-like job (the first
 declared job whose type matches `test`/`preview`/`probe`) after a successful

@@ -3,6 +3,7 @@ import {
   BookOpen,
   ChevronDown,
   Database,
+  FileCode2,
   FileText,
   LayoutDashboard,
   Mail,
@@ -11,9 +12,12 @@ import {
   Puzzle,
   Radio,
   Rocket,
+  ScrollText,
+  Search,
   ShoppingBag,
   Sliders,
   Sparkles,
+  SquareTerminal,
   Store,
   Webhook,
   type LucideIcon,
@@ -35,6 +39,13 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { to: "/", label: "Overview", icon: LayoutDashboard, hint: "checklist" },
       { to: "/details", label: "Details & permissions", icon: Sliders, hint: "plugin.json" },
       { to: "/listing", label: "In Selldoes", icon: Store, hint: "marketplace" },
+    ],
+  },
+  {
+    label: "Develop",
+    items: [
+      { to: "/code", label: "Code", icon: FileCode2, hint: "editor" },
+      { to: "/console", label: "Console", icon: ScrollText, hint: "logs" },
     ],
   },
   {
@@ -62,7 +73,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 ]
 
 export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
-  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, setWorkspaceDialogOpen, noProject } = useApp()
+  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, setWorkspaceDialogOpen, noProject, setTerminalOpen, setPaletteOpen } = useApp()
   const manifest = bootstrap?.manifest
   const store = bootstrap?.store
   const current = workspace?.current ?? null
@@ -172,6 +183,22 @@ export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
         </div>
 
         <div className="space-y-0.5 border-t border-border px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setTerminalOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <SquareTerminal className="h-4 w-4" />
+            Terminal
+          </button>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Search className="h-4 w-4" />
+            Command palette
+          </button>
           <button
             type="button"
             onClick={onOpenGlossary}

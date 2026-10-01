@@ -65,7 +65,10 @@ export class PluginRunner {
           setup: (buildContext) => {
             buildContext.onEnd((result) => {
               if (result.errors.length > 0) {
-                for (const error of result.errors) this.log(`[esbuild] ${error.text}`)
+                for (const error of result.errors) {
+                  const location = error.location ? `${error.location.file}:${error.location.line}:${error.location.column}: ` : ""
+                  this.log(`[esbuild] ${location}${error.text}`)
+                }
                 return
               }
               this.rebuilds += 1

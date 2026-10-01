@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useApp } from "@/state/app"
+import { confirmDiscardChanges } from "@/lib/dirty-guard"
 import { ws } from "@/lib/ws-api"
 import type { WsPackage, WsProject } from "@/lib/ws-api"
 
@@ -58,13 +59,15 @@ export function WorkspaceDialog() {
     }
   }
 
-  const select = (project: WsProject) =>
-    run(`select:${project.id}`, async () => {
+  const select = (project: WsProject) => {
+    if (!confirmDiscardChanges()) return
+    return run(`select:${project.id}`, async () => {
       await ws.select(project.id)
       await Promise.all([refreshWorkspace(), refresh()])
       setWorkspaceDialogOpen(false)
       toast(`Switched to ${project.name}`, "success")
     })
+  }
 
   const restart = () =>
     run("restart", async () => {
@@ -73,16 +76,19 @@ export function WorkspaceDialog() {
       toast("Preview restarted", "success")
     })
 
-  const remove = (project: WsProject) =>
-    run(`remove:${project.id}`, async () => {
+  const remove = (project: WsProject) => {
+    if (!confirmDiscardChanges()) return
+    return run(`remove:${project.id}`, async () => {
       await ws.remove(project.id)
       await refreshWorkspace()
       if (project.id === currentId) await refresh()
       toast(`Removed ${project.name} from the workspace (folder kept on disk)`)
     })
+  }
 
-  const doImport = () =>
-    run("import", async () => {
+  const doImport = () => {
+    if (!confirmDiscardChanges()) return
+    return run("import", async () => {
       const { project } = await ws.importFolder(importPath.trim())
       setImportPath("")
       await ws.select(project.id)
@@ -90,9 +96,11 @@ export function WorkspaceDialog() {
       setWorkspaceDialogOpen(false)
       toast(`Imported ${project.name}`, "success")
     })
+  }
 
-  const doCreate = () =>
-    run("create", async () => {
+  const doCreate = () => {
+    if (!confirmDiscardChanges()) return
+    return run("create", async () => {
       const { project, needsInstall } = await ws.create({
         name: createName.trim(),
         parentDir: createParent.trim() || undefined,
@@ -107,9 +115,11 @@ export function WorkspaceDialog() {
       toast(`Created ${project.name} → ${project.path}`, "success")
       if (needsInstall) toast("React UI projects need `npm install` in the new folder")
     })
+  }
 
-  const doCreateAi = () =>
-    run("create-ai", async () => {
+  const doCreateAi = () => {
+    if (!confirmDiscardChanges()) return
+    return run("create-ai", async () => {
       const { project, files } = await ws.createAi({
         name: createName.trim(),
         prompt: aiPrompt.trim(),
@@ -122,6 +132,7 @@ export function WorkspaceDialog() {
       setWorkspaceDialogOpen(false)
       toast(`Generated ${project.name} — ${files.length} file(s)`, "success")
     })
+  }
 
   const loadPackages = () =>
     run("packages", async () => {
@@ -129,14 +140,16 @@ export function WorkspaceDialog() {
       setPackages(result.plugins)
     })
 
-  const doPull = (pkg: WsPackage) =>
-    run(`pull:${pkg.slug}`, async () => {
+  const doPull = (pkg: WsPackage) => {
+    if (!confirmDiscardChanges()) return
+    return run(`pull:${pkg.slug}`, async () => {
       const { project } = await ws.pull(pkg.slug)
       await ws.select(project.id)
       await Promise.all([refreshWorkspace(), refresh()])
       setWorkspaceDialogOpen(false)
       toast(`Pulled ${project.name} → ${project.path}`, "success")
     })
+  }
 
   return (
     <Dialog open={workspaceDialogOpen} onOpenChange={setWorkspaceDialogOpen}>

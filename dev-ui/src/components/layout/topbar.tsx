@@ -1,18 +1,22 @@
 import * as React from "react"
-import { useLocation } from "react-router-dom"
-import { Check, Menu, Moon, Sparkles, Store, Sun } from "lucide-react"
+import { useLocation, useNavigate } from "react-router-dom"
+import { Check, Menu, Moon, SquarePen, Sparkles, Store, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { dev } from "@/lib/api"
+import { ws } from "@/lib/ws-api"
 import { PAGE_TITLES } from "@/lib/pages"
+import { useDevStream } from "@/lib/use-dev-stream"
 import type { DevStatus } from "@/lib/types"
 import { useApp } from "@/state/app"
 
 export function Topbar() {
   const location = useLocation()
-  const { setSidebarOpen, theme, toggleTheme, setAssistantOpen } = useApp()
+  const navigate = useNavigate()
+  const { setSidebarOpen, theme, toggleTheme, setAssistantOpen, workspace, bootstrap, toast } = useApp()
   const [status, setStatus] = React.useState<DevStatus | null>(null)
   const title = PAGE_TITLES[location.pathname] ?? "Preview"
+  const projectKey = workspace?.current?.project.id ?? bootstrap?.manifest.slug ?? null
 
   React.useEffect(() => {
     let active = true
@@ -30,7 +34,21 @@ export function Topbar() {
       active = false
       clearInterval(timer)
     }
-  }, [])
+  }, [projectKey])
+
+  useDevStream(
+    (event) => {
+      if (event.type === "build") setStatus(event.status)
+    },
+    { key: projectKey },
+  )
+
+  const openInEditor = () => {
+    const request = workspace ? ws.openEditor() : dev.openEditor()
+    request
+      .then((result) => toast(`Opened in ${result.editor ?? "your editor"}`, "success"))
+      .catch((error) => toast(error instanceof Error ? error.message : String(error), "error"))
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4 lg:px-6">
@@ -42,18 +60,23 @@ export function Topbar() {
         <h2 className="truncate text-[15.5px] font-bold tracking-tight">{title}</h2>
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <Badge
-          variant="outline"
-          className={status?.lastError ? "border-0 bg-red-100 text-red-700" : "border-0 bg-emerald-100 text-emerald-700"}
-          title={status?.lastError ?? (status ? `Built at ${new Date(status.builtAt).toLocaleTimeString()}` : "Building…")}
-        >
-          <Check className="mr-1 h-3 w-3" />
-          {status?.lastError
-            ? "build error"
-            : status
-              ? `built${status.rebuilds > 0 ? ` · ${status.rebuilds} rebuild${status.rebuilds === 1 ? "" : "s"}` : ""}`
-              : "building…"}
-        </Badge>
+        <button type="button" onClick={() => navigate("/console")} title="Open the console">
+          <Badge
+            variant="outline"
+            className={status?.lastError ? "border-0 bg-red-100 text-red-700" : "border-0 bg-emerald-100 text-emerald-700"}
+          >
+            <Check className="mr-1 h-3 w-3" />
+            {status?.lastError
+              ? "build error"
+              : status
+                ? `built${status.rebuilds > 0 ? ` · ${status.rebuilds} rebuild${status.rebuilds === 1 ? "" : "s"}` : ""}`
+                : "building…"}
+          </Badge>
+        </button>
+        <Button variant="outline" size="sm" className="hidden sm:inline-flex" title="Open the project in your editor" onClick={openInEditor}>
+          <SquarePen />
+          Open in editor
+        </Button>
         <Button variant="outline" size="sm" asChild className="hidden sm:inline-flex">
           <a href="/preview/storefront" target="_blank" rel="noreferrer">
             <Store />

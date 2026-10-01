@@ -1,5 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
+import {
+  EDITABLE_EXTENSIONS,
+  MAX_FILE_BYTES,
+  listProjectFiles,
+} from "./project-files.mjs"
 
 /**
  * The AI rightbar brain: talks to the developer's own provider (OpenRouter,
@@ -45,23 +50,6 @@ const PROVIDERS = {
   },
 }
 
-const SKIP_DIRS = new Set(["node_modules", "dist", ".git", ".github", ".selldoes-dev", "coverage"])
-const TEXT_EXTENSIONS = new Set([
-  ".js",
-  ".cjs",
-  ".mjs",
-  ".ts",
-  ".tsx",
-  ".jsx",
-  ".json",
-  ".css",
-  ".html",
-  ".md",
-  ".txt",
-  ".svg",
-])
-const EDITABLE_EXTENSIONS = new Set([".js", ".cjs", ".mjs", ".ts", ".tsx", ".jsx", ".css", ".html", ".json", ".md", ".txt"])
-const MAX_FILE_BYTES = 400_000
 const MAX_CONTEXT_CHARS = 70_000
 
 /** Resolves provider/model/key from selldoes.config.json + the environment. */
@@ -103,35 +91,11 @@ export function assistantSummary(resolved) {
   return { configured: resolved.configured, provider: resolved.provider, model: resolved.model }
 }
 
-function walkFiles(pluginDir, root = pluginDir, depth = 0) {
-  if (depth > 4) return []
-  const out = []
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if (entry.name.startsWith(".") && entry.name !== ".env.example") continue
-    if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue
-      out.push(...walkFiles(pluginDir, path.join(root, entry.name), depth + 1))
-      continue
-    }
-    const full = path.join(root, entry.name)
-    const relative = path.relative(pluginDir, full).replace(/\\/g, "/")
-    if (relative === "plugin.json") continue
-    const extension = path.extname(entry.name).toLowerCase()
-    if (!TEXT_EXTENSIONS.has(extension)) continue
-    let size = 0
-    try {
-      size = fs.statSync(full).size
-    } catch {
-      continue
-    }
-    out.push({ path: relative, size, full })
-  }
-  return out
-}
-
 /** Builds the model context: manifest, validation, file tree and key files. */
 function collectContext({ pluginDir, manifest, validation, activity }) {
-  const files = walkFiles(pluginDir).sort((a, b) => a.path.localeCompare(b.path))
+  const files = listProjectFiles(pluginDir, { depth: 4 })
+    .filter((file) => (!file.path.startsWith(".") || file.path === ".env.example") && file.path !== "plugin.json")
+    .map((file) => ({ ...file, full: path.join(pluginDir, ...file.path.split("/")) }))
   const tree = files.map((file) => `${file.path} (${file.size}b)`).join("\n")
 
   const wanted = new Set(["plugin.json"])
@@ -202,15 +166,22 @@ Hooks: exports.hooks = { "<name>": async (payload, ctx) => result }.
 Dashboard UI: manifest ui.entry points at an HTML file; plain JS or a bundled ui/src/index.tsx; it calls /api/plugin-api/<slug>/<route> with storeId/storeSlug query params.
 Default export with init/destroy is optional.`
 
-function systemPrompt({ manifest, context }) {
+function systemPrompt({ manifest, context, editor }) {
   const snippets = context.snippets.map((snippet) => `--- ${snippet.path} ---\n${snippet.content}`).join("\n\n")
+  const selection = editor?.selection?.text ? String(editor.selection.text).slice(0, 6000) : ""
+  const editorSection =
+    editor?.file || selection
+      ? `\nEditor focus (the developer is looking at this right now):
+${editor?.file ? `- open file: ${String(editor.file)}\n` : ""}${selection ? `- selected code:\n\`\`\`${editor?.language ?? ""}\n${selection}\n\`\`\`\n` : ""}
+When the request is about "this" or the selection, it means the code above.`
+      : ""
   return `You are the Selldoes plugin assistant inside \`selldoes dev\`, helping one developer build their plugin locally.
 You can read the plugin files below and propose edits. Be concise: explain briefly, then propose.
 
 Plugin: ${manifest.slug} v${manifest.version} — ${manifest.name}
 Validation: ${context.validation.errors.length} error(s), ${context.validation.warnings.length} warning(s)
 ${context.validation.errors.map((error) => `- error: ${error}`).join("\n")}
-
+${editorSection}
 File tree:
 ${context.tree}
 
@@ -372,7 +343,7 @@ export function attachDiffs(pluginDir, edits) {
  * (edits enriched with `before`/`exists` for diffing).
  * Throws Error with a `code: "not-configured"` when no key is available.
  */
-export async function assistantChat({ pluginDir, manifest, validation, activity, messages, config, log = () => {} }) {
+export async function assistantChat({ pluginDir, manifest, validation, activity, messages, config, context, log = () => {} }) {
   const resolved = resolveAssistant({ config })
   if (!resolved.configured) {
     const error = new Error(
@@ -382,9 +353,9 @@ export async function assistantChat({ pluginDir, manifest, validation, activity,
     throw error
   }
 
-  const context = collectContext({ pluginDir, manifest, validation, activity })
+  const filesContext = collectContext({ pluginDir, manifest, validation, activity })
   const { raw, usage } = await callProvider(resolved, {
-    system: systemPrompt({ manifest, context }),
+    system: systemPrompt({ manifest, context: filesContext, editor: context }),
     messages,
     log,
   })

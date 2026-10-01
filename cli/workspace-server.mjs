@@ -7,6 +7,7 @@ import { spawn } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentTypeFor } from "./util.mjs"
 import { getCurrentProjectId, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
+import { attachTerminalServer } from "./terminal.mjs"
 
 /**
  * The workspace server — the web front door of the SDK.
@@ -229,6 +230,18 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     }
   })
 
+  // ── Terminal (workspace-owned; cwd = selected project) ──────────────────────
+  const terminals = attachTerminalServer({
+    server,
+    path: "/__ws/terminal",
+    resolveCwd: (url) => {
+      const requested = url.searchParams.get("projectId") || getCurrentProjectId()
+      const project = listProjects().find((entry) => entry.id === requested)
+      return project && !project.missing ? project.path : null
+    },
+    log: (line) => console.log(`  ${line}`),
+  })
+
   // ── Preview spawning ────────────────────────────────────────────────────────
   function findPreview(id) {
     return previews.get(String(id)) ?? null
@@ -440,6 +453,7 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     for (const preview of previews.values()) {
       if (preview.proc && preview.proc.exitCode === null) preview.proc.kill()
     }
+    terminals.closeAll()
     server.close(() => process.exit(0))
     setTimeout(() => process.exit(0), 800).unref()
   }

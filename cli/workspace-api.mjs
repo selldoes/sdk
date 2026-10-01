@@ -124,6 +124,30 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       return json(res, 200, { preview: ctx.listPreviews().find((entry) => entry.id === preview.id) })
     }
 
+    if (action === "open-editor" && method === "POST") {
+      const body = await readBody(req)
+      const { listProjects } = await import("./workspace.mjs")
+      const projectId = String(body.projectId ?? ctx.getCurrentId() ?? "")
+      const project = listProjects().find((entry) => entry.id === projectId)
+      if (!project) return json(res, 404, { error: "No workspace project selected" })
+      if (project.missing) return json(res, 404, { error: `${project.path} no longer exists` })
+      const { openInEditor, openTerminal } = await import("./open-editor.mjs")
+      try {
+        const result = body.terminal
+          ? await openTerminal({ dir: project.path })
+          : await openInEditor({
+              dir: project.path,
+              file: body.file,
+              line: body.line,
+              column: body.column,
+              editor: body.editor,
+            })
+        return json(res, 200, result)
+      } catch (error) {
+        return json(res, 400, { error: error.message })
+      }
+    }
+
     if (action === "close" && method === "POST") {
       const body = await readBody(req)
       const ok = ctx.stopPreview(String(body.id ?? ""))
