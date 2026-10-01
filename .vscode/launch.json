@@ -2,29 +2,29 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Dev server (example plugin)",
+      "name": "Workspace (SDK-dev mode)",
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/bin/selldoes.mjs",
-      "args": ["dev", "--dir", "${workspaceFolder}/examples/demo-plugin"],
+      "args": ["workspace", "--dev", "--no-open"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
       "skipFiles": ["<node_internals>/**"]
     },
     {
-      "name": "Dev server (example plugin, open browser)",
+      "name": "Workspace (SDK-dev mode, open browser)",
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/bin/selldoes.mjs",
-      "args": ["dev", "--dir", "${workspaceFolder}/examples/demo-plugin", "--open"],
+      "args": ["workspace", "--dev"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
       "skipFiles": ["<node_internals>/**"]
     },
     {
-      "name": "Dev server (choose plugin folder)",
+      "name": "Plugin preview (direct dev server)",
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/bin/selldoes.mjs",
@@ -33,25 +33,6 @@
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",
       "skipFiles": ["<node_internals>/**"]
-    },
-    {
-      "name": "Preview UI (Vite HMR)",
-      "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "dev-ui", "run", "dev"],
-      "windows": { "runtimeExecutable": "npm.cmd" },
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "internalConsoleOptions": "neverOpen",
-      "skipFiles": ["<node_internals>/**"]
-    }
-  ],
-  "compounds": [
-    {
-      "name": "Full preview (server + UI HMR)",
-      "configurations": ["Dev server (example plugin)", "Preview UI (Vite HMR)"],
-      "stopAll": true
     }
   ],
   "inputs": [

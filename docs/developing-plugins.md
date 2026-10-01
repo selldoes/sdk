@@ -8,7 +8,48 @@ Everything needed lives in one package — [`selldoes`](https://www.npmjs.com/pa
 | `selldoes/theme` | The theme runtime (hooks + components) — see [developing-themes.md](developing-themes.md) |
 | `selldoes` CLI | `create`, `dev`, `build`, `pack`, `validate`, `publish` |
 
-## Quick start
+## The workspace-first flow
+
+The SDK remembers your projects per machine (`~/.selldoes/workspace.json`), so
+you run the tooling from anywhere — the plugin folder is just a path:
+
+```bash
+selldoes                       # web workspace + browser: recents, import, create, packages
+selldoes home                  # the same launcher, in your terminal
+selldoes import ~/code/my-plugin   # folder or .zip → registered in the workspace
+selldoes login --token sk_dev_…    # developer account (portal → API tokens)
+selldoes pull my-plugin            # download a package your account owns, keep developing
+```
+
+`dev`, `build`, `validate` and `publish` work from inside a project exactly as
+before; run them outside one and you land in the workspace instead of an
+error.
+
+### Create with AI
+
+Describe the plugin instead of filling a template — the model writes
+`plugin.json`, the entry and (when useful) a dashboard UI. Output is
+**validated before a single file is written** (valid manifest, declared slug,
+entry present), with one automatic retry that feeds the error back:
+
+```bash
+selldoes create my-plugin --ai "a plugin that syncs orders to a Google Sheet"
+```
+
+The web workspace's **Create → Describe AI** runs the same pipeline.
+
+### The assistant in your terminal
+
+```bash
+selldoes ask "add a /stats API route that counts rows"   # one-shot
+selldoes ask                                             # interactive chat
+selldoes ask "…" --yes                                   # apply proposed edits without prompting
+```
+
+Edits are shown with sizes (and `--dry-run` never writes); applying re-validates
+and reports the result.
+
+## Quick start (template lane)
 
 ```bash
 npx selldoes create my-plugin       # asks: Plugin or Theme?
@@ -58,21 +99,32 @@ with it.
 ### The AI rightbar
 
 The **Ask AI** panel (top right) reads your manifest, validation output, file
-tree and recent activity, then proposes edits as file diffs you approve before
-anything is written. Set a provider key and restart `selldoes dev`:
+tree and recent activity, then proposes edits **as real per-file diffs** (the
+current file content travels with each proposal) that you approve before
+anything is written. Supported providers: OpenRouter, OpenAI, DeepInfra,
+**Anthropic** (`ANTHROPIC_API_KEY`), **Gemini** (`GEMINI_API_KEY`) and
+**Ollama** (local models — no key; `assistant.provider: "ollama"`). Set a
+provider key and restart `selldoes dev`:
 
 ```bash
-export OPENROUTER_API_KEY="sk-or-…"   # or OPENAI_API_KEY / DEEPINFRA_API_KEY
+export OPENROUTER_API_KEY="sk-or-…"   # or ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / …
 ```
 
 or in `selldoes.config.json`:
 
 ```json
-{ "assistant": { "provider": "openrouter", "model": "anthropic/claude-sonnet-4" } }
+{ "assistant": { "provider": "anthropic", "model": "claude-sonnet-4-5", "apiKey": "sk-ant-…" } }
 ```
 
-`assistant.apiKey` also works — keep that file out of git when it holds a key.
-Every applied change is snapshotted under `.selldoes-dev/undo/`.
+`assistant.baseUrl` overrides the endpoint (proxies, gateways, mock servers).
+Keep that file out of git when it holds a key. Every applied change is
+snapshotted under `.selldoes-dev/undo/`.
+
+**Closed loop**: the Apply card can run your plugin's test-like job (the first
+declared job whose type matches `test`/`preview`/`probe`) after a successful
+rebuild — the outcome lands in the chat, so the assistant sees whether its
+change actually works. It skips the run (and says so) when the rebuild fails or
+no test job is declared.
 
 ### Dev-server settings
 
@@ -168,21 +220,20 @@ bundle with the local `node_modules`.
 ## Build & publish
 
 ```bash
-npm run validate
-npm run build          # dist/<slug>/ + bundle.js
-npm run pack           # dist/<slug>.zip for manual upload
+selldoes validate
+selldoes build            # dist/<slug>/ + bundle.js
+selldoes pack             # dist/<slug>.zip for manual upload
 
-# Merchant flow (upload to your store, then submit for review):
-SELLDOES_SESSION_COOKIE="session=…" npm run publish -- --app-url https://selldoes.com --store 123
-
-# CI / first-party flow (service token):
-npm run publish -- --app-url https://selldoes.com --token $SELLDOES_PUBLISH_TOKEN
+# Publish through your developer account (portal → API tokens):
+selldoes login --token sk_dev_…
+selldoes publish --price 9.99 --billing monthly   # optional marketplace listing fields
 ```
 
-Publishing writes an **immutable release** (`releases/<slug>/<version>/`) and
-upserts the marketplace listing as `pending`. Once an admin approves, installed
-stores see **Update available → Update now**. Bump `version` in `plugin.json`
-for every release.
+Publishing stores the source + bundle in your developer workspace, writes an
+**immutable release** (`releases/<slug>/<version>/`) and upserts the marketplace
+listing as `pending`. Once an admin approves, installed stores see
+**Update available → Update now**. Bump `version` in `plugin.json` for every
+release. To keep developing a published package later: `selldoes pull <slug>`.
 
 ## Keeping the CLI up to date
 
