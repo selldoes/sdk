@@ -169,7 +169,8 @@ export async function createCommand(args, flags) {
 
   let kind = kindFlag
   if (!kind) {
-    if (assumeYes) {
+    if (assumeYes || flags.ai !== undefined) {
+      // AI scaffolding is plugin-only for now — don't ask.
       kind = "plugin"
     } else if (!interactive) {
       die("Non-interactive shell — pass --plugin or --theme (or -y for defaults)")
@@ -200,6 +201,57 @@ export async function createCommand(args, flags) {
       if (prompts.isCancel(answer)) cancel()
       dir = String(answer || defaultName).trim()
     }
+  }
+
+  // ── AI scaffold: `selldoes create my-plugin --ai "describe it"` ────────────
+  if (flags.ai !== undefined && kind === "plugin") {
+    let description = flags.ai === true ? null : String(flags.ai)
+    if (!description) {
+      if (!interactive) die('Pass a description: selldoes create <dir> --ai "…"')
+      const answer = await prompts.text({ message: "Describe the plugin you want", placeholder: "e.g. a plugin that…", defaultValue: "" })
+      if (prompts.isCancel(answer)) cancel()
+      description = String(answer ?? "").trim()
+    }
+    if (!description) die("Empty description — say what the plugin should do")
+
+    let config = {}
+    try {
+      config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "selldoes.config.json"), "utf8"))
+    } catch {
+      // no local assistant config — environment keys apply
+    }
+
+    const spinner = prompts.spinner()
+    spinner.start("Generating your plugin with AI…")
+    let result
+    try {
+      const { scaffoldWithAi } = await import("./plugin/ai-scaffold.mjs")
+      result = await scaffoldWithAi({
+        prompt: description,
+        dir: path.resolve(dir),
+        config,
+        log: (line) => spinner.message(String(line).slice(0, 90)),
+      })
+      spinner.stop(`Generated ${result.name} — ${result.files.length} file(s)`)
+    } catch (error) {
+      spinner.stop("AI scaffold failed")
+      die(error.message)
+    }
+    const relative = path.relative(process.cwd(), result.dir) || "."
+    prompts.outro(
+      [
+        `Created ${result.name} (${result.slug}) in ${relative}/`,
+        result.summary ? `\n${result.summary}` : "",
+        "",
+        "Next steps:",
+        `  cd ${relative}`,
+        "  npm install        # only if the plugin declares dependencies",
+        "  npx selldoes dev   # preview it — the AI assistant is right there to iterate",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    return
   }
 
   let version = flags.version ? String(flags.version) : null

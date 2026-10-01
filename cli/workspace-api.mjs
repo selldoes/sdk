@@ -59,6 +59,24 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       return json(res, 200, { project: { slug: created.slug, name: created.name, kind: created.kind, path: created.targetDir }, needsInstall: kind === "plugin" && body.uiFlavor === "react" })
     }
 
+    if (action === "create-ai" && method === "POST") {
+      const body = await readBody(req)
+      const name = String(body.name ?? "").trim()
+      const prompt = String(body.prompt ?? "").trim()
+      if (!name) return json(res, 400, { error: "Missing project name" })
+      if (!prompt) return json(res, 400, { error: "Describe the plugin you want" })
+      const parentDir = path.resolve(String(body.parentDir ?? ctx.defaultDir))
+      const { scaffoldWithAi } = await import("./plugin/ai-scaffold.mjs")
+      const config = body.assistant && typeof body.assistant === "object" ? { assistant: body.assistant } : {}
+      const created = await scaffoldWithAi({
+        prompt,
+        dir: path.join(parentDir, name),
+        config,
+        log: () => {},
+      })
+      return json(res, 200, { project: { slug: created.slug, name: created.name, kind: "plugin", path: created.dir }, files: created.files })
+    }
+
     // ── Developer account ──────────────────────────────────────────────────
     if (action === "packages" && method === "GET") {
       const account = await import("./account.mjs")

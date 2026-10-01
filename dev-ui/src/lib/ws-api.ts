@@ -65,6 +65,8 @@ export const ws = {
   importFolder: (folderPath: string) => post<{ project: WsProject }>("/__ws/import", { path: folderPath }),
   create: (input: { name: string; parentDir?: string; kind: "plugin" | "theme"; version?: string; withUi?: boolean; uiFlavor?: "js" | "react" }) =>
     post<{ project: WsProject; needsInstall?: boolean }>("/__ws/create", input),
+  createAi: (input: { name: string; prompt: string; parentDir?: string }) =>
+    post<{ project: WsProject; files: string[] }>("/__ws/create-ai", input),
   packages: () => request<{ appUrl: string; plugins: WsPackage[] }>("/__ws/packages"),
   pull: (slug: string, dir?: string) => post<{ project: WsProject }>("/__ws/pull", { slug, dir }),
   open: (projectId: string) => post<{ preview: WsPreview }>("/__ws/open", { projectId }),

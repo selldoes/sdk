@@ -1,12 +1,13 @@
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import * as prompts from "@clack/prompts"
+import { unzipSync } from "fflate"
 import { die, openBrowser } from "./util.mjs"
 import {
   detectKind,
   getProject,
   listProjects,
-  normalizePath,
   projectMeta,
   relativeTime,
   removeProject,
@@ -29,23 +30,88 @@ function cancel() {
   process.exit(0)
 }
 
+const UNSAFE_SEGMENT = (segment) => segment === ".." || segment === "." || (segment.startsWith(".") && segment !== ".env.example")
+
 /**
- * Validates a candidate project directory and registers it.
- * Throws Error with a user-facing message when the folder cannot be a project.
+ * Extracts a plugin/theme zip and registers it. Accepts archives with the
+ * manifest at the root or inside a single top-level folder (the common
+ * `my-plugin/plugin.json` shape). Lands in `dir` or `~/Selldoes/<slug>`.
  */
-export function importProject(target, { source = "folder" } = {}) {
-  const dir = normalizePath(target)
-  if (!fs.existsSync(dir)) throw new Error(`No such folder: ${dir}`)
-  if (!fs.statSync(dir).isDirectory()) throw new Error(`Not a folder: ${dir}`)
-  const kind = detectKind(dir)
-  if (!kind) throw new Error(`No plugin.json or manifest.json in ${dir}`)
-  const manifestFile = path.join(dir, kind === "theme" ? "manifest.json" : "plugin.json")
+export function importZip(zipPath, { dir } = {}) {
+  const zip = path.resolve(String(zipPath))
+  if (!fs.existsSync(zip)) throw new Error(`No such file: ${zip}`)
+  let entries
+  try {
+    entries = unzipSync(new Uint8Array(fs.readFileSync(zip)))
+  } catch (error) {
+    throw new Error(`Could not read the zip: ${error.message}`)
+  }
+  const names = Object.keys(entries).filter((name) => !name.endsWith("/"))
+  if (names.length === 0) throw new Error("The zip is empty")
+
+  // Strip a single shared top-level folder when the manifest lives inside it.
+  let prefix = ""
+  const hasRootManifest = names.some((name) => name === "plugin.json" || name === "manifest.json")
+  if (!hasRootManifest) {
+    const tops = new Set(names.map((name) => name.split("/")[0]))
+    const only = [...tops][0]
+    if (tops.size === 1 && names.some((name) => name === `${only}/plugin.json` || name === `${only}/manifest.json`)) {
+      prefix = `${only}/`
+    }
+  }
+  const manifestEntry = names.find((name) => name === `${prefix}plugin.json`) ?? names.find((name) => name === `${prefix}manifest.json`)
+  if (!manifestEntry) throw new Error("No plugin.json or manifest.json in the zip (root or single top folder)")
+  const kind = manifestEntry.endsWith("manifest.json") ? "theme" : "plugin"
+
+  let manifest
+  try {
+    manifest = JSON.parse(Buffer.from(entries[manifestEntry]).toString("utf8"))
+  } catch (error) {
+    throw new Error(`Manifest in the zip is not valid JSON: ${error.message}`)
+  }
+  const slug = (kind === "plugin" && typeof manifest.slug === "string" ? manifest.slug : "") || path.basename(zip, path.extname(zip))
+  const target = path.resolve(String(dir ?? path.join(os.homedir(), "Selldoes", slug)))
+  if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
+    throw new Error(`${target} is not empty — the zip would overwrite existing files.`)
+  }
+  fs.mkdirSync(target, { recursive: true })
+
+  let written = 0
+  for (const [name, data] of Object.entries(entries)) {
+    if (name.endsWith("/")) continue
+    const relative = name.startsWith(prefix) ? name.slice(prefix.length) : name
+    const segments = relative.split("/").filter(Boolean)
+    if (!relative || segments.length === 0 || segments.some(UNSAFE_SEGMENT) || path.posix.isAbsolute(relative)) continue
+    const destination = path.join(target, ...segments)
+    fs.mkdirSync(path.dirname(destination), { recursive: true })
+    fs.writeFileSync(destination, data)
+    written++
+  }
+  if (written === 0) throw new Error("The zip had no usable files")
+  return touchProject({ dir: target, kind, source: "zip" })
+}
+
+/**
+ * Validates a candidate project directory (or zip) and registers it.
+ * Throws Error with a user-facing message when it cannot be a project.
+ */
+export function importProject(target, opts = {}) {
+  const resolved = path.resolve(String(target))
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    if (/\.zip$/i.test(resolved)) return importZip(resolved, opts)
+    throw new Error(`Not a project folder or .zip: ${resolved}`)
+  }
+  if (!fs.existsSync(resolved)) throw new Error(`No such folder: ${resolved}`)
+  if (!fs.statSync(resolved).isDirectory()) throw new Error(`Not a folder: ${resolved}`)
+  const kind = detectKind(resolved)
+  if (!kind) throw new Error(`No plugin.json or manifest.json in ${resolved}`)
+  const manifestFile = path.join(resolved, kind === "theme" ? "manifest.json" : "plugin.json")
   try {
     JSON.parse(fs.readFileSync(manifestFile, "utf8"))
   } catch (error) {
     throw new Error(`${path.basename(manifestFile)} is not valid JSON: ${error.message}`)
   }
-  return touchProject({ dir, kind, source })
+  return touchProject({ dir: resolved, kind, source: opts.source ?? "folder" })
 }
 
 /** Opens a project the same way `selldoes dev` would. */

@@ -342,12 +342,53 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         log(`assistant applied ${applied.length} file(s): ${applied.join(", ")}`)
         const validation = manifestStore.validation()
+        let rebuildError = null
         try {
           await rebuildAll()
         } catch (error) {
-          return json(res, 200, { ok: true, applied, validation, rebuildError: error.message })
+          rebuildError = error.message
         }
-        return json(res, 200, { ok: true, applied, validation })
+
+        // Closed loop: when the client asks for it, run the plugin's test-like
+        // job so the outcome can be fed back into the chat.
+        let test = null
+        if (body?.testJob && !rebuildError) {
+          let jobs = []
+          try {
+            jobs = JSON.parse(fs.readFileSync(path.join(pluginDir, "plugin.json"), "utf8")).jobs ?? []
+          } catch {
+            // manifest unreadable — skip the test run
+          }
+          const candidate = jobs.find((job) => /test|preview|probe/i.test(String(job?.type ?? "")))
+          if (candidate) {
+            try {
+              resetJobEvents()
+              const run = await runner.runJob(candidate.type, body?.testInput ?? {}, ctx, 8)
+              test = {
+                type: candidate.type,
+                ticks: run.ticks.length,
+                done: run.done,
+                result: run.result ?? null,
+                error: null,
+                items: jobEvents.items.slice(0, 20),
+                logs: jobEvents.logs.slice(0, 20),
+              }
+              log(`assistant closed loop: test job ${candidate.type} → ${run.done ? "done" : "tick limit"} (${run.ticks.length} tick(s))`)
+            } catch (error) {
+              test = { type: candidate.type, error: error.message }
+            }
+          } else {
+            test = { skipped: "no test-like job declared in plugin.json" }
+          }
+        }
+
+        return json(res, 200, {
+          ok: true,
+          applied,
+          validation,
+          ...(rebuildError ? { rebuildError } : {}),
+          ...(test ? { test } : {}),
+        })
       }
 
       // ── Existing dev tools ─────────────────────────────────────────────────

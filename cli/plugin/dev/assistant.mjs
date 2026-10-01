@@ -24,6 +24,25 @@ const PROVIDERS = {
     envKey: "DEEPINFRA_API_KEY",
     defaultModel: "deepseek-ai/DeepSeek-V4-Flash",
   },
+  anthropic: {
+    baseUrl: "https://api.anthropic.com/v1",
+    envKey: "ANTHROPIC_API_KEY",
+    defaultModel: "claude-sonnet-4-5",
+    api: "anthropic",
+  },
+  gemini: {
+    // Google's OpenAI-compatible endpoint — same wire format as openai.
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    envKey: "GEMINI_API_KEY",
+    defaultModel: "gemini-2.5-flash",
+  },
+  ollama: {
+    // Local models — no key required (OLLAMA_HOST to point elsewhere).
+    baseUrl: (env) => (env.OLLAMA_HOST ? `${String(env.OLLAMA_HOST).replace(/\/$/, "")}/v1` : "http://localhost:11434/v1"),
+    envKey: "OLLAMA_API_KEY",
+    defaultModel: "qwen3:8b",
+    keyless: true,
+  },
 }
 
 const SKIP_DIRS = new Set(["node_modules", "dist", ".git", ".github", ".selldoes-dev", "coverage"])
@@ -50,16 +69,33 @@ export function resolveAssistant({ config = {}, env = process.env } = {}) {
   const explicit = config.assistant ?? {}
   const provider =
     explicit.provider ||
-    (env.OPENROUTER_API_KEY ? "openrouter" : env.OPENAI_API_KEY ? "openai" : env.DEEPINFRA_API_KEY ? "deepinfra" : "openrouter")
+    (env.OPENROUTER_API_KEY
+      ? "openrouter"
+      : env.ANTHROPIC_API_KEY
+        ? "anthropic"
+        : env.GEMINI_API_KEY
+          ? "gemini"
+          : env.OPENAI_API_KEY
+            ? "openai"
+            : env.DEEPINFRA_API_KEY
+              ? "deepinfra"
+              : "openrouter")
   const spec = PROVIDERS[provider] ?? PROVIDERS.openrouter
   const apiKey = String(explicit.apiKey ?? env[spec.envKey] ?? "")
+  const baseUrl = explicit.baseUrl
+    ? String(explicit.baseUrl).replace(/\/$/, "")
+    : typeof spec.baseUrl === "function"
+      ? spec.baseUrl(env)
+      : spec.baseUrl
   return {
-    configured: Boolean(apiKey),
+    // keyless providers (ollama) are "configured" the moment they're selected
+    configured: spec.keyless ? true : Boolean(apiKey),
     provider,
     model: String(explicit.model ?? spec.defaultModel),
     maxTokens: Math.max(256, Math.min(Number(explicit.maxTokens) || 4000, 16000)),
-    baseUrl: spec.baseUrl,
+    baseUrl,
     apiKey,
+    api: spec.api ?? "openai",
   }
 }
 
@@ -244,20 +280,12 @@ export function parseAssistantReply(text) {
 }
 
 /**
- * Sends the conversation to the provider and returns `{ text, edits }`.
- * Throws Error with a `code: "not-configured"` when no key is available.
+ * Sends messages to the resolved provider. Handles both wire formats:
+ * Anthropic's Messages API (`api: "anthropic"`) and the OpenAI-compatible
+ * chat-completions shape everything else uses (OpenRouter, OpenAI, DeepInfra,
+ * Gemini's compat endpoint, Ollama). Returns `{ raw, usage }`.
  */
-export async function assistantChat({ pluginDir, manifest, validation, activity, messages, config, log = () => {} }) {
-  const resolved = resolveAssistant({ config })
-  if (!resolved.configured) {
-    const error = new Error(
-      "No AI provider key found. Add OPENROUTER_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, or set assistant.apiKey in selldoes.config.json.",
-    )
-    error.code = "not-configured"
-    throw error
-  }
-
-  const context = collectContext({ pluginDir, manifest, validation, activity })
+export async function callProvider(resolved, { system, messages, log = () => {} }) {
   const history = (Array.isArray(messages) ? messages : [])
     .filter((message) => message && (message.role === "user" || message.role === "assistant") && typeof message.content === "string")
     .slice(-12)
@@ -265,29 +293,102 @@ export async function assistantChat({ pluginDir, manifest, validation, activity,
 
   log(`[assistant] ${resolved.provider} · ${resolved.model} · ${history.length} message(s)`)
 
+  if (resolved.api === "anthropic") {
+    const response = await fetch(`${resolved.baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": resolved.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: resolved.model,
+        max_tokens: resolved.maxTokens,
+        system,
+        messages: history,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const detail = data?.error?.message ?? data?.error ?? `HTTP ${response.status}`
+      throw new Error(`AI provider error: ${detail}`)
+    }
+    const raw = (Array.isArray(data?.content) ? data.content : []).map((block) => block?.text ?? "").join("")
+    return { raw, usage: data?.usage ?? null }
+  }
+
+  const headers = { "Content-Type": "application/json" }
+  if (resolved.apiKey) headers.Authorization = `Bearer ${resolved.apiKey}`
   const response = await fetch(`${resolved.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${resolved.apiKey}`,
+      ...headers,
       "HTTP-Referer": "https://selldoes.com",
       "X-Title": "Selldoes plugin preview",
     },
     body: JSON.stringify({
       model: resolved.model,
-      messages: [{ role: "system", content: systemPrompt({ manifest, context }) }, ...history],
+      messages: [{ role: "system", content: system }, ...history],
       temperature: 0.2,
       max_tokens: resolved.maxTokens,
     }),
     signal: AbortSignal.timeout(120_000),
   })
-
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
     const detail = data?.error?.message ?? data?.error ?? `HTTP ${response.status}`
     throw new Error(`AI provider error: ${detail}`)
   }
   const raw = data?.choices?.[0]?.message?.content ?? ""
+  return { raw, usage: data?.usage ?? null }
+}
+
+/**
+ * Attaches the CURRENT file content (`before`) + `exists` flag to every edit
+ * so clients can render real diffs. CLI consumers (selldoes ask) get the same
+ * data for their diff display.
+ */
+export function attachDiffs(pluginDir, edits) {
+  if (!edits) return edits
+  const root = path.resolve(pluginDir)
+  for (const file of edits.files) {
+    try {
+      const full = path.resolve(root, file.path)
+      if (!full.startsWith(root)) continue
+      const exists = fs.existsSync(full)
+      file.exists = exists
+      file.before = exists ? fs.readFileSync(full, "utf8") : ""
+    } catch {
+      file.before = ""
+    }
+  }
+  return edits
+}
+
+/**
+ * Sends the conversation to the provider and returns `{ text, edits }`
+ * (edits enriched with `before`/`exists` for diffing).
+ * Throws Error with a `code: "not-configured"` when no key is available.
+ */
+export async function assistantChat({ pluginDir, manifest, validation, activity, messages, config, log = () => {} }) {
+  const resolved = resolveAssistant({ config })
+  if (!resolved.configured) {
+    const error = new Error(
+      "No AI provider key found. Add OPENROUTER_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, use Ollama (provider: \"ollama\", no key needed), or set assistant.apiKey in selldoes.config.json.",
+    )
+    error.code = "not-configured"
+    throw error
+  }
+
+  const context = collectContext({ pluginDir, manifest, validation, activity })
+  const { raw, usage } = await callProvider(resolved, {
+    system: systemPrompt({ manifest, context }),
+    messages,
+    log,
+  })
   const parsed = parseAssistantReply(raw)
-  return { text: parsed.text, edits: parsed.edits, provider: resolved.provider, model: resolved.model, usage: data?.usage ?? null }
+  attachDiffs(pluginDir, parsed.edits)
+  return { text: parsed.text, edits: parsed.edits, provider: resolved.provider, model: resolved.model, usage }
 }

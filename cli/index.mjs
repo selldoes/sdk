@@ -13,10 +13,18 @@ Workspace (the SDK is your workspace — projects live anywhere on disk)
                            (dev-ui on Vite with hot reload), --no-open = don't
                            launch the browser, --port <n> (default 4590)
   home                     Terminal launcher: recent projects, import, create
-  import <path>            Add an existing plugin/theme folder to your workspace
+  import <path>            Add an existing plugin/theme project to your workspace
+                           (a folder with plugin.json/manifest.json, or a .zip)
 
 Create
   create [dir]              Scaffold a new plugin or theme (interactive)
+  create [dir] --ai "…"     Scaffold with AI — describe the plugin in plain
+                            language; the model writes plugin.json + entry + UI
+
+Assistant (the same brain as the preview's right panel)
+  ask ["question"]          Chat with the AI about the current plugin project;
+                            proposed edits are shown and (with --yes or your
+                            confirmation) applied. --dry-run never writes.
 
 Plugin projects (a directory with plugin.json)
   dev                       Local preview server (dashboard UI, storefront, API console, jobs)
@@ -154,6 +162,12 @@ export async function main() {
 
       case "workspace": {
         await workspaceCommand(args, flags)
+        return
+      }
+
+      case "ask": {
+        const { askCommand } = await import("./ask.mjs")
+        await askCommand(args, flags)
         return
       }
 

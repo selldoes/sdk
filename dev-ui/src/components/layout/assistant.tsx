@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { dev } from "@/lib/api"
+import type { ApplyResult } from "@/lib/api"
 import type { AssistantEdits, AssistantFileEdit, Validation } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/state/app"
@@ -162,19 +163,43 @@ type ChatItem =
 let cursor = 0
 const nextId = () => ++cursor
 
-function EditCard({ item, onApplied }: { item: Extract<ChatItem, { kind: "edits" }>; onApplied: () => void }) {
-  const { toast, setAssistantOpen } = useApp()
+/** Human summary of an apply result — shown in the chat as a system note. */
+function applyFeedback(result: ApplyResult): string {
+  const parts = [
+    `Applied ${result.applied.length} file(s): ${result.applied.join(", ") || "—"}.`,
+    `Validation: ${result.validation.errors.length} error(s), ${result.validation.warnings.length} warning(s).`,
+  ]
+  if (result.rebuildError) parts.push(`Rebuild failed: ${result.rebuildError}`)
+  const test = result.test
+  if (test) {
+    if (test.skipped) parts.push(`Test job: ${test.skipped}.`)
+    else if (test.error) parts.push(`Test job ${test.type ?? "?"} failed: ${test.error}`)
+    else {
+      parts.push(
+        `Test job ${test.type}: ${test.ticks ?? 0} tick(s) · ${test.done ? "done" : "tick limit reached"}${test.result ? ` · ${JSON.stringify(test.result).slice(0, 160)}` : ""}`,
+      )
+    }
+  }
+  return parts.join("\n")
+}
+
+function EditCard({ item, onApplied }: { item: Extract<ChatItem, { kind: "edits" }>; onApplied: (result: ApplyResult) => void }) {
+  const { toast, setAssistantOpen, bootstrap } = useApp()
   const [busy, setBusy] = React.useState(false)
   const [applied, setApplied] = React.useState(item.applied)
+  const [runTest, setRunTest] = React.useState(true)
   const edits = item.edits
+
+  const manifestJobs = ((bootstrap?.manifest as { jobs?: { type?: string }[] } | undefined)?.jobs ?? []) as { type?: string }[]
+  const testCapable = manifestJobs.some((job) => /test|preview|probe/i.test(String(job?.type ?? "")))
 
   const apply = async () => {
     setBusy(true)
     try {
-      const result = await dev.assistantApply(edits)
+      const result = await dev.assistantApply(edits, { testJob: runTest && testCapable })
       setApplied({ validation: result.validation, applied: result.applied })
       toast(result.validation.errors.length ? "Applied — check the errors" : "Changes applied", result.validation.errors.length ? "error" : "success")
-      onApplied()
+      onApplied(result)
     } catch (error) {
       toast(error instanceof Error ? error.message : String(error), "error")
     } finally {
@@ -211,6 +236,26 @@ function EditCard({ item, onApplied }: { item: Extract<ChatItem, { kind: "edits"
           <code>plugin.json</code>
           <span className="ml-auto text-[10.5px] text-muted-foreground">details update</span>
         </div>
+      ) : null}
+      {!applied && testCapable ? (
+        <button
+          type="button"
+          onClick={() => setRunTest((previous) => !previous)}
+          className={
+            "flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-[11.5px] " +
+            (runTest ? "bg-emerald-50 text-emerald-800" : "text-muted-foreground hover:bg-muted/50")
+          }
+        >
+          <span
+            className={
+              "flex h-3.5 w-3.5 items-center justify-center rounded border " +
+              (runTest ? "border-emerald-500 bg-emerald-500 text-white" : "border-border")
+            }
+          >
+            {runTest ? <Check className="h-2.5 w-2.5" /> : null}
+          </span>
+          Closed loop — run the plugin's test job after applying
+        </button>
       ) : null}
       <div className="flex justify-end gap-2 px-3 py-2.5">
         {applied ? (
@@ -369,7 +414,17 @@ export function AssistantPanel() {
           ) : null}
 
           {items.map((item) => {
-            if (item.kind === "edits") return <EditCard key={item.id} item={item} onApplied={() => void checkConfig()} />
+            if (item.kind === "edits")
+              return (
+                <EditCard
+                  key={item.id}
+                  item={item}
+                  onApplied={(result) => {
+                    void checkConfig()
+                    setItems((previous) => [...previous, { id: nextId(), kind: "system", content: applyFeedback(result) }])
+                  }}
+                />
+              )
             if (item.kind === "user") {
               return (
                 <div key={item.id} className="ml-auto max-w-[92%] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-[12.5px] text-primary-foreground">
@@ -393,7 +448,10 @@ export function AssistantPanel() {
               )
             }
             return (
-              <p key={item.id} className="text-center text-[11px] text-muted-foreground">
+              <p
+                key={item.id}
+                className="whitespace-pre-wrap rounded-lg border border-dashed border-border px-3 py-2 text-center text-[11px] text-muted-foreground"
+              >
                 {item.content}
               </p>
             )
@@ -487,8 +545,11 @@ function SetupCard({ checking, onCheck }: { checking: boolean; onCheck: () => vo
         </pre>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Supported providers: <code>openrouter</code>, <code>openai</code>, <code>deepinfra</code>. Keys are read locally
-        and only sent to that provider. Keep <code>selldoes.config.json</code> in <code>.gitignore</code> when it holds a key.
+        Supported providers: <code>openrouter</code>, <code>openai</code>, <code>deepinfra</code>,{" "}
+        <code>anthropic</code> (ANTHROPIC_API_KEY), <code>gemini</code> (GEMINI_API_KEY) and <code>ollama</code> —
+        local models, no key needed (<code>{'"assistant": { "provider": "ollama" }'}</code>). Keys are read locally
+        and only sent to that provider. Keep <code>selldoes.config.json</code> in <code>.gitignore</code> when it
+        holds a key.
       </p>
       <Button
         size="sm"

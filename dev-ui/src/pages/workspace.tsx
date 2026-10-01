@@ -66,6 +66,8 @@ export function WorkspaceHome() {
   const [createParent, setCreateParent] = React.useState("")
   const [createKind, setCreateKind] = React.useState<"plugin" | "theme">("plugin")
   const [createUi, setCreateUi] = React.useState<"js" | "react" | "none">("js")
+  const [createMode, setCreateMode] = React.useState<"template" | "ai">("template")
+  const [aiPrompt, setAiPrompt] = React.useState("")
   const [packages, setPackages] = React.useState<WsPackage[] | null>(null)
   const [packagesError, setPackagesError] = React.useState<string | null>(null)
 
@@ -160,6 +162,19 @@ export function WorkspaceHome() {
       await refresh()
       toast(`Created ${project.name} → ${project.path}`, "success")
       if (needsInstall) toast("React UI projects need `npm install` in the new folder")
+    })
+
+  const doCreateAi = () =>
+    run("create-ai", async () => {
+      const { project, files } = await ws.createAi({
+        name: createName.trim(),
+        prompt: aiPrompt.trim(),
+        parentDir: createParent.trim() || undefined,
+      })
+      setCreateName("")
+      setAiPrompt("")
+      await refresh()
+      toast(`Generated ${project.name} — ${files.length} file(s) → ${project.path}`, "success")
     })
 
   const loadPackages = () =>
@@ -351,47 +366,81 @@ export function WorkspaceHome() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
+                <div className="flex gap-1">
+                  {(
+                    [
+                      { value: "template", label: "Template" },
+                      { value: "ai", label: "Describe AI" },
+                    ] as const
+                  ).map((mode) => (
+                    <Button
+                      key={mode.value}
+                      size="sm"
+                      variant={createMode === mode.value ? "default" : "outline"}
+                      className="flex-1"
+                      onClick={() => setCreateMode(mode.value)}
+                    >
+                      {mode.label}
+                    </Button>
+                  ))}
+                </div>
                 <Input
                   placeholder="my-plugin"
                   value={createName}
                   onChange={(event) => setCreateName(event.target.value)}
-                  onKeyDown={(event) => event.key === "Enter" && void doCreate()}
+                  onKeyDown={(event) => event.key === "Enter" && void (createMode === "ai" ? doCreateAi() : doCreate())}
                 />
                 <Input
                   placeholder="Parent folder"
                   value={createParent}
                   onChange={(event) => setCreateParent(event.target.value)}
                 />
-                <div className="flex gap-1">
-                  {(["plugin", "theme"] as const).map((kind) => (
-                    <Button
-                      key={kind}
-                      size="sm"
-                      variant={createKind === kind ? "default" : "outline"}
-                      className="flex-1"
-                      onClick={() => setCreateKind(kind)}
-                    >
-                      {kind}
-                    </Button>
-                  ))}
-                </div>
-                {createKind === "plugin" && (
-                  <div className="flex gap-1">
-                    {(["js", "react", "none"] as const).map((flavor) => (
-                      <Button
-                        key={flavor}
-                        size="sm"
-                        variant={createUi === flavor ? "default" : "outline"}
-                        className="flex-1"
-                        onClick={() => setCreateUi(flavor)}
-                      >
-                        {flavor === "none" ? "no UI" : flavor}
-                      </Button>
-                    ))}
-                  </div>
+                {createMode === "ai" ? (
+                  <textarea
+                    className="min-h-[80px] w-full rounded-md border border-border bg-background px-2.5 py-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+                    placeholder={'Describe the plugin — e.g. "a plugin that shows a live visitor counter on product pages"'}
+                    value={aiPrompt}
+                    onChange={(event) => setAiPrompt(event.target.value)}
+                  />
+                ) : (
+                  <>
+                    <div className="flex gap-1">
+                      {(["plugin", "theme"] as const).map((kind) => (
+                        <Button
+                          key={kind}
+                          size="sm"
+                          variant={createKind === kind ? "default" : "outline"}
+                          className="flex-1"
+                          onClick={() => setCreateKind(kind)}
+                        >
+                          {kind}
+                        </Button>
+                      ))}
+                    </div>
+                    {createKind === "plugin" && (
+                      <div className="flex gap-1">
+                        {(["js", "react", "none"] as const).map((flavor) => (
+                          <Button
+                            key={flavor}
+                            size="sm"
+                            variant={createUi === flavor ? "default" : "outline"}
+                            className="flex-1"
+                            onClick={() => setCreateUi(flavor)}
+                          >
+                            {flavor === "none" ? "no UI" : flavor}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
-                <Button size="sm" className="w-full" onClick={() => void doCreate()} disabled={busy === "create" || !createName.trim()}>
-                  <Plus className="h-4 w-4" /> Create
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={() => void (createMode === "ai" ? doCreateAi() : doCreate())}
+                  disabled={busy === "create" || busy === "create-ai" || !createName.trim() || (createMode === "ai" && !aiPrompt.trim())}
+                >
+                  <Plus className="h-4 w-4" /> {createMode === "ai" ? "Generate with AI" : "Create"}
                 </Button>
               </CardContent>
             </Card>

@@ -43,7 +43,8 @@ export const dev = {
   assistant: () => request<{ configured: boolean; provider?: string; model?: string }>("/__dev/assistant"),
   assistantChat: (messages: { role: string; content: string }[], context: Record<string, unknown>) =>
     post<AssistantChatResult>("/__dev/assistant/chat", { messages, context }),
-  assistantApply: (edits: AssistantEdits) => post<{ ok: boolean; validation: Validation; applied: string[] }>("/__dev/assistant/apply", { edits }),
+  assistantApply: (edits: AssistantEdits, options?: { testJob?: boolean }) =>
+    post<ApplyResult>("/__dev/assistant/apply", { edits, testJob: options?.testJob === true }),
   runJob: (payload: { type: string; input?: unknown; maxTicks?: number }) =>
     post<{ ok?: boolean; error?: string; run?: JobRun; telemetry?: JobTelemetry }>("/__dev/run-job", payload),
   runHook: (hook: string, payload: unknown) => post<{ ok?: boolean; error?: string; result?: unknown }>("/__dev/run-hook", { hook, payload }),
@@ -61,6 +62,24 @@ export interface JobRun {
   done?: boolean
   result?: unknown
   state?: unknown
+}
+
+/** What `/__dev/assistant/apply` returns — includes the closed-loop test run. */
+export interface ApplyResult {
+  ok: boolean
+  validation: Validation
+  applied: string[]
+  rebuildError?: string
+  test?: {
+    type?: string
+    ticks?: number
+    done?: boolean
+    result?: unknown
+    error?: string | null
+    skipped?: string
+    items?: unknown[]
+    logs?: unknown[]
+  }
 }
 
 export interface JobTelemetry {
