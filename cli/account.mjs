@@ -173,7 +173,7 @@ export async function whoamiCommand(args, flags) {
 export async function listPackages(flags = {}) {
   const { token, appUrl } = developerAuth(flags)
   if (!token) {
-    die("Not connected. Run `selldoes login --token sk_dev_…` first (developer portal → API tokens).")
+    throw new Error("Not connected. Run `selldoes login --token sk_dev_…` first (developer portal → API tokens).")
   }
   const { plugins } = await devFetch(appUrl, "/api/developers/plugins", token)
   return { appUrl, plugins: plugins ?? [] }
@@ -201,9 +201,9 @@ const UNSAFE_SEGMENT = (segment) => segment === ".." || segment === "." || (segm
  */
 export async function pullPackage(slug, flags = {}) {
   const cleanSlug = String(slug ?? "").trim()
-  if (!/^[a-z0-9-]+$/.test(cleanSlug)) die(`"${cleanSlug}" is not a valid slug`)
+  if (!/^[a-z0-9-]+$/.test(cleanSlug)) throw new Error(`"${cleanSlug}" is not a valid slug`)
   const { token, appUrl } = developerAuth(flags)
-  if (!token) die("Not connected. Run `selldoes login --token sk_dev_…` first.")
+  if (!token) throw new Error("Not connected. Run `selldoes login --token sk_dev_…` first.")
 
   const meta = await devFetch(appUrl, `/api/developers/plugins/${cleanSlug}`, token)
   const pluginMeta = meta.plugin ?? meta
@@ -211,7 +211,7 @@ export async function pullPackage(slug, flags = {}) {
 
   const target = path.resolve(String(flags.dir ?? path.join(os.homedir(), "Selldoes", cleanSlug)))
   if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
-    die(`${target} is not empty — pass --dir <path> to pull somewhere else.`)
+    throw new Error(`${target} is not empty — pass --dir <path> to pull somewhere else.`)
   }
   fs.mkdirSync(target, { recursive: true })
 
@@ -225,7 +225,7 @@ export async function pullPackage(slug, flags = {}) {
     fs.writeFileSync(destination, file.encoding === "base64" ? Buffer.from(file.content, "base64") : Buffer.from(file.content, "utf8"))
     written++
   }
-  if (written === 0) die("The stored source had no usable files — try re-publishing from the portal.")
+  if (written === 0) throw new Error("The stored source had no usable files — try re-publishing from the portal.")
 
   const { importProject } = await import("./home.mjs")
   const project = importProject(target, { source: "account" })

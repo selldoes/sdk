@@ -34,115 +34,38 @@ function copyTemplate(fromDir, toDir, replacements) {
     // npm strips `.gitignore` from tarballs, so templates ship it as `gitignore`
     // and it is restored on scaffold.
     const targetName = entry.name === "gitignore" ? ".gitignore" : entry.name
-    const to = path.join(toDir, targetName)
+    const target = path.join(toDir, targetName)
     if (entry.isDirectory()) {
-      copyTemplate(from, to, replacements)
+      copyTemplate(from, target, replacements)
       continue
     }
     let content = fs.readFileSync(from, "utf8")
     for (const [token, value] of Object.entries(replacements)) content = content.split(token).join(value)
-    fs.writeFileSync(to, content)
+    fs.writeFileSync(target, content)
   }
 }
 
-export async function createCommand(args, flags) {
-  const assumeYes = flags.yes === true || flags.y === true || args.includes("-y")
-  const interactive = Boolean(process.stdin.isTTY) && !assumeYes
-  const kindFlag = flags.plugin === true ? "plugin" : flags.theme === true ? "theme" : null
-  const positional = args.filter((arg) => !arg.startsWith("-"))
-
-  if (flags.plugin === true && flags.theme === true) die("Pass either --plugin or --theme, not both")
-
-  prompts.intro("selldoes")
-
-  let kind = kindFlag
-  if (!kind) {
-    if (assumeYes) {
-      kind = "plugin"
-    } else if (!interactive) {
-      die("Non-interactive shell — pass --plugin or --theme (or -y for defaults)")
-    } else {
-      const answer = await prompts.select({
-        message: "What do you want to build?",
-        options: [
-          { value: "plugin", label: "Plugin", hint: "extend the dashboard and storefront" },
-          { value: "theme", label: "Theme", hint: "a full-page storefront design" },
-        ],
-      })
-      if (prompts.isCancel(answer)) cancel()
-      kind = answer
-    }
-  }
-
-  const defaultName = kind === "plugin" ? "my-plugin" : "my-theme"
-  let dir = positional[0]
-  if (!dir) {
-    if (!interactive) {
-      dir = defaultName
-    } else {
-      const answer = await prompts.text({
-        message: "Project name",
-        placeholder: defaultName,
-        defaultValue: defaultName,
-      })
-      if (prompts.isCancel(answer)) cancel()
-      dir = String(answer || defaultName).trim()
-    }
-  }
+/**
+ * Scaffolds a plugin/theme project from the bundled templates. Shared by the
+ * interactive `selldoes create` flow and the web workspace's "Create new".
+ */
+export async function scaffoldProject({
+  kind = "plugin",
+  dir,
+  version = "0.1.0",
+  withUi = true,
+  uiFlavor = "js",
+  install = false,
+  force = false,
+}) {
+  if (!dir) throw new Error("scaffoldProject: dir is required")
+  if (!/^\d+\.\d+\.\d+/.test(String(version))) throw new Error(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
 
   const slug = toSlug(dir)
-  if (!slug || slug.length < 2) die(`Cannot derive a project name from "${dir}"`)
-
+  if (!slug || slug.length < 2) throw new Error(`Cannot derive a project name from "${dir}"`)
   const targetDir = path.resolve(dir)
-  if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0 && flags.force !== true) {
-    die(`${path.relative(process.cwd(), targetDir) || "."} is not empty (use --force to overwrite)`)
-  }
-
-  let version = flags.version ? String(flags.version) : null
-  if (!version) {
-    if (!interactive) {
-      version = "0.1.0"
-    } else {
-      const answer = await prompts.text({ message: "Version", placeholder: "0.1.0", defaultValue: "0.1.0" })
-      if (prompts.isCancel(answer)) cancel()
-      version = String(answer || "0.1.0").trim()
-    }
-  }
-  if (!/^\d+\.\d+\.\d+/.test(version)) die(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
-
-  let withUi = true
-  let uiFlavor = "js"
-  if (kind === "plugin") {
-    if (flags["no-ui"] === true) {
-      withUi = false
-    } else if (typeof flags.ui === "string") {
-      uiFlavor = String(flags.ui).toLowerCase() === "react" ? "react" : "js"
-    } else if (flags.ui === true) {
-      withUi = true
-    } else if (interactive) {
-      const answer = await prompts.confirm({ message: "Add a dashboard UI?", initialValue: true })
-      if (prompts.isCancel(answer)) cancel()
-      withUi = answer
-      if (withUi) {
-        const flavor = await prompts.select({
-          message: "UI style",
-          options: [
-            { value: "js", label: "Plain JS", hint: "no build step — ui/index.html + app.js" },
-            { value: "react", label: "React + TypeScript", hint: "bundled by esbuild, supports npm packages" },
-          ],
-        })
-        if (prompts.isCancel(flavor)) cancel()
-        uiFlavor = String(flavor)
-      }
-    }
-  }
-
-  let install = true
-  if (flags["no-install"] === true) install = false
-  else if (interactive) {
-    const answer = await prompts.confirm({ message: "Install dependencies now?", initialValue: true })
-    if (prompts.isCancel(answer)) cancel()
-    install = answer
+  if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0 && !force) {
+    throw new Error(`${path.relative(process.cwd(), targetDir) || "."} is not empty (use --force to overwrite)`)
   }
 
   const name = toTitle(slug)
@@ -223,7 +146,7 @@ export async function createCommand(args, flags) {
     }
   }
 
-  // Register the new project in the workspace so `selldoes home` lists it.
+  // Register the new project in the workspace so `selldoes` lists it.
   try {
     const { touchProject } = await import("./workspace.mjs")
     touchProject({ dir: targetDir, kind, source: "create" })
@@ -231,10 +154,107 @@ export async function createCommand(args, flags) {
     // best-effort
   }
 
+  return { targetDir, slug, name, kind }
+}
+
+export async function createCommand(args, flags) {
+  const assumeYes = flags.yes === true || flags.y === true || args.includes("-y")
+  const interactive = Boolean(process.stdin.isTTY) && !assumeYes
+  const kindFlag = flags.plugin === true ? "plugin" : flags.theme === true ? "theme" : null
+  const positional = args.filter((arg) => !arg.startsWith("-"))
+
+  if (flags.plugin === true && flags.theme === true) die("Pass either --plugin or --theme, not both")
+
+  prompts.intro("selldoes")
+
+  let kind = kindFlag
+  if (!kind) {
+    if (assumeYes) {
+      kind = "plugin"
+    } else if (!interactive) {
+      die("Non-interactive shell — pass --plugin or --theme (or -y for defaults)")
+    } else {
+      const answer = await prompts.select({
+        message: "What do you want to build?",
+        options: [
+          { value: "plugin", label: "Plugin", hint: "extend the dashboard and storefront" },
+          { value: "theme", label: "Theme", hint: "a full-page storefront design" },
+        ],
+      })
+      if (prompts.isCancel(answer)) cancel()
+      kind = answer
+    }
+  }
+
+  const defaultName = kind === "plugin" ? "my-plugin" : "my-theme"
+  let dir = positional[0]
+  if (!dir) {
+    if (!interactive) {
+      dir = defaultName
+    } else {
+      const answer = await prompts.text({
+        message: "Project name",
+        placeholder: defaultName,
+        defaultValue: defaultName,
+      })
+      if (prompts.isCancel(answer)) cancel()
+      dir = String(answer || defaultName).trim()
+    }
+  }
+
+  let version = flags.version ? String(flags.version) : null
+  if (!version) {
+    if (!interactive) {
+      version = "0.1.0"
+    } else {
+      const answer = await prompts.text({ message: "Version", placeholder: "0.1.0", defaultValue: "0.1.0" })
+      if (prompts.isCancel(answer)) cancel()
+      version = String(answer || "0.1.0").trim()
+    }
+  }
+  if (!/^\d+\.\d+\.\d+/.test(version)) die(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
+
+  let withUi = true
+  let uiFlavor = "js"
+  if (kind === "plugin") {
+    if (flags["no-ui"] === true) {
+      withUi = false
+    } else if (typeof flags.ui === "string") {
+      uiFlavor = String(flags.ui).toLowerCase() === "react" ? "react" : "js"
+    } else if (flags.ui === true) {
+      withUi = true
+    } else if (interactive) {
+      const answer = await prompts.confirm({ message: "Add a dashboard UI?", initialValue: true })
+      if (prompts.isCancel(answer)) cancel()
+      withUi = answer
+      if (withUi) {
+        const flavor = await prompts.select({
+          message: "UI style",
+          options: [
+            { value: "js", label: "Plain JS", hint: "no build step — ui/index.html + app.js" },
+            { value: "react", label: "React + TypeScript", hint: "bundled by esbuild, supports npm packages" },
+          ],
+        })
+        if (prompts.isCancel(flavor)) cancel()
+        uiFlavor = String(flavor)
+      }
+    }
+  }
+
+  let install = true
+  if (flags["no-install"] === true) install = false
+  else if (interactive) {
+    const answer = await prompts.confirm({ message: "Install dependencies now?", initialValue: true })
+    if (prompts.isCancel(answer)) cancel()
+    install = answer
+  }
+
+  const { targetDir, name } = await scaffoldProject({ kind, dir, version, withUi, uiFlavor, install, force: flags.force === true })
+
   const relative = path.relative(process.cwd(), targetDir) || "."
   const lines = [`Created ${name} in ${relative}/`, "", "Next steps:", `  cd ${relative}`]
   if (!install) lines.push("  npm install")
-  lines.push("  (or run `selldoes home` anywhere — it's in your workspace now)")
+  lines.push("  (or run `selldoes` anywhere — it's in your workspace now)")
   if (kind === "plugin") {
     lines.push("  npx selldoes dev", "", "Docs: https://selldoes.com/docs/plugins")
   } else {

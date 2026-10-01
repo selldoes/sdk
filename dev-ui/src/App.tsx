@@ -21,6 +21,7 @@ import { DataPage } from "@/pages/data"
 import { EmailPage } from "@/pages/email"
 import { RealtimePage } from "@/pages/realtime"
 import { ShipPage } from "@/pages/ship"
+import { WorkspaceHome } from "@/pages/workspace"
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { bootstrap, loading, error, refresh } = useApp()
@@ -103,7 +104,7 @@ function Shell() {
   )
 }
 
-export default function App() {
+function PluginApp() {
   return (
     <AppProvider>
       <BrowserRouter basename="/preview">
@@ -112,4 +113,42 @@ export default function App() {
       <Toaster />
     </AppProvider>
   )
+}
+
+/**
+ * One bundle serves two surfaces: the plugin preview (a `selldoes dev`
+ * server) and the workspace home (a `selldoes` workspace server). Probe
+ * `/__ws/bootstrap` first — only the workspace server answers it.
+ */
+function ModeGate() {
+  const [mode, setMode] = React.useState<"loading" | "workspace" | "plugin">("loading")
+
+  React.useEffect(() => {
+    let cancelled = false
+    fetch("/__ws/bootstrap")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled) setMode(data?.mode === "workspace" ? "workspace" : "plugin")
+      })
+      .catch(() => {
+        if (!cancelled) setMode("plugin")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (mode === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <span className="text-sm text-muted-foreground">Loading…</span>
+      </div>
+    )
+  }
+  if (mode === "workspace") return <WorkspaceHome />
+  return <PluginApp />
+}
+
+export default function App() {
+  return <ModeGate />
 }

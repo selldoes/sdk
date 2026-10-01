@@ -125,7 +125,7 @@ async function removeFlow() {
   prompts.log.success(`Removed ${project?.name ?? "project"} from the list (folder kept on disk).`)
 }
 
-export async function homeCommand(args, flags = {}) {
+export async function homeCommand(args, flags = {}, opts = {}) {
   let accountHint = "connect first: selldoes login --token sk_dev_…"
   try {
     const account = await import("./account.mjs")
@@ -137,11 +137,13 @@ export async function homeCommand(args, flags = {}) {
     // account module unavailable — keep the generic hint
   }
 
+  const commandLabel = opts.commandLabel ?? "dev"
+
   if (!process.stdin.isTTY) {
     // Non-interactive shells get a listing, not a hanging prompt.
     const projects = listProjects()
     if (projects.length === 0) {
-      console.log("Workspace is empty — run `selldoes home` in a terminal, or `selldoes import <path>`.")
+      console.log("Workspace is empty — run `selldoes` in a terminal, or `selldoes import <path>`.")
       return
     }
     console.log("Workspace projects (run `selldoes home` in a terminal for the launcher):")
@@ -166,7 +168,7 @@ export async function homeCommand(args, flags = {}) {
     ]
 
     const answer = await prompts.select({
-      message: "Workspace — recent projects",
+      message: opts.onSelect ? `Workspace — pick a project for \`${commandLabel}\`` : "Workspace — recent projects",
       options,
     })
     if (prompts.isCancel(answer)) cancel()
@@ -177,6 +179,10 @@ export async function homeCommand(args, flags = {}) {
       if (!project) {
         prompts.log.warn("That project is no longer in the workspace.")
         continue
+      }
+      if (opts.onSelect) {
+        await opts.onSelect(project)
+        return
       }
       await openProject(project, flags)
       return

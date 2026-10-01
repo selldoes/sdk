@@ -8,8 +8,11 @@ const HELP = `selldoes — build Selldoes plugins and themes
 Usage: selldoes <command> [options]
 
 Workspace (the SDK is your workspace — projects live anywhere on disk)
-  (no command)             Open the launcher: recent projects, import, create
-  home                     Same as running selldoes with no command
+  (no command)             Start the web workspace and open it in your browser
+  workspace [--dev]        Start the web workspace. --dev = SDK development mode
+                           (dev-ui on Vite with hot reload), --no-open = don't
+                           launch the browser, --port <n> (default 4590)
+  home                     Terminal launcher: recent projects, import, create
   import <path>            Add an existing plugin/theme folder to your workspace
 
 Create
@@ -22,8 +25,9 @@ Plugin projects (a directory with plugin.json)
   validate                  Validate plugin.json, entries and route declarations
   publish                   Build, zip and publish to a SellDesk instance
 
-  (dev/build/… run outside a project folder open the workspace launcher
-   instead of failing — pick the project there and the command runs on it.)
+  (dev/build/… run outside a project folder open the workspace: \`dev\`
+   starts the web workspace, the other commands open the terminal launcher
+   and run the command on the project you pick.)
 
 Theme projects (a directory with manifest.json)
   dev [--store <slug>]      Live preview against a real store (hot reload)
@@ -98,8 +102,8 @@ function resolveProjectDir(flags) {
 
 export async function main() {
   const argv = process.argv.slice(2)
-  // Bare `selldoes` = the workspace launcher.
-  if (argv.length === 0) argv.push("home")
+  // Bare `selldoes` = the web workspace (flags like --no-open pass through).
+  if (argv.length === 0 || argv[0].startsWith("--")) argv.unshift("workspace")
   const { command, args, flags } = parseArgs(argv)
   const normalized =
     command === "--help" || command === "-h"
@@ -145,6 +149,11 @@ export async function main() {
       case "home": {
         const { homeCommand } = await import("./home.mjs")
         await homeCommand(args, flags)
+        return
+      }
+
+      case "workspace": {
+        await workspaceCommand(args, flags)
         return
       }
 
@@ -195,6 +204,20 @@ export async function main() {
   }
 }
 
+/** Starts the web workspace (bare `selldoes` / `selldoes workspace`). */
+async function workspaceCommand(args, flags) {
+  const { startWorkspaceServer } = await import("./workspace-server.mjs")
+  const devMode = flags.dev === true || process.env.SELLDOES_SDK_DEV === "1"
+  const server = await startWorkspaceServer({
+    port: flags.port ? Number(flags.port) : 4590,
+    dev: devMode,
+  })
+  console.log(`\n  Selldoes workspace → ${server.url}`)
+  console.log(devMode ? "  SDK-dev mode — dev-ui served by Vite (hot reload)" : "  Web workspace — projects, previews, AI assistant")
+  console.log("  Ctrl+C stops the server and any running previews\n")
+  if (flags["no-open"] !== true) openBrowser(server.url)
+}
+
 async function runProjectCommand(command, args, flags) {
   const projectDir = resolveProjectDir(flags)
   const kind = projectKind(projectDir)
@@ -203,10 +226,25 @@ async function runProjectCommand(command, args, flags) {
     if (flags.dir !== undefined) {
       die(`No plugin.json or manifest.json in ${projectDir}`)
     }
-    // Not inside a project — open the workspace launcher instead of failing.
-    console.log("No plugin.json or manifest.json in this folder — opening your workspace.\n")
+    // Not inside a project — open the workspace. `dev` starts the web
+    // workspace; other commands let the terminal launcher pick a project and
+    // then run the command on it.
+    if (command === "dev") {
+      if (!process.stdin.isTTY) {
+        die("No plugin.json or manifest.json here — run `selldoes` in a terminal to open the workspace, or pass --dir <path>.")
+      }
+      console.log("No plugin.json or manifest.json in this folder — starting the web workspace.\n")
+      return workspaceCommand([], flags)
+    }
+    if (!process.stdin.isTTY) {
+      die(`No plugin.json or manifest.json here — pass --dir <path>, or run \`selldoes ${command}\` inside a project.`)
+    }
+    console.log(`No plugin.json or manifest.json in this folder — pick a project to run \`${command}\` on.\n`)
     const { homeCommand } = await import("./home.mjs")
-    await homeCommand([], flags)
+    await homeCommand([], flags, {
+      commandLabel: command,
+      onSelect: (project) => runProjectCommand(command, [], { ...flags, dir: project.path }),
+    })
     return
   }
 
