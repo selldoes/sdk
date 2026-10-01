@@ -32,7 +32,16 @@ Theme projects (a directory with manifest.json)
   apply --store <slug>      Apply the uploaded theme to a store
   init <template-id>        Download an existing theme as a local project
 
-Account (themes)
+Account
+  login [--token sk_dev_…]   Connect a developer account (portal → API tokens)
+                             (a plain sk_… key logs the theme lane in instead)
+  packages                   List the packages your developer account owns
+  pull <slug>                Download one of your packages and keep developing it
+                             (--dir <path> to choose where it lands)
+  logout                     Remove saved credentials
+  whoami                     Show connected identities (developer + themes)
+
+Theme account (merchant API keys)
   login --api-key sk_…      Authenticate with an API key (Dashboard → Settings → API Keys)
   logout                    Remove saved credentials
   whoami                    Show the connected account + stores
@@ -44,10 +53,12 @@ Options
   --dir <path>              Project directory (default: nearest plugin.json / manifest.json)
   --port <n> --host <addr>  Dev server address (plugin default 4590, theme default 4173)
   --open                    Open the preview in your browser (plugin dev)
-  --app-url <url>           SellDesk instance for publish (or SELLDOES_APP_URL)
-  --token <token>           Service publish token (or SELLDOES_PUBLISH_TOKEN)
-  --cookie <session=…>      Dashboard session cookie (or SELLDOES_SESSION_COOKIE)
+  --app-url <url>           SellDesk instance (or SELLDOES_APP_URL; saved by login)
+  --token <token>           Developer token sk_dev_… (or SELLDOES_DEV_TOKEN; saved by login)
   --store <id|slug>         Store id (plugin publish) or store slug (theme dev/apply)
+  --notes <text>            Publish: release notes
+  --currency <code>         Publish: price currency (default USD)
+  --trial-days <n>          Publish: marketplace trial days (0-90)
   --price <amount>          Marketplace price (default 0 = free)
   --billing <period>        one_time | monthly | yearly (default one_time)
   --base <url>              SellDesk base URL for themes (or SELLDOES_BASE)
@@ -146,8 +157,21 @@ export async function main() {
       case "login":
       case "logout":
       case "whoami": {
-        const { themeCommand } = await import("./theme.mjs")
-        await themeCommand(command, args, flags)
+        const account = await import("./account.mjs")
+        if (command === "login") return account.loginCommand(args, flags)
+        if (command === "logout") return account.logoutCommand(args, flags)
+        return account.whoamiCommand(args, flags)
+      }
+
+      case "packages": {
+        const { packagesCommand } = await import("./account.mjs")
+        await packagesCommand(args, flags)
+        return
+      }
+
+      case "pull": {
+        const { pullCommand } = await import("./account.mjs")
+        await pullCommand(args, flags)
         return
       }
 
@@ -241,14 +265,18 @@ async function runProjectCommand(command, args, flags) {
 
     case "publish": {
       const { publishPlugin } = await import("./plugin/publish.mjs")
+      const { developerAuth, loadConfig } = await import("./account.mjs")
+      const cfg = loadConfig()
+      const auth = developerAuth(flags, cfg)
       const result = await publishPlugin({
         pluginDir: projectDir,
-        appUrl: String(flags["app-url"] ?? process.env.SELLDOES_APP_URL ?? ""),
-        token: String(flags.token ?? process.env.SELLDOES_PUBLISH_TOKEN ?? "") || undefined,
-        cookie: String(flags.cookie ?? process.env.SELLDOES_SESSION_COOKIE ?? "") || undefined,
-        storeId: flags.store,
+        appUrl: flags["app-url"] ? String(flags["app-url"]) : auth.appUrl,
+        token: flags.token ? String(flags.token) : auth.token ?? undefined,
+        notes: flags.notes ? String(flags.notes) : undefined,
         price: Number(flags.price ?? 0) || 0,
+        currency: flags.currency ? String(flags.currency) : "USD",
         billingPeriod: String(flags.billing ?? "one_time"),
+        trialDays: Number(flags["trial-days"] ?? 0) || 0,
       })
       if (!result.ok) process.exit(1)
       return

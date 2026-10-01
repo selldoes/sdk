@@ -126,6 +126,17 @@ async function removeFlow() {
 }
 
 export async function homeCommand(args, flags = {}) {
+  let accountHint = "connect first: selldoes login --token sk_dev_…"
+  try {
+    const account = await import("./account.mjs")
+    const cfg = account.loadConfig()
+    if (cfg.developerToken || process.env.SELLDOES_DEV_TOKEN) {
+      accountHint = "pull a package your developer account owns"
+    }
+  } catch {
+    // account module unavailable — keep the generic hint
+  }
+
   if (!process.stdin.isTTY) {
     // Non-interactive shells get a listing, not a hanging prompt.
     const projects = listProjects()
@@ -148,6 +159,7 @@ export async function homeCommand(args, flags = {}) {
       ADD_DIVIDER,
       { value: "import", label: "Import existing plugin/theme…", hint: "register a folder that already has plugin.json / manifest.json" },
       { value: "create", label: "Create new plugin/theme…", hint: "scaffold from a template" },
+      { value: "packages", label: "Your packages (Selldoes account)…", hint: accountHint },
       ...(projects.length > 0
         ? [MANAGE_DIVIDER, { value: "remove", label: "Remove a project from the list…", hint: "untracks it — files stay on disk" }]
         : []),
@@ -199,6 +211,40 @@ export async function homeCommand(args, flags = {}) {
 
     if (choice === "remove") {
       await removeFlow()
+      continue
+    }
+
+    if (choice === "packages") {
+      try {
+        const account = await import("./account.mjs")
+        const { appUrl, plugins } = await account.listPackages()
+        if (plugins.length === 0) {
+          prompts.log.info(`No packages on ${appUrl} yet — publish one with \`selldoes publish\`.`)
+          continue
+        }
+        const pick = await prompts.select({
+          message: `Your packages on ${appUrl} — pull one to keep developing`,
+          options: [
+            ...plugins.map((plugin) => ({
+              value: plugin.slug,
+              label: `${plugin.name}`,
+              hint: `${plugin.slug} · v${plugin.latestVersion} · ${plugin.status}`,
+            })),
+            { value: "__back", label: "Back to workspace" },
+          ],
+        })
+        if (prompts.isCancel(pick)) cancel()
+        if (String(pick) === "__back") continue
+        const project = await account.pullPackage(String(pick), {})
+        const openNow = await prompts.confirm({ message: "Open it now?", initialValue: true })
+        if (prompts.isCancel(openNow)) cancel()
+        if (openNow) {
+          await openProject(getProject(project.id) ?? project, flags)
+          return
+        }
+      } catch (error) {
+        prompts.log.error(error instanceof Error ? error.message : String(error))
+      }
       continue
     }
   }

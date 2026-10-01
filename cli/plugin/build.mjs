@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { build } from "esbuild"
+import { zipSync } from "fflate"
 import { fileExists, readJson } from "../util.mjs"
 
 const UI_SOURCE_CANDIDATES = ["src/index.tsx", "src/index.ts", "src/index.jsx", "src/index.js", "index.tsx", "index.ts", "index.jsx", "index.js"]
@@ -37,8 +38,7 @@ const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-loc
  */
 export async function packPluginSource(pluginDir, { zipPath } = {}) {
   const manifest = readJson(path.join(pluginDir, "plugin.json"))
-  const AdmZip = (await import("adm-zip")).default
-  const archive = new AdmZip()
+  const entries = {}
 
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -51,15 +51,15 @@ export async function packPluginSource(pluginDir, { zipPath } = {}) {
       }
       if (entry.name.startsWith(".") || PACK_EXCLUDED_FILES.has(entry.name)) continue
       if (!UPLOADABLE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue
-      archive.addFile(relative, fs.readFileSync(full))
+      entries[relative] = new Uint8Array(fs.readFileSync(full))
     }
   }
   walk(pluginDir)
 
   const target = zipPath ?? path.join(pluginDir, "dist", `${manifest.slug}.zip`)
   fs.mkdirSync(path.dirname(target), { recursive: true })
-  archive.writeZip(target)
-  return { manifest, zipPath: target, files: archive.getEntries().length }
+  fs.writeFileSync(target, zipSync(entries))
+  return { manifest, zipPath: target, files: Object.keys(entries).length }
 }
 
 /**

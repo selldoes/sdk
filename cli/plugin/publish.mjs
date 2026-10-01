@@ -21,26 +21,35 @@ function reportFailure(context, result) {
 }
 
 /**
- * Builds a plugin, zips it and publishes it to a Selldoes instance.
+ * Builds a plugin, zips it and publishes it to a SellDesk instance through the
+ * developer account — the only publish lane since the legacy merchant/bundled
+ * routes were removed (2026-10-01).
  *
- * Two auth lanes:
- *  - `token`: CI / first-party service token (`x-selldoes-publish-token`).
- *  - `cookie`: a dashboard session cookie (`session=…`). The plugin is first
- *    uploaded to the caller's store (`install-upload`), then published from it.
+ * Auth: a developer token (`sk_dev_…`, from the developer portal → API
+ * tokens), via `--token`, `SELLDOES_DEV_TOKEN` or a previous
+ * `selldoes login --token sk_dev_…`. The app URL comes from `--app-url`,
+ * `SELLDOES_APP_URL` or the saved login.
  */
 export async function publishPlugin({
   pluginDir,
   appUrl,
   token,
-  cookie,
-  storeId,
+  notes,
   price = 0,
+  currency = "USD",
   billingPeriod = "one_time",
+  trialDays = 0,
   log = console.log,
 }) {
-  if (!appUrl) throw new Error("--app-url (or SELLDOES_APP_URL) is required")
   const manifest = readJson(path.join(pluginDir, "plugin.json"))
-  const base = appUrl.replace(/\/$/, "")
+  const base = String(appUrl ?? "").replace(/\/$/, "")
+  if (!base) throw new Error("--app-url (or SELLDOES_APP_URL, or a saved `selldoes login`) is required")
+  const auth = String(token ?? process.env.SELLDOES_DEV_TOKEN ?? "").trim()
+  if (!auth) {
+    throw new Error(
+      "Publishing needs a developer token: `selldoes login --token sk_dev_…` (developer portal → API tokens) or pass --token",
+    )
+  }
 
   log(`Building ${manifest.slug}…`)
   const built = await buildPlugin(pluginDir, {
@@ -50,46 +59,31 @@ export async function publishPlugin({
   })
   const data = fs.readFileSync(built.zipPath).toString("base64")
 
-  if (token) {
-    const result = await postJson(
-      `${base}/api/plugins/marketplace/publish`,
-      { slug: manifest.slug, data, price, billingPeriod },
-      { "x-selldoes-publish-token": token },
-    )
-    if (!result.ok) {
-      reportFailure("Publish failed", result)
-      return { ok: false, ...result }
-    }
-    log(`✓ Published ${manifest.slug} v${result.payload?.release?.version ?? manifest.version} (listing: ${result.payload?.listing?.status ?? "?"})`)
-    if (result.payload?.listing?.status === "pending") log("  The listing is pending admin review.")
-    return { ok: true, ...result }
+  log(`Publishing ${manifest.slug} v${manifest.version} → ${base}`)
+  const result = await postJson(
+    `${base}/api/developers/publish`,
+    {
+      slug: manifest.slug,
+      data,
+      notes: typeof notes === "string" && notes ? notes : undefined,
+      price: Number(price) > 0 ? Number(price) : 0,
+      currency: String(currency || "USD").slice(0, 3).toUpperCase(),
+      billingPeriod: String(billingPeriod ?? "one_time"),
+      trialDays: Math.max(0, Math.min(Number(trialDays) || 0, 90)),
+    },
+    { Authorization: `Bearer ${auth}` },
+  )
+  if (!result.ok) {
+    reportFailure("Publish failed", result)
+    return { ok: false, ...result }
   }
 
-  if (cookie) {
-    log("Uploading to your store…")
-    const upload = await postJson(
-      `${base}/api/plugins/external`,
-      { action: "install-upload", data, acknowledge: true, storeId: storeId ? Number(storeId) : undefined },
-      { cookie },
-    )
-    if (!upload.ok) {
-      reportFailure("Upload failed", upload)
-      return { ok: false, ...upload }
-    }
-    log("Creating marketplace listing…")
-    const result = await postJson(
-      `${base}/api/plugins/marketplace/publish`,
-      { slug: manifest.slug, storeId: storeId ? Number(storeId) : undefined, price, billingPeriod },
-      { cookie },
-    )
-    if (!result.ok) {
-      reportFailure("Publish failed", result)
-      return { ok: false, ...result }
-    }
-    log(`✓ Published ${manifest.slug} v${manifest.version} (listing: ${result.payload?.listing?.status ?? "?"})`)
-    if (result.payload?.listing?.status === "pending") log("  The listing is pending admin review.")
-    return { ok: true, ...result }
+  const listing = result.payload?.listing
+  log(`✓ Published ${manifest.slug} v${result.payload?.release?.version ?? manifest.version}`)
+  if (listing?.status) {
+    log(`  Marketplace listing: ${listing.status}${listing.status === "pending" ? " — pending admin review." : "."}`)
+  } else {
+    log("  Saved to your developer workspace (no marketplace listing yet).")
   }
-
-  throw new Error("Publishing needs auth: pass --token (CI) or --cookie (dashboard session)")
+  return { ok: true, ...result }
 }
