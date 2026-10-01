@@ -28,6 +28,7 @@ export interface WsBootstrap {
   mode: "workspace"
   sdk: { version: string; dev: boolean }
   projects: WsProject[]
+  current: { project: WsProject; url: string | null; port: number | null; alive: boolean } | null
   account: { connected: boolean; appUrl?: string; email?: string; name?: string; unreachable?: boolean }
   assistant: { configured: boolean; provider?: string; model?: string }
   defaultDir: string
@@ -69,7 +70,8 @@ export const ws = {
     post<{ project: WsProject; files: string[] }>("/__ws/create-ai", input),
   packages: () => request<{ appUrl: string; plugins: WsPackage[] }>("/__ws/packages"),
   pull: (slug: string, dir?: string) => post<{ project: WsProject }>("/__ws/pull", { slug, dir }),
-  open: (projectId: string) => post<{ preview: WsPreview }>("/__ws/open", { projectId }),
+  select: (projectId: string) => post<{ current: WsBootstrap["current"] }>("/__ws/select", { projectId }),
+  restart: () => post<{ current: WsBootstrap["current"] }>("/__ws/restart", {}),
   previews: () => request<{ previews: WsPreview[] }>("/__ws/previews"),
   close: (id: string) => post<{ ok: boolean }>("/__ws/close", { id }),
   remove: (projectId: string) => post<{ ok: boolean }>("/__ws/remove", { projectId }),

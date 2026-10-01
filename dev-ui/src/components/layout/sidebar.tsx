@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom"
 import {
   BookOpen,
+  ChevronDown,
   Database,
   FileText,
   LayoutDashboard,
@@ -61,9 +62,11 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 ]
 
 export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
-  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen } = useApp()
+  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, setWorkspaceDialogOpen, noProject } = useApp()
   const manifest = bootstrap?.manifest
   const store = bootstrap?.store
+  const current = workspace?.current ?? null
+  const workspaceMode = workspace !== null
 
   return (
     <>
@@ -82,28 +85,64 @@ export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
           </span>
           <span className="text-[15px] font-bold tracking-tight">Selldoes</span>
           <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-            plugin preview
+            {workspaceMode ? (workspace?.sdk.dev ? "SDK dev" : "workspace") : "plugin preview"}
           </span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-3">
-          <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <Store className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-bold">{store?.name ?? "Dev Store"}</span>
-              <span className="block truncate text-[10px] text-muted-foreground">
-                /{store?.slug ?? "dev-store"} · store #{store?.id ?? 1}
+          {workspaceMode ? (
+            /* ── Workspace switcher (the store-switcher of the dev shell) ── */
+            <button
+              type="button"
+              onClick={() => setWorkspaceDialogOpen(true)}
+              title={
+                current
+                  ? `${current.project.path}${workspace?.sdk.dev ? " · SDK-dev mode" : ""}`
+                  : "Create, import or pull a project"
+              }
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-primary/40 hover:bg-muted/50",
+                noProject && "border-dashed",
+              )}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Puzzle className="h-4 w-4" />
               </span>
-            </span>
-            <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-              mock
-            </span>
-          </div>
-          <p className="mt-2 rounded-lg border border-dashed border-border bg-muted/50 px-2.5 py-2 text-[10.5px] leading-relaxed text-muted-foreground">
-            A fake store only your machine can see. Data lives in <code className="text-[10px]">.selldoes-dev/</code>.
-          </p>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-bold">{current ? current.project.name : "No workspace yet"}</span>
+                <span className="block truncate text-[10px] text-muted-foreground">
+                  {current ? `/${current.project.slug} · ${current.project.kind} · local` : "create or import one"}
+                </span>
+              </span>
+              {workspace?.sdk.dev ? (
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                  dev
+                </span>
+              ) : null}
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            </button>
+          ) : (
+            /* ── Standalone `selldoes dev`: the mock store block, unchanged ── */
+            <>
+              <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Store className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-bold">{store?.name ?? "Dev Store"}</span>
+                  <span className="block truncate text-[10px] text-muted-foreground">
+                    /{store?.slug ?? "dev-store"} · store #{store?.id ?? 1}
+                  </span>
+                </span>
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                  mock
+                </span>
+              </div>
+              <p className="mt-2 rounded-lg border border-dashed border-border bg-muted/50 px-2.5 py-2 text-[10.5px] leading-relaxed text-muted-foreground">
+                A fake store only your machine can see. Data lives in <code className="text-[10px]">.selldoes-dev/</code>.
+              </p>
+            </>
+          )}
 
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="mt-4">

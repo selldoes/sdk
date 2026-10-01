@@ -93,7 +93,24 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       return json(res, 200, { project })
     }
 
-    // ── Preview spawning ───────────────────────────────────────────────────
+    // ── Preview spawning / workspace selection ─────────────────────────────
+    if (action === "select" && method === "POST") {
+      const body = await readBody(req)
+      const { listProjects } = await import("./workspace.mjs")
+      const project = listProjects().find((entry) => entry.id === String(body.projectId ?? ""))
+      if (!project) return json(res, 404, { error: "Project not found" })
+      const preview = await ctx.selectProject(project)
+      return json(res, 200, { current: { project, url: preview.url, port: preview.port, alive: true } })
+    }
+
+    if (action === "restart" && method === "POST") {
+      const { listProjects } = await import("./workspace.mjs")
+      const project = listProjects().find((entry) => entry.id === String(ctx.getCurrentId() ?? ""))
+      if (!project) return json(res, 404, { error: "No workspace project selected" })
+      const preview = await ctx.restartProject(project)
+      return json(res, 200, { current: { project, url: preview.url, port: preview.port, alive: true } })
+    }
+
     if (action === "previews" && method === "GET") {
       return json(res, 200, { previews: ctx.listPreviews() })
     }

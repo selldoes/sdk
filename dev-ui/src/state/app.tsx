@@ -1,5 +1,7 @@
 import * as React from "react"
 import { dev } from "@/lib/api"
+import { ws } from "@/lib/ws-api"
+import type { WsBootstrap } from "@/lib/ws-api"
 import type { Bootstrap, PluginManifest, Validation } from "@/lib/types"
 
 // ─── Toasts ──────────────────────────────────────────────────────────────────
@@ -29,6 +31,13 @@ interface AppContextValue {
   toggleTheme: () => void
   toasts: Toast[]
   toast: (message: string, tone?: Toast["tone"]) => void
+  /** Web-workspace state (null in standalone `selldoes dev`). */
+  workspace: WsBootstrap | null
+  refreshWorkspace: () => Promise<void>
+  /** True when the shell runs on a workspace server but nothing is selected. */
+  noProject: boolean
+  workspaceDialogOpen: boolean
+  setWorkspaceDialogOpen: (open: boolean) => void
 }
 
 const AppContext = React.createContext<AppContextValue | null>(null)
@@ -55,19 +64,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
   const [theme, setTheme] = React.useState<"light" | "dark">(() => initialTheme())
   const [toasts, setToasts] = React.useState<Toast[]>([])
+  const [workspace, setWorkspace] = React.useState<WsBootstrap | null>(null)
+  const [noProject, setNoProject] = React.useState(false)
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = React.useState(false)
 
   React.useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark")
     localStorage.setItem("selldoes-dev-theme", theme)
   }, [theme])
 
+  const refreshWorkspace = React.useCallback(async () => {
+    try {
+      const data = await ws.bootstrap()
+      setWorkspace(data)
+    } catch {
+      setWorkspace(null) // standalone `selldoes dev` — no workspace server
+    }
+  }, [])
+
   const refresh = React.useCallback(async () => {
     try {
       const data = await dev.bootstrap()
       setBootstrap(data)
       setError(null)
+      setNoProject(false)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      const code = (cause as { code?: string }).code
+      if (code === "no-project") {
+        // Workspace shell, nothing selected yet — not an error state.
+        setBootstrap(null)
+        setError(null)
+        setNoProject(true)
+      } else {
+        setError(cause instanceof Error ? cause.message : String(cause))
+      }
     } finally {
       setLoading(false)
     }
@@ -76,6 +106,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     void refresh()
   }, [refresh])
+
+  React.useEffect(() => {
+    void refreshWorkspace()
+  }, [refreshWorkspace])
+
+  // First run or nothing selected → onboarding dialog over the normal shell.
+  React.useEffect(() => {
+    if (workspace && (workspace.projects.length === 0 || noProject)) {
+      setWorkspaceDialogOpen(true)
+    }
+  }, [workspace, noProject])
 
   const applyManifest = React.useCallback((manifest: PluginManifest, validation?: Validation) => {
     setBootstrap((previous) => (previous ? { ...previous, manifest, validation: validation ?? previous.validation } : previous))
@@ -109,6 +150,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toggleTheme: () => setTheme((previous) => (previous === "dark" ? "light" : "dark")),
     toasts,
     toast,
+    workspace,
+    refreshWorkspace,
+    noProject,
+    workspaceDialogOpen,
+    setWorkspaceDialogOpen,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

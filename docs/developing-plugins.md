@@ -11,10 +11,14 @@ Everything needed lives in one package — [`selldoes`](https://www.npmjs.com/pa
 ## The workspace-first flow
 
 The SDK remembers your projects per machine (`~/.selldoes/workspace.json`), so
-you run the tooling from anywhere — the plugin folder is just a path:
+you run the tooling from anywhere — the plugin folder is just a path. In the
+dev shell the **sidebar workspace switcher** shows the current project and
+opens the switch/create/import/pull dialog (it doubles as onboarding when the
+workspace is empty); switching is in-place — the shell proxies to whichever
+project's preview is selected:
 
 ```bash
-selldoes                       # web workspace + browser: recents, import, create, packages
+selldoes                       # dev shell + browser: sidebar switcher, onboarding when empty
 selldoes home                  # the same launcher, in your terminal
 selldoes import ~/code/my-plugin   # folder or .zip → registered in the workspace
 selldoes login --token sk_dev_…    # developer account (portal → API tokens)

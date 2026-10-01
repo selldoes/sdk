@@ -6,7 +6,7 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentTypeFor } from "./util.mjs"
-import { listProjects, removeProject, touchProject } from "./workspace.mjs"
+import { getCurrentProjectId, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
 
 /**
  * The workspace server — the web front door of the SDK.
@@ -109,6 +109,7 @@ const MAX_LOG_LINES = 200
 
 export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", dev = false } = {}) {
   const previews = new Map() // id → preview record
+  const spawning = new Map() // project.id → in-flight spawn promise
   let previewSeq = 0
   let accountCache = { at: 0, value: null }
 
@@ -133,7 +134,79 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
       // ── Workspace API ──────────────────────────────────────────────────────
       if (pathname.startsWith("/__ws/")) {
         const { route } = await import("./workspace-api.mjs")
-        return await route({ req, res, pathname, readBody, json, html, ctx: { previews, findPreview, startPreview, stopPreview, listPreviews, bootstrap, defaultDir, host } })
+        return await route({
+          req,
+          res,
+          pathname,
+          readBody,
+          json,
+          html,
+          ctx: {
+            previews,
+            findPreview,
+            startPreview,
+            stopPreview,
+            listPreviews,
+            bootstrap,
+            defaultDir,
+            host,
+            selectProject,
+            restartProject,
+            currentPreviewRecord,
+            getCurrentId: getCurrentProjectId,
+          },
+        })
+      }
+
+      // ── Proxy to the current project's preview server ──────────────────────
+      // The shell (:4590) hosts the sidebar and dialogs; per-project data
+      // flows through the current preview child, so switching workspaces
+      // never leaves the shell.
+      const isProxyPath =
+        pathname === "/__dev" ||
+        pathname.startsWith("/__dev/") ||
+        pathname === "/api/plugin-api" ||
+        pathname.startsWith("/api/plugin-api/") ||
+        pathname === "/api/plugin-public" ||
+        pathname.startsWith("/api/plugin-public/") ||
+        pathname === "/api/plugins" ||
+        pathname.startsWith("/api/plugins/")
+      if (isProxyPath) {
+        let preview = currentPreviewRecord()
+        if (!preview) {
+          // Lazy spawn: the current workspace boots its preview on first use.
+          const currentId = getCurrentProjectId()
+          const project = currentId ? listProjects().find((entry) => entry.id === currentId) ?? null : null
+          if (project && !project.missing) {
+            try {
+              preview = await spawnOnce(project)
+            } catch (error) {
+              return json(res, 502, { error: `Could not start the preview for ${project.slug}: ${error.message}` })
+            }
+          }
+        }
+        if (!preview) {
+          return json(res, 404, { error: "No workspace project selected — pick one in the sidebar", code: "no-project" })
+        }
+        const target = http.request(
+          {
+            host: "127.0.0.1",
+            port: preview.port,
+            path: req.url,
+            method: req.method,
+            headers: { ...req.headers, host: `127.0.0.1:${preview.port}` },
+          },
+          (upstream) => {
+            res.writeHead(upstream.statusCode ?? 502, upstream.headers)
+            upstream.pipe(res)
+          },
+        )
+        target.on("error", () => {
+          if (!res.headersSent) json(res, 502, { error: `Preview for ${preview.slug} is not responding` })
+          else res.end()
+        })
+        req.pipe(target)
+        return
       }
 
       // ── SPA shell ──────────────────────────────────────────────────────────
@@ -159,6 +232,66 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
   // ── Preview spawning ────────────────────────────────────────────────────────
   function findPreview(id) {
     return previews.get(String(id)) ?? null
+  }
+
+  /** The alive preview backing the shell's current workspace, if any. */
+  function currentPreviewRecord() {
+    const currentId = getCurrentProjectId()
+    if (!currentId) return null
+    return [...previews.values()].find((preview) => preview.projectId === currentId && preview.proc && preview.proc.exitCode === null) ?? null
+  }
+
+  /** Selects a project as the shell's current workspace (spawning its preview). */
+  async function selectProject(project) {
+    if (project.missing) throw new Error(`${project.path} no longer exists`)
+    const preview = await spawnOnce(project)
+    setCurrentProject(project.id)
+    return preview
+  }
+
+  /** Resolves when the preview port accepts connections (or fails loudly). */
+  async function waitForPreview(preview) {
+    const deadline = Date.now() + 15_000
+    for (;;) {
+      if (preview.proc && preview.proc.exitCode !== null) {
+        throw new Error(`preview exited during startup — last log: ${preview.log.slice(-2).join(" | ") || "none"}`)
+      }
+      // probePort resolves true when the port is FREE — busy means listening.
+      if (!(await probePort(preview.port, "127.0.0.1"))) return preview
+      if (Date.now() > deadline) throw new Error(`preview did not start listening on ${preview.port} within 15s`)
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+
+  /**
+   * Spawn-once guard: the proxy lazily boots the current project's preview
+   * on the first request, and concurrent requests must not double-spawn.
+   * Resolves only once the preview port actually accepts connections.
+   */
+  function spawnOnce(project) {
+    const inFlight = spawning.get(project.id)
+    if (inFlight) return inFlight
+    const promise = startPreview(project)
+      .then(waitForPreview)
+      .then((preview) => {
+        spawning.delete(project.id)
+        return preview
+      })
+      .catch((error) => {
+        spawning.delete(project.id)
+        throw error
+      })
+    spawning.set(project.id, promise)
+    return promise
+  }
+
+  /** Kill + respawn the current project's preview (for stuck bundles). */
+  async function restartProject(project) {
+    const existing = [...previews.values()].find((preview) => preview.projectId === project.id && preview.proc && preview.proc.exitCode === null)
+    if (existing) stopPreview(existing.id)
+    const preview = await startPreview(project)
+    setCurrentProject(project.id)
+    return waitForPreview(preview)
   }
 
   function listPreviews() {
@@ -223,6 +356,9 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     const preview = findPreview(id)
     if (!preview) return false
     if (preview.proc && preview.proc.exitCode === null) preview.proc.kill()
+    // Drop the record immediately — a dying process still reports
+    // exitCode === null for a moment and would poison currentPreviewRecord().
+    previews.delete(String(id))
     return true
   }
 
@@ -255,10 +391,22 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     } catch {
       // assistant module unavailable
     }
+    const currentId = getCurrentProjectId()
+    const currentProject = currentId ? listProjects().find((entry) => entry.id === currentId) ?? null : null
+    const currentPreview = currentPreviewRecord()
     return {
       mode: "workspace",
       sdk: { version: sdkVersion, dev: Boolean(dev) },
       projects: listProjects(),
+      current:
+        currentProject && !currentProject.missing
+          ? {
+              project: currentProject,
+              url: currentPreview?.url ?? null,
+              port: currentPreview?.port ?? null,
+              alive: Boolean(currentPreview),
+            }
+          : null,
       account: await accountInfo(),
       assistant,
       defaultDir,

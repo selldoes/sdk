@@ -11,13 +11,16 @@ front door, and AI does the heavy lifting.
 
 ```bash
 npm install -g selldoes
-selldoes                 # boots the web workspace and opens your browser
+selldoes                 # boots the dev shell and opens your browser
 ```
 
-The workspace shows the plugins you've worked on lately, lets you import
-existing folders or zips, create new projects (from a template **or by
-describing them**), pull packages your developer account owns, and start
-previews — each in its own tab, several at once.
+The shell opens on `/preview` with a **workspace switcher in the sidebar** (the
+store-switcher of the dev world): the current project, when it was last open,
+and a click away — switch projects in-place, create new ones (from a template
+**or by describing them**), import existing folders or zips, pull packages your
+developer account owns. Empty workspace? The onboarding dialog opens over the
+shell. Each project's preview is spawned behind the shell, so switching never
+loses your place.
 
 ```bash
 selldoes import ~/code/my-plugin     # register an existing project (folder or .zip)
@@ -31,8 +34,8 @@ selldoes ask "add a /stats route that counts rows"                           # a
 
 | Surface | What it's for |
 |---|---|
-| **Web workspace** (`selldoes`, bare) | Daily driver: project cards, previews, import/create/pull, AI status |
-| **Preview** (spawned per project, `:4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply |
+| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). Click it to switch projects in-place, create new (template or Describe-AI), import (folder/zip), pull from your account. Empty workspace → the onboarding dialog opens over the shell |
+| **Preview** (proxied per project, spawned on `4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply. The shell proxies to whichever project is selected |
 | **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant |
 
 State lives in `~/.selldoes/workspace.json` (your projects) and

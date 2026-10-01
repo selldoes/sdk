@@ -1,12 +1,13 @@
 import * as React from "react"
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom"
-import { AlertCircle, RefreshCw } from "lucide-react"
+import { AlertCircle, Puzzle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Topbar } from "@/components/layout/topbar"
 import { GlossaryDialog } from "@/components/layout/glossary"
 import { AssistantPanel } from "@/components/layout/assistant"
+import { WorkspaceDialog } from "@/components/layout/workspace-dialog"
 import { AppProvider, Toaster, useApp } from "@/state/app"
 import { PAGE_TITLES } from "@/lib/pages"
 import { OverviewPage } from "@/pages/overview"
@@ -21,7 +22,6 @@ import { DataPage } from "@/pages/data"
 import { EmailPage } from "@/pages/email"
 import { RealtimePage } from "@/pages/realtime"
 import { ShipPage } from "@/pages/ship"
-import { WorkspaceHome } from "@/pages/workspace"
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { bootstrap, loading, error, refresh } = useApp()
@@ -71,8 +71,26 @@ function DocumentTitle() {
   return null
 }
 
+/** Workspace shell, nothing selected yet — the onboarding dialog takes over. */
+function EmptyWorkspace() {
+  const { setWorkspaceDialogOpen } = useApp()
+  return (
+    <div className="mx-auto mt-24 max-w-md rounded-xl border border-dashed border-border bg-card p-10 text-center">
+      <Puzzle className="mx-auto mb-3 h-9 w-9 text-primary" />
+      <p className="text-sm font-semibold">No workspace selected</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Create a project, import a folder or pull one of your packages — the shell fills in around it.
+      </p>
+      <Button className="mt-4" size="sm" onClick={() => setWorkspaceDialogOpen(true)}>
+        Set up workspace
+      </Button>
+    </div>
+  )
+}
+
 function Shell() {
   const [glossaryOpen, setGlossaryOpen] = React.useState(false)
+  const { noProject } = useApp()
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar onOpenGlossary={() => setGlossaryOpen(true)} />
@@ -80,31 +98,36 @@ function Shell() {
         <Topbar />
         <main className="flex-1 p-6 pb-24">
           <DocumentTitle />
-          <Gate>
-            <Routes>
-              <Route path="/" element={<OverviewPage />} />
-              <Route path="/details" element={<DetailsPage />} />
-              <Route path="/listing" element={<ListingPage />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/storefront" element={<StorefrontPage />} />
-              <Route path="/api" element={<ApiPage />} />
-              <Route path="/jobs" element={<JobsPage />} />
-              <Route path="/hooks" element={<HooksPage />} />
-              <Route path="/data" element={<DataPage />} />
-              <Route path="/email" element={<EmailPage />} />
-              <Route path="/realtime" element={<RealtimePage />} />
-              <Route path="/ship" element={<ShipPage />} />
-            </Routes>
-          </Gate>
+          {noProject ? (
+            <EmptyWorkspace />
+          ) : (
+            <Gate>
+              <Routes>
+                <Route path="/" element={<OverviewPage />} />
+                <Route path="/details" element={<DetailsPage />} />
+                <Route path="/listing" element={<ListingPage />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/storefront" element={<StorefrontPage />} />
+                <Route path="/api" element={<ApiPage />} />
+                <Route path="/jobs" element={<JobsPage />} />
+                <Route path="/hooks" element={<HooksPage />} />
+                <Route path="/data" element={<DataPage />} />
+                <Route path="/email" element={<EmailPage />} />
+                <Route path="/realtime" element={<RealtimePage />} />
+                <Route path="/ship" element={<ShipPage />} />
+              </Routes>
+            </Gate>
+          )}
         </main>
       </div>
       <AssistantPanel />
+      <WorkspaceDialog />
       <GlossaryDialog open={glossaryOpen} onOpenChange={setGlossaryOpen} />
     </div>
   )
 }
 
-function PluginApp() {
+export default function App() {
   return (
     <AppProvider>
       <BrowserRouter basename="/preview">
@@ -113,42 +136,4 @@ function PluginApp() {
       <Toaster />
     </AppProvider>
   )
-}
-
-/**
- * One bundle serves two surfaces: the plugin preview (a `selldoes dev`
- * server) and the workspace home (a `selldoes` workspace server). Probe
- * `/__ws/bootstrap` first — only the workspace server answers it.
- */
-function ModeGate() {
-  const [mode, setMode] = React.useState<"loading" | "workspace" | "plugin">("loading")
-
-  React.useEffect(() => {
-    let cancelled = false
-    fetch("/__ws/bootstrap")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (!cancelled) setMode(data?.mode === "workspace" ? "workspace" : "plugin")
-      })
-      .catch(() => {
-        if (!cancelled) setMode("plugin")
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  if (mode === "loading") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <span className="text-sm text-muted-foreground">Loading…</span>
-      </div>
-    )
-  }
-  if (mode === "workspace") return <WorkspaceHome />
-  return <PluginApp />
-}
-
-export default function App() {
-  return <ModeGate />
 }

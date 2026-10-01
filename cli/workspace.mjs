@@ -30,7 +30,7 @@ export function workspaceFile() {
   return path.join(workspaceDir(), "workspace.json")
 }
 
-const EMPTY = { version: 1, projects: [] }
+const EMPTY = { version: 1, projects: [], currentId: null }
 
 /** Normalizes a path so the same folder never appears twice. */
 export function normalizePath(target) {
@@ -69,6 +69,7 @@ export function loadWorkspace() {
     const stored = JSON.parse(fs.readFileSync(workspaceFile(), "utf8"))
     return {
       version: 1,
+      currentId: typeof stored.currentId === "string" ? stored.currentId : null,
       projects: (Array.isArray(stored.projects) ? stored.projects : []).map((project) => {
         const clean = { ...project }
         delete clean.missing // runtime-only flag, never persisted
@@ -102,15 +103,18 @@ export function touchProject({ dir, kind, source = "folder", name, slug }) {
   const data = loadWorkspace()
   const now = new Date().toISOString()
   const existing = data.projects.find((project) => project.path === normalized)
+  let id
   if (existing) {
+    id = existing.id
     existing.kind = detected
     existing.name = name ?? meta.name
     existing.slug = slug ?? meta.slug
     existing.lastOpenedAt = now
     if (source && source !== "folder") existing.source = source
   } else {
+    id = idFor(normalized)
     data.projects.push({
-      id: idFor(normalized),
+      id,
       kind: detected,
       name: name ?? meta.name,
       slug: slug ?? meta.slug,
@@ -120,11 +124,30 @@ export function touchProject({ dir, kind, source = "folder", name, slug }) {
       lastOpenedAt: now,
     })
   }
+  // Last opened/selected = the shell's current workspace.
+  data.currentId = id
   // Keep the newest MAX_PROJECTS entries.
   data.projects.sort((a, b) => String(b.lastOpenedAt).localeCompare(String(a.lastOpenedAt)))
   if (data.projects.length > MAX_PROJECTS) data.projects = data.projects.slice(0, MAX_PROJECTS)
   saveWorkspace(data)
   return data.projects.find((project) => project.path === normalized)
+}
+
+/** The workspace the web shell should show, or null when nothing is selected. */
+export function getCurrentProjectId() {
+  const data = loadWorkspace()
+  if (!data.currentId) return null
+  return data.projects.some((project) => project.id === data.currentId) ? data.currentId : null
+}
+
+/** Selects the shell's current workspace (used by /__ws/select). */
+export function setCurrentProject(id) {
+  const data = loadWorkspace()
+  const project = data.projects.find((entry) => entry.id === String(id))
+  if (!project) return null
+  data.currentId = project.id
+  saveWorkspace(data)
+  return project
 }
 
 /** Lists projects, newest first. `missing` flags paths that no longer exist. */
@@ -146,6 +169,7 @@ export function removeProject(id) {
   const data = loadWorkspace()
   const before = data.projects.length
   data.projects = data.projects.filter((project) => project.id !== id)
+  if (data.currentId === id) data.currentId = data.projects[0]?.id ?? null
   saveWorkspace(data)
   return data.projects.length < before
 }
