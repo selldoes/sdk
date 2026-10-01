@@ -223,9 +223,18 @@ export async function createCommand(args, flags) {
     }
   }
 
+  // Register the new project in the workspace so `selldoes home` lists it.
+  try {
+    const { touchProject } = await import("./workspace.mjs")
+    touchProject({ dir: targetDir, kind, source: "create" })
+  } catch {
+    // best-effort
+  }
+
   const relative = path.relative(process.cwd(), targetDir) || "."
   const lines = [`Created ${name} in ${relative}/`, "", "Next steps:", `  cd ${relative}`]
   if (!install) lines.push("  npm install")
+  lines.push("  (or run `selldoes home` anywhere — it's in your workspace now)")
   if (kind === "plugin") {
     lines.push("  npx selldoes dev", "", "Docs: https://selldoes.com/docs/plugins")
   } else {

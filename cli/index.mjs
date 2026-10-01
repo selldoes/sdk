@@ -7,6 +7,11 @@ const HELP = `selldoes — build Selldoes plugins and themes
 
 Usage: selldoes <command> [options]
 
+Workspace (the SDK is your workspace — projects live anywhere on disk)
+  (no command)             Open the launcher: recent projects, import, create
+  home                     Same as running selldoes with no command
+  import <path>            Add an existing plugin/theme folder to your workspace
+
 Create
   create [dir]              Scaffold a new plugin or theme (interactive)
 
@@ -16,6 +21,9 @@ Plugin projects (a directory with plugin.json)
   pack                      Bundle + zip without publishing
   validate                  Validate plugin.json, entries and route declarations
   publish                   Build, zip and publish to a SellDesk instance
+
+  (dev/build/… run outside a project folder open the workspace launcher
+   instead of failing — pick the project there and the command runs on it.)
 
 Theme projects (a directory with manifest.json)
   dev [--store <slug>]      Live preview against a real store (hot reload)
@@ -79,6 +87,8 @@ function resolveProjectDir(flags) {
 
 export async function main() {
   const argv = process.argv.slice(2)
+  // Bare `selldoes` = the workspace launcher.
+  if (argv.length === 0) argv.push("home")
   const { command, args, flags } = parseArgs(argv)
   const normalized =
     command === "--help" || command === "-h"
@@ -121,6 +131,18 @@ export async function main() {
         return
       }
 
+      case "home": {
+        const { homeCommand } = await import("./home.mjs")
+        await homeCommand(args, flags)
+        return
+      }
+
+      case "import": {
+        const { importCommand } = await import("./home.mjs")
+        await importCommand(args, flags)
+        return
+      }
+
       case "login":
       case "logout":
       case "whoami": {
@@ -154,9 +176,22 @@ async function runProjectCommand(command, args, flags) {
   const kind = projectKind(projectDir)
 
   if (!kind) {
-    die(
-      "No plugin.json or manifest.json found — run this inside a plugin or theme project, or create one with `selldoes create`"
-    )
+    if (flags.dir !== undefined) {
+      die(`No plugin.json or manifest.json in ${projectDir}`)
+    }
+    // Not inside a project — open the workspace launcher instead of failing.
+    console.log("No plugin.json or manifest.json in this folder — opening your workspace.\n")
+    const { homeCommand } = await import("./home.mjs")
+    await homeCommand([], flags)
+    return
+  }
+
+  // Remember this project in the workspace (last-opened ordering).
+  try {
+    const { touchProject } = await import("./workspace.mjs")
+    touchProject({ dir: projectDir, kind })
+  } catch {
+    // workspace state is best-effort — never block a command on it
   }
 
   if (kind === "theme") {
