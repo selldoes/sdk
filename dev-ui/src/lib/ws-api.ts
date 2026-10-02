@@ -9,11 +9,22 @@ export interface WsProject {
   source?: string
   /** Built-in icon name from the project manifest, when present. */
   icon?: string
+  /** Uploaded custom icon path from the manifest (e.g. "assets/icon.png"). */
+  iconUrl?: string
   /** Accent chosen in the New-workspace wizard (cosmetic, stored in workspace.json). */
   color?: string | null
   createdAt?: string
   lastOpenedAt?: string
   missing?: boolean
+}
+
+/** Resolves a project's custom icon (uploaded image) to a URL the shell can render. */
+export function projectIconUrl(project: { id?: string; iconUrl?: string | null }): string | null {
+  const value = String(project.iconUrl ?? "").trim()
+  if (!value) return null
+  if (/^(https?:)?\/\//.test(value) || value.startsWith("data:")) return value
+  if (!project.id) return null
+  return `/__ws/project-icon/${encodeURIComponent(project.id)}`
 }
 
 export interface WsPreview {
@@ -105,11 +116,14 @@ export const ws = {
     tags?: string[]
     permissions?: string[]
     color?: string
+    /** base64 custom icon + its original filename (written into assets/ on create). */
+    iconData?: string
+    iconFileName?: string
     withUi?: boolean
     uiFlavor?: "js" | "react"
     /** false = register without making it current (themes can't preview in the shell). */
     select?: boolean
-  }) => post<{ project: WsProject; needsInstall?: boolean }>("/__ws/create", input),
+  }) => post<{ project: WsProject; needsInstall?: boolean; iconError?: string | null }>("/__ws/create", input),
   createAi: (input: {
     name: string
     prompt: string
@@ -122,8 +136,10 @@ export const ws = {
     icon?: string
     tags?: string[]
     color?: string
+    iconData?: string
+    iconFileName?: string
     select?: boolean
-  }) => post<{ project: WsProject; files: string[] }>("/__ws/create-ai", input),
+  }) => post<{ project: WsProject; files: string[]; iconError?: string | null }>("/__ws/create-ai", input),
   packages: () => request<{ appUrl: string; plugins: WsPackage[] }>("/__ws/packages"),
   connect: (token: string, appUrl?: string) =>
     post<{ connected: true; appUrl: string; email?: string; name?: string }>("/__ws/connect", {
@@ -150,6 +166,9 @@ export const ws = {
   /** Unregisters every project (files are never touched). */
   clearRegistry: () => post<{ ok: boolean; removed: number }>("/__ws/clear-registry", { confirm: true }),
   saveSettings: (input: { defaultDir: string }) => post<{ ok: boolean; defaultDir: string }>("/__ws/settings", input),
+  /** Opens the native OS folder picker on the machine running the server. */
+  chooseFolder: (initialDir?: string) =>
+    post<{ path: string | null; cancelled: boolean }>("/__ws/choose-folder", initialDir ? { initialDir } : {}),
   setColor: (projectId: string, color: string | null) =>
     post<{ ok: boolean; project: WsProject }>("/__ws/color", { projectId, color }),
   openEditor: (input: { projectId?: string; file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>

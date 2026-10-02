@@ -143,6 +143,23 @@ export function sortByRisk(permissions: string[] = []) {
   return [...permissions].sort((a, b) => RISK_ORDER[permissionInfo(b).risk] - RISK_ORDER[permissionInfo(a).risk])
 }
 
+/**
+ * Filters a permission key list by a free-text query, matching the key, label,
+ * description and risk/impact text. Used by the search boxes in the Details
+ * page and the New-workspace permission picker.
+ */
+export function filterPermissions<T extends string>(permissions: T[] = [], query = ""): T[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return permissions
+  return permissions.filter((permission) => {
+    const info = permissionInfo(permission)
+    return [permission, info.label, info.description, info.impact, info.risk]
+      .join(" ")
+      .toLowerCase()
+      .includes(needle)
+  })
+}
+
 export const RISK_STYLES: Record<PermissionRisk, { badge: string; dot: string; text: string }> = {
   low: { badge: "bg-gray-100 text-gray-600 border-gray-200", dot: "bg-gray-400", text: "text-gray-600" },
   medium: { badge: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500", text: "text-amber-700" },

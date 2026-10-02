@@ -1,4 +1,32 @@
+import fs from "node:fs"
 import path from "node:path"
+import { contentTypeFor } from "./util.mjs"
+import { saveAsset } from "./plugin/dev/assets.mjs"
+
+/**
+ * Writes a base64 icon uploaded during the New-workspace wizard into the
+ * created project and points `plugin.json.iconUrl` at it. Themes have no icon
+ * field, so they're skipped. Never throws — a bad icon shouldn't lose the
+ * project the user just created.
+ */
+function applyUploadedIcon(dir, kind, body) {
+  if (kind !== "plugin" || typeof body.iconData !== "string" || !body.iconData) return { path: null, error: null }
+  try {
+    const saved = saveAsset({
+      pluginDir: dir,
+      folder: "assets",
+      name: typeof body.iconFileName === "string" && body.iconFileName ? body.iconFileName : "icon.png",
+      data: body.iconData,
+    })
+    const manifestPath = path.join(dir, "plugin.json")
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+    manifest.iconUrl = saved.path
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    return { path: saved.path, error: null }
+  } catch (error) {
+    return { path: null, error: error instanceof Error ? error.message : String(error) }
+  }
+}
 
 /**
  * HTTP handlers for the workspace server's `/__ws/*` API. Kept separate from
@@ -23,6 +51,19 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
     if (action === "projects" && method === "GET") {
       const { listProjects } = await import("./workspace.mjs")
       return json(res, 200, { projects: listProjects() })
+    }
+
+    // Uploaded project icon (manifest iconUrl) served to the shell's switcher.
+    if (action.startsWith("project-icon/") && method === "GET") {
+      const id = decodeURIComponent(action.slice("project-icon/".length))
+      const { listProjects, projectIconFile } = await import("./workspace.mjs")
+      const project = listProjects().find((entry) => entry.id === id)
+      if (!project) return json(res, 404, { error: "Project not found" })
+      const file = projectIconFile(project)
+      if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) return json(res, 404, { error: "No icon" })
+      res.writeHead(200, { "Content-Type": contentTypeFor(file), "Cache-Control": "no-store" })
+      res.end(fs.readFileSync(file))
+      return
     }
 
     if (action === "remove" && method === "POST") {
@@ -73,6 +114,17 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       return json(res, 200, { ok: true, defaultDir })
     }
 
+    // Native OS folder picker for Settings → "Choose folder". Runs on the
+    // machine hosting the server, so it's the developer's own dialog.
+    if (action === "choose-folder" && method === "POST") {
+      const body = await readBody(req)
+      const { chooseFolder } = await import("./folder-picker.mjs")
+      const initialDir = body.initialDir ? String(body.initialDir) : ctx.defaultDir
+      const result = await chooseFolder({ initialDir })
+      if (result.error) return json(res, 501, { error: result.error })
+      return json(res, 200, { path: result.path ?? null, cancelled: result.cancelled === true })
+    }
+
     if (action === "color" && method === "POST") {
       const body = await readBody(req)
       const { setProjectColor } = await import("./workspace.mjs")
@@ -117,6 +169,9 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
         permissions: Array.isArray(body.permissions) ? body.permissions.map(String) : undefined,
         color: typeof body.color === "string" ? body.color : undefined,
       })
+      const icon = applyUploadedIcon(created.targetDir, kind, body)
+      // Re-touch so the registry picks up the freshly patched iconUrl.
+      if (icon.path) workspaceLib.touchProject({ dir: created.targetDir, kind })
       if (body.select === false) {
         // Scaffolding makes the project current; restore (or clear) when the
         // caller can't preview it (themes need a connected store).
@@ -124,7 +179,7 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
         else workspaceLib.clearCurrentProject()
       }
       const project = workspaceLib.listProjects().find((entry) => entry.path === workspaceLib.normalizePath(created.targetDir)) ?? null
-      return json(res, 200, { project, needsInstall: kind === "plugin" && body.uiFlavor === "react" })
+      return json(res, 200, { project, needsInstall: kind === "plugin" && body.uiFlavor === "react", iconError: icon.error })
     }
 
     if (action === "create-ai" && method === "POST") {
@@ -156,12 +211,14 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
         },
         color: typeof body.color === "string" ? body.color : undefined,
       })
+      const icon = applyUploadedIcon(created.dir, "plugin", body)
+      if (icon.path) workspaceLib.touchProject({ dir: created.dir, kind: "plugin" })
       if (body.select === false) {
         if (previousCurrent) workspaceLib.setCurrentProject(previousCurrent)
         else workspaceLib.clearCurrentProject()
       }
       const project = workspaceLib.listProjects().find((entry) => entry.path === workspaceLib.normalizePath(created.dir)) ?? null
-      return json(res, 200, { project, files: created.files })
+      return json(res, 200, { project, files: created.files, iconError: icon.error })
     }
 
     // ── Developer account ──────────────────────────────────────────────────

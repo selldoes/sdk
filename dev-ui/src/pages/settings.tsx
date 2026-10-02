@@ -22,6 +22,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { Callout, CopyButton, PageHead } from "@/components/shared"
+import { SkeletonCard, SkeletonList } from "@/components/skeletons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,7 +37,7 @@ import { ACCENTS, ACCENT_NAMES, accentFor, type AccentName } from "@/lib/project
 import type { DevConfigResponse } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
 import { cn, timeAgo } from "@/lib/utils"
-import { ws } from "@/lib/ws-api"
+import { ws, projectIconUrl } from "@/lib/ws-api"
 import type { WsPackage, WsPackageDetail, WsProject, WsThemeStatus } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
@@ -504,6 +505,12 @@ export function SettingsPage() {
   const account = workspace?.account ?? null
   const connected = Boolean(account?.connected)
 
+  // Keep the connect form's URL in sync with the saved account config (the
+  // state otherwise goes stale after connect/disconnect).
+  React.useEffect(() => {
+    if (!connected && account?.appUrl) setAppUrl(account.appUrl)
+  }, [connected, account?.appUrl])
+
   const loadPackages = React.useCallback(async () => {
     setPackagesBusy("load")
     setPackagesError(null)
@@ -634,6 +641,20 @@ export function SettingsPage() {
       setRegistryBusy,
     )
 
+  const chooseDefaultDir = () =>
+    void run(
+      "choose-dir",
+      async () => {
+        const result = await ws.chooseFolder(defaultDir.trim() || undefined)
+        if (result.cancelled || !result.path) return
+        setDefaultDir(result.path)
+        await ws.saveSettings({ defaultDir: result.path })
+        await refreshWorkspace()
+        toast("Default project directory saved", "success")
+      },
+      setRegistryBusy,
+    )
+
   const removeProject = (project: WsProject) =>
     setConfirmAction({
       title: `Remove ${project.name} from the workspace?`,
@@ -693,7 +714,7 @@ export function SettingsPage() {
   const activeAccent: AccentName = current ? accentFor(current) : "orange"
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
+    <div className="space-y-5">
       <PageHead
         title="Settings"
         description={
@@ -896,10 +917,7 @@ export function SettingsPage() {
             ) : null}
 
             {connected && packagesBusy === "load" && packages === null ? (
-              <div className="flex items-center justify-center gap-2 rounded-lg border border-border py-8 text-xs text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading your packages…
-              </div>
+              <SkeletonList rows={3} />
             ) : connected && packagesError ? (
               <Callout kind="danger">
                 <p className="font-semibold">Could not load packages</p>
@@ -1076,6 +1094,10 @@ export function SettingsPage() {
               <p className="mt-0.5 text-[12px]">{configError}</p>
             </Callout>
           ) : null}
+          {config === null && !configError ? (
+            <SkeletonCard rows={4} className="border-0 bg-transparent p-0" />
+          ) : (
+            <>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs">Provider</Label>
@@ -1161,6 +1183,8 @@ export function SettingsPage() {
               </span>
             ) : null}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1176,6 +1200,10 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {config === null && !configError ? (
+            <SkeletonCard rows={5} className="border-0 bg-transparent p-0" />
+          ) : (
+            <>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="cfg-store-id" className="text-xs">
@@ -1242,6 +1270,8 @@ export function SettingsPage() {
               Store identity, port and mocks apply on preview restart — the workspace restarts it for you.
             </span>
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1262,22 +1292,49 @@ export function SettingsPage() {
               <Label htmlFor="default-dir" className="text-xs">
                 Default directory for new projects
               </Label>
-              <div className="flex gap-2">
-                <Input id="default-dir" value={defaultDir} onChange={(event) => setDefaultDir(event.target.value)} placeholder="C:/Users/you/Selldoes" className="h-9 font-mono text-xs" />
-                <Button size="sm" variant="outline" className="h-9 shrink-0" disabled={registryBusy !== null || !defaultDir.trim()} onClick={saveDefaultDir}>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  id="default-dir"
+                  value={defaultDir}
+                  onChange={(event) => setDefaultDir(event.target.value)}
+                  placeholder="~/Documents/Selldoes"
+                  className="h-9 min-w-[240px] flex-1 font-mono text-xs"
+                />
+                <Button size="sm" className="h-9 shrink-0" disabled={registryBusy !== null} onClick={chooseDefaultDir}>
+                  {registryBusy === "choose-dir" ? <Loader2 className="animate-spin" /> : <FolderOpen />}
+                  Choose folder
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 shrink-0"
+                  disabled={registryBusy !== null || !defaultDir.trim()}
+                  onClick={saveDefaultDir}
+                >
                   {registryBusy === "default-dir" ? <Loader2 className="animate-spin" /> : null}
-                  Save
+                  Save path
                 </Button>
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                New projects land here unless you choose another folder while creating. The registry itself stays in{" "}
+                <code className="font-mono">~/.selldoes/workspace.json</code>.
+              </p>
             </div>
 
             <div className="space-y-1.5">
               {workspace?.projects.map((project) => {
                 const isCurrent = project.id === current?.id
+                const iconSrc = projectIconUrl(project)
                 return (
                   <div key={project.id} className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2">
-                    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md", ACCENTS[accentFor(project)].tile)}>
-                      {project.kind === "theme" ? <Palette className="h-3.5 w-3.5" /> : <Puzzle className="h-3.5 w-3.5" />}
+                    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md", !iconSrc && ACCENTS[accentFor(project)].tile)}>
+                      {iconSrc ? (
+                        <img src={iconSrc} alt="" className="h-full w-full object-cover" />
+                      ) : project.kind === "theme" ? (
+                        <Palette className="h-3.5 w-3.5" />
+                      ) : (
+                        <Puzzle className="h-3.5 w-3.5" />
+                      )}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1.5 truncate text-xs font-semibold">
@@ -1301,7 +1358,12 @@ export function SettingsPage() {
                           variant="ghost"
                           className="h-7 px-2 text-[11px]"
                           disabled={registryBusy !== null}
-                          onClick={() =>
+                          title={project.kind === "theme" ? "Themes preview against a real store" : undefined}
+                          onClick={() => {
+                            if (project.kind === "theme") {
+                              toast(`Themes preview against a real store — run \`selldoes dev --store <slug>\` in ${project.path}`, "default")
+                              return
+                            }
                             void run(
                               `select:${project.id}`,
                               async () => {
@@ -1311,7 +1373,7 @@ export function SettingsPage() {
                               },
                               setRegistryBusy,
                             )
-                          }
+                          }}
                         >
                           Open
                         </Button>

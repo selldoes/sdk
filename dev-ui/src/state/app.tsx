@@ -36,6 +36,8 @@ interface AppContextValue {
   toast: (message: string, tone?: Toast["tone"]) => void
   /** Web-workspace state (null in standalone `selldoes dev`). */
   workspace: WsBootstrap | null
+  /** False until the first workspace bootstrap settles (success or not). */
+  workspaceLoaded: boolean
   refreshWorkspace: () => Promise<void>
   /** True when the shell runs on a workspace server but nothing is selected. */
   noProject: boolean
@@ -86,6 +88,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = React.useState<"light" | "dark">(() => initialTheme())
   const [toasts, setToasts] = React.useState<Toast[]>([])
   const [workspace, setWorkspace] = React.useState<WsBootstrap | null>(null)
+  const [workspaceLoaded, setWorkspaceLoaded] = React.useState(false)
   const [noProject, setNoProject] = React.useState(false)
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = React.useState(false)
   const [workspaceDialogPane, setWorkspaceDialogPane] = React.useState<WorkspaceDialogPane>("new")
@@ -105,6 +108,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setWorkspace(data)
     } catch {
       setWorkspace(null) // standalone `selldoes dev` — no workspace server
+    } finally {
+      setWorkspaceLoaded(true)
     }
   }, [])
 
@@ -190,6 +195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toasts,
     toast,
     workspace,
+    workspaceLoaded,
     refreshWorkspace,
     noProject,
     workspaceDialogOpen,

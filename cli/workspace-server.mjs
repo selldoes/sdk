@@ -1,12 +1,11 @@
 import http from "node:http"
 import fs from "node:fs"
-import os from "node:os"
 import net from "node:net"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentTypeFor } from "./util.mjs"
-import { getCurrentProjectId, getWorkspaceSettings, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
+import { defaultProjectsDir, getCurrentProjectId, getWorkspaceSettings, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
 import { attachTerminalServer } from "./terminal.mjs"
 
 /**
@@ -91,7 +90,10 @@ function serveSpa(res, pathname, { devMiddleware } = {}) {
   if (devMiddleware) return null // caller delegates to Vite
   const requested = pathname.replace(/^\/preview\/?/, "")
   const candidate = requested ? path.join(UI_DIST, ...requested.split("/")) : path.join(UI_DIST, "index.html")
-  const safe = path.resolve(candidate).startsWith(path.resolve(UI_DIST))
+  const root = path.resolve(UI_DIST)
+  const relative = path.relative(root, path.resolve(candidate))
+  // `path.relative` avoids the sibling-prefix trap startsWith() has (e.g. ui-dist-evil).
+  const safe = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
   if (safe && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
     res.writeHead(200, { "Content-Type": contentTypeFor(candidate), "Cache-Control": "no-store", "Content-Security-Policy": UI_CSP })
     fs.createReadStream(candidate).pipe(res)
@@ -121,9 +123,9 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
   }
 
   const sdkVersion = JSON.parse(fs.readFileSync(path.join(SDK_ROOT, "package.json"), "utf8")).version
-  const defaultDirFallback = path.join(os.homedir(), "Selldoes")
+  const defaultDirFallback = defaultProjectsDir()
 
-  /** The default parent dir for new projects — workspace.json wins, else ~/Selldoes. */
+  /** The default parent dir for new projects — workspace.json wins, else ~/Documents/Selldoes. */
   function resolveDefaultDir() {
     try {
       return getWorkspaceSettings().defaultDir ?? defaultDirFallback
@@ -411,7 +413,10 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
       accountCache = { at: Date.now(), value }
       return value
     } catch {
-      return { connected: true, appUrl: accountCache.value?.appUrl, unreachable: true }
+      // Cache the failure too — otherwise every bootstrap refetches a dead host.
+      const value = { connected: true, appUrl: accountCache.value?.appUrl, unreachable: true }
+      accountCache = { at: Date.now(), value }
+      return value
     }
   }
 

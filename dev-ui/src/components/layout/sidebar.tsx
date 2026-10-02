@@ -23,6 +23,8 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher"
+import { SkeletonWorkspaceSwitcher } from "@/components/skeletons"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useApp } from "@/state/app"
 import { cn } from "@/lib/utils"
 
@@ -78,7 +80,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 ]
 
 export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
-  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, setTerminalOpen, setPaletteOpen } = useApp()
+  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, workspaceLoaded, setTerminalOpen, setPaletteOpen } = useApp()
   const manifest = bootstrap?.manifest
   const store = bootstrap?.store
   const workspaceMode = workspace !== null
@@ -99,13 +101,21 @@ export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
             <ShoppingBag className="h-4 w-4" />
           </span>
           <span className="text-[15px] font-bold tracking-tight">Selldoes</span>
-          <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-            {workspaceMode ? (workspace?.sdk.dev ? "SDK dev" : "workspace") : "plugin preview"}
-          </span>
+          {workspaceLoaded ? (
+            <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              {workspaceMode ? (workspace?.sdk.dev ? "SDK dev" : "workspace") : "plugin preview"}
+            </span>
+          ) : (
+            <Skeleton className="h-4 w-16 rounded-full" />
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-3">
-          {workspaceMode ? (
+          {!workspaceLoaded ? (
+            /* The workspace bootstrap hasn't answered yet — don't flash the
+               standalone "mock store" block while we find out which mode we're in. */
+            <SkeletonWorkspaceSwitcher />
+          ) : workspaceMode ? (
             /* ── Workspace switcher (the store-switcher of the dev shell) ── */
             <WorkspaceSwitcher />
           ) : (

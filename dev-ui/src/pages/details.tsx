@@ -9,6 +9,7 @@ import {
   Info,
   Loader2,
   RefreshCw,
+  Search,
   Shield,
   Trash2,
   Upload,
@@ -25,7 +26,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { dev, readFileBase64 } from "@/lib/api"
-import { CATEGORIES, PERMISSION_INFO, PERMISSION_ORDER, RISK_STYLES, highestRisk } from "@/lib/permissions"
+import { ICON_ACCEPT, ICON_GUIDE, prepareIconFile } from "@/lib/icon-upload"
+import { CATEGORIES, PERMISSION_INFO, PERMISSION_ORDER, RISK_STYLES, filterPermissions, highestRisk } from "@/lib/permissions"
 import type { PluginManifest } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
 import { cn, mediaUrl } from "@/lib/utils"
@@ -44,6 +46,7 @@ export function DetailsPage() {
   const [manifest, setManifest] = React.useState<PluginManifest>(initial)
   const [saving, setSaving] = React.useState(false)
   const [savedAt, setSavedAt] = React.useState<string | null>(null)
+  const [permissionQuery, setPermissionQuery] = React.useState("")
   const iconInput = React.useRef<HTMLInputElement>(null)
   const shotInput = React.useRef<HTMLInputElement>(null)
   const dirty = !shallowEqual(manifest, initial)
@@ -52,6 +55,7 @@ export function DetailsPage() {
   const allowedTables = manifest.allowedTables ?? []
   const tagsText = (manifest.tags ?? []).join(", ")
   const tablesText = allowedTables.join(", ")
+  const visiblePermissions = filterPermissions(PERMISSION_ORDER, permissionQuery)
 
   const set = (patch: Partial<PluginManifest>) => setManifest((previous) => ({ ...previous, ...patch }))
 
@@ -94,11 +98,22 @@ export function DetailsPage() {
 
   const uploadIcon = async (file: File) => {
     try {
-      const data = await readFileBase64(file)
+      const prepared = await prepareIconFile(file)
       const extension = file.name.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase() ?? ".png"
-      const uploaded = await dev.uploadAsset({ folder: "assets", name: `icon${extension}`, data })
+      const uploaded = await dev.uploadAsset({ folder: "assets", name: `icon${extension}`, data: prepared.data })
+      const previous = manifest.iconUrl
       set({ iconUrl: uploaded.path })
-      toast("Icon uploaded — save to keep it")
+      // Replace, don't accumulate: drop the old uploaded icon once the new one
+      // is on disk (keep external URLs untouched).
+      if (previous && previous !== uploaded.path && /^assets\//.test(previous)) {
+        try {
+          await dev.deleteAsset(previous)
+        } catch {
+          // already gone
+        }
+      }
+      if (prepared.warning) toast(prepared.warning)
+      toast("Icon uploaded — save to keep it", "success")
     } catch (error) {
       toast(error instanceof Error ? error.message : String(error), "error")
     }
@@ -298,7 +313,7 @@ export function DetailsPage() {
                 <input
                   ref={iconInput}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  accept={ICON_ACCEPT}
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0]
@@ -307,6 +322,7 @@ export function DetailsPage() {
                   }}
                 />
               </div>
+              <p className="text-[11px] text-muted-foreground">{ICON_GUIDE}</p>
               <div className="grid grid-cols-8 gap-2 sm:grid-cols-10">
                 {PLUGIN_ICON_CHOICES.map((name) => {
                   const active = !manifest.iconUrl && (manifest.icon ?? "puzzle") === name
@@ -421,7 +437,17 @@ export function DetailsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
-              {PERMISSION_ORDER.map((permission) => {
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={permissionQuery}
+                  onChange={(event) => setPermissionQuery(event.target.value)}
+                  placeholder={`Search ${PERMISSION_ORDER.length} permissions…`}
+                  className="h-9 pl-8"
+                  aria-label="Search permissions"
+                />
+              </div>
+              {visiblePermissions.map((permission) => {
                 const info = PERMISSION_INFO[permission]
                 const checked = permissions.includes(permission)
                 const styles = RISK_STYLES[info.risk]
@@ -457,6 +483,11 @@ export function DetailsPage() {
                   </label>
                 )
               })}
+              {visiblePermissions.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+                  No permissions match “{permissionQuery}”.
+                </p>
+              ) : null}
 
               <div className="pt-2">
                 <Label htmlFor="tables">Allowed store tables</Label>

@@ -2,6 +2,7 @@ import * as React from "react"
 import { useNavigate } from "react-router-dom"
 import { AlertCircle, CheckCircle2, Eraser, Pause, Play, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { dev } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useDevStream } from "@/lib/use-dev-stream"
@@ -40,6 +41,7 @@ export function ConsolePage() {
   const [paused, setPaused] = React.useState(false)
   const [filter, setFilter] = React.useState<Filter>("all")
   const [status, setStatus] = React.useState<DevStatus | null>(bootstrap?.status ?? null)
+  const [loaded, setLoaded] = React.useState(false)
   const cursorRef = React.useRef(0)
   const pausedRef = React.useRef(paused)
   pausedRef.current = paused
@@ -50,6 +52,13 @@ export function ConsolePage() {
     const entry = { id: cursorRef.current, line }
     setLines((previous) => [...previous.slice(-800), entry])
   }, [])
+
+  // Follow the newest line unless the user paused the stream.
+  React.useEffect(() => {
+    if (paused) return
+    const element = scrollRef.current
+    if (element) element.scrollTop = element.scrollHeight
+  }, [lines, paused])
 
   const load = React.useCallback(async () => {
     try {
@@ -64,6 +73,7 @@ export function ConsolePage() {
     } catch {
       // ignore
     }
+    setLoaded(true)
   }, [])
 
   React.useEffect(() => {
@@ -136,7 +146,13 @@ export function ConsolePage() {
       ) : null}
 
       <div ref={scrollRef} className="flex-1 overflow-auto bg-background p-3 font-mono text-[11.5px] leading-relaxed">
-        {visible.length === 0 ? (
+        {!loaded && visible.length === 0 ? (
+          <div className="space-y-2" aria-busy="true">
+            {Array.from({ length: 12 }).map((_, index) => (
+              <Skeleton key={index} className="h-3.5" style={{ width: `${25 + ((index * 19) % 65)}%` }} />
+            ))}
+          </div>
+        ) : visible.length === 0 ? (
           <p className="py-8 text-center text-xs text-muted-foreground">Nothing logged yet.</p>
         ) : (
           visible.map((entry) => {

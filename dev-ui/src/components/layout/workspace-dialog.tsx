@@ -12,7 +12,9 @@ import {
   Plus,
   Puzzle,
   Rocket,
+  Search,
   Sparkles,
+  Upload,
   Wand2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -25,8 +27,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { resolveIcon } from "@/components/app-icon"
-import { CATEGORIES, PERMISSION_INFO, permissionInfo, RISK_STYLES } from "@/lib/permissions"
+import { CATEGORIES, PERMISSION_INFO, permissionInfo, RISK_STYLES, filterPermissions } from "@/lib/permissions"
 import { ACCENTS, ACCENT_NAMES, type AccentName } from "@/lib/project-colors"
+import { ICON_ACCEPT, ICON_GUIDE, prepareIconFile, type PreparedIcon } from "@/lib/icon-upload"
 import { cn } from "@/lib/utils"
 import { confirmDiscardChanges } from "@/lib/dirty-guard"
 import { ws } from "@/lib/ws-api"
@@ -158,6 +161,7 @@ export function WorkspaceDialog() {
   const [category, setCategory] = React.useState("other")
   const [tags, setTags] = React.useState("")
   const [icon, setIcon] = React.useState("puzzle")
+  const [customIcon, setCustomIcon] = React.useState<PreparedIcon | null>(null)
   const [accent, setAccent] = React.useState<AccentName>("orange")
   const [withUi, setWithUi] = React.useState(true)
   const [uiFlavor, setUiFlavor] = React.useState<"js" | "react">("js")
@@ -177,6 +181,7 @@ export function WorkspaceDialog() {
     setWithUi(true)
     setUiFlavor("js")
     setIcon("puzzle")
+    setCustomIcon(null)
     setAccent("orange")
     setPermissions([...RECOMMENDED_PERMISSIONS])
     setPrompt("")
@@ -207,7 +212,23 @@ export function WorkspaceDialog() {
     setWithUi(entry.withUi)
     setUiFlavor(entry.uiFlavor)
     setIcon(entry.icon)
+    setCustomIcon(null)
     setAccent(entry.accent)
+  }
+
+  const chooseBuiltInIcon = (name: string) => {
+    setIcon(name)
+    setCustomIcon(null)
+  }
+
+  const uploadCustomIcon = async (file: File) => {
+    try {
+      const prepared = await prepareIconFile(file)
+      setCustomIcon(prepared)
+      if (prepared.warning) toast(prepared.warning)
+    } catch (cause) {
+      toast(cause instanceof Error ? cause.message : String(cause), "error")
+    }
   }
 
   const changeName = (value: string) => {
@@ -226,7 +247,7 @@ export function WorkspaceDialog() {
     )
   }
 
-  const versionValid = /^\d+\.\d+\.\d+/.test(version)
+  const versionValid = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)
   const stepValid =
     step === 0
       ? isAi
@@ -249,16 +270,18 @@ export function WorkspaceDialog() {
         icon,
         tags: parseList(tags),
         color: accent,
+        ...(customIcon ? { iconData: customIcon.data, iconFileName: customIcon.name } : {}),
       }
       if (isAi) {
-        const { project, files } = await ws.createAi({ ...base, prompt: prompt.trim() })
+        const { project, files, iconError } = await ws.createAi({ ...base, prompt: prompt.trim() })
         await ws.select(project.id)
         await Promise.all([refreshWorkspace(), refresh()])
         setWorkspaceDialogOpen(false)
         toast(`Generated ${project.name} — ${files.length} file(s)`, "success")
+        if (iconError) toast(`Icon not saved: ${iconError}`, "error")
       } else {
         const isTheme = template.kind === "theme"
-        const { project, needsInstall } = await ws.create({
+        const { project, needsInstall, iconError } = await ws.create({
           ...base,
           kind: template.kind,
           withUi: isTheme ? false : withUi,
@@ -278,6 +301,7 @@ export function WorkspaceDialog() {
           toast(`Created ${project.name} → ${project.path}`, "success")
           if (needsInstall) toast("React UI projects need `npm install` in the new folder")
         }
+        if (iconError) toast(`Icon not saved: ${iconError}`, "error")
       }
     })
   }
@@ -319,7 +343,6 @@ export function WorkspaceDialog() {
   const footerHint = (() => {
     if (pane === "import") return "The folder is referenced, not copied — its git history stays intact."
     if (pane === "pull") return "Downloads a package you published to a folder you choose."
-    if (onboarding && step === 0) return "A workspace can hold many projects — switching later is instant."
     if (step === 0) return isAi ? "Step 1 of 3 · Describe it" : `Step 1 of 3 · ${template.name} selected`
     if (step === 1) return "Step 2 of 3 · Details"
     if (isAi || template.kind === "theme") return "Step 3 of 3 · Review"
@@ -327,8 +350,19 @@ export function WorkspaceDialog() {
   })()
 
   return (
-    <Dialog open={workspaceDialogOpen} onOpenChange={setWorkspaceDialogOpen}>
-      <DialogContent className="flex h-[86vh] max-h-[880px] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0">
+    <Dialog
+      open={workspaceDialogOpen}
+      onOpenChange={(open) => {
+        // First run has nothing behind the dialog (just a placeholder
+        // dashboard) — don't let X, Escape or an outside click dismiss it.
+        if (!open && onboarding) return
+        setWorkspaceDialogOpen(open)
+      }}
+    >
+      <DialogContent
+        className="flex h-[86vh] max-h-[880px] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0"
+        hideCloseButton={onboarding}
+      >
         {/* Header */}
         <div className="flex shrink-0 items-center gap-2.5 border-b border-border px-5 py-3.5">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -409,9 +443,6 @@ export function WorkspaceDialog() {
                 </button>
               </div>
             </div>
-            <p className="mt-auto rounded-lg border border-dashed border-border bg-background/60 px-2.5 py-2 text-[10px] leading-snug text-muted-foreground">
-              Projects stay where they are on disk. The workspace just remembers them.
-            </p>
           </aside>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -443,6 +474,8 @@ export function WorkspaceDialog() {
                 tags={tags}
                 icon={icon}
                 accent={accent}
+                customIcon={customIcon}
+                allowUpload={template.kind !== "theme"}
                 onChangeName={changeName}
                 onChangeSlug={changeSlug}
                 setDescription={setDescription}
@@ -450,8 +483,10 @@ export function WorkspaceDialog() {
                 setAuthor={setAuthor}
                 setCategory={setCategory}
                 setTags={setTags}
-                setIcon={setIcon}
+                setIcon={chooseBuiltInIcon}
                 setAccent={setAccent}
+                onUploadIcon={uploadCustomIcon}
+                onClearIcon={() => setCustomIcon(null)}
               />
             ) : (
               <StepOptions
@@ -471,6 +506,7 @@ export function WorkspaceDialog() {
                 category={category}
                 icon={icon}
                 accent={accent}
+                customPreview={customIcon?.preview ?? null}
               />
             )}
           </div>
@@ -629,6 +665,8 @@ function StepDetails({
   tags,
   icon,
   accent,
+  customIcon,
+  allowUpload,
   onChangeName,
   onChangeSlug,
   setDescription,
@@ -638,6 +676,8 @@ function StepDetails({
   setTags,
   setIcon,
   setAccent,
+  onUploadIcon,
+  onClearIcon,
 }: {
   name: string
   slug: string
@@ -650,6 +690,8 @@ function StepDetails({
   tags: string
   icon: string
   accent: AccentName
+  customIcon: PreparedIcon | null
+  allowUpload: boolean
   onChangeName: (value: string) => void
   onChangeSlug: (value: string) => void
   setDescription: (value: string) => void
@@ -659,6 +701,8 @@ function StepDetails({
   setTags: (value: string) => void
   setIcon: (value: string) => void
   setAccent: (value: AccentName) => void
+  onUploadIcon: (file: File) => void
+  onClearIcon: () => void
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -689,7 +733,7 @@ function StepDetails({
       <Field label="Author" hint="Your developer name on the marketplace.">
         <Input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Your name" className="h-9" />
       </Field>
-      <Field label="Description" className="sm:col-span-2" hint="One or two lines for the marketplace listing.">
+      <Field label="Description" className="sm:col-span-2" hint="A short description of the project — what it does.">
         <Textarea
           rows={2}
           value={description}
@@ -716,45 +760,78 @@ function StepDetails({
         <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="loyalty, rewards" className="h-9" />
       </Field>
       <Field label="Icon & color" className="sm:col-span-2" hint="The tile shown in the sidebar switcher.">
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/20 p-2.5">
-          <div className="flex flex-wrap gap-1">
-            {ICON_CHOICES.map((iconName) => {
-              const Icon = resolveIcon(iconName)
-              const selected = icon === iconName
-              return (
-                <button
-                  key={iconName}
-                  type="button"
-                  title={iconName}
-                  onClick={() => setIcon(iconName)}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/20 p-2.5">
+            <div className="flex flex-wrap gap-1">
+              {allowUpload ? (
+                <label
+                  title="Upload your own icon"
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
-                    selected
+                    "relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-md border transition-colors",
+                    customIcon
                       ? cn("border-transparent ring-2 ring-offset-2 ring-offset-background", ACCENTS[accent].ring, ACCENTS[accent].tile)
-                      : "border-border text-muted-foreground hover:text-foreground",
+                      : "border-dashed border-border text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  <Icon className="h-4 w-4" />
-                </button>
-              )
-            })}
+                  {customIcon ? <img src={customIcon.preview} alt="" className="h-full w-full object-cover" /> : <Upload className="h-3.5 w-3.5" />}
+                  <input
+                    type="file"
+                    accept={ICON_ACCEPT}
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (file) onUploadIcon(file)
+                      event.target.value = ""
+                    }}
+                  />
+                </label>
+              ) : null}
+              {ICON_CHOICES.map((iconName) => {
+                const Icon = resolveIcon(iconName)
+                const selected = !customIcon && icon === iconName
+                return (
+                  <button
+                    key={iconName}
+                    type="button"
+                    title={iconName}
+                    onClick={() => setIcon(iconName)}
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
+                      selected
+                        ? cn("border-transparent ring-2 ring-offset-2 ring-offset-background", ACCENTS[accent].ring, ACCENTS[accent].tile)
+                        : "border-border text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </button>
+                )
+              })}
+            </div>
+            <div className="h-6 w-px bg-border" />
+            <div className="flex items-center gap-1.5">
+              {ACCENT_NAMES.map((entry) => (
+                <button
+                  key={entry}
+                  type="button"
+                  title={entry}
+                  onClick={() => setAccent(entry)}
+                  className={cn(
+                    "h-5 w-5 rounded-full transition-transform",
+                    ACCENTS[entry].swatch,
+                    accent === entry ? "scale-110 ring-2 ring-foreground/40 ring-offset-2 ring-offset-background" : "opacity-70 hover:opacity-100",
+                  )}
+                />
+              ))}
+            </div>
+            {customIcon ? (
+              <button type="button" onClick={onClearIcon} className="text-[10.5px] font-semibold text-primary hover:underline">
+                Remove image
+              </button>
+            ) : null}
           </div>
-          <div className="h-6 w-px bg-border" />
-          <div className="flex items-center gap-1.5">
-            {ACCENT_NAMES.map((entry) => (
-              <button
-                key={entry}
-                type="button"
-                title={entry}
-                onClick={() => setAccent(entry)}
-                className={cn(
-                  "h-5 w-5 rounded-full transition-transform",
-                  ACCENTS[entry].swatch,
-                  accent === entry ? "scale-110 ring-2 ring-foreground/40 ring-offset-2 ring-offset-background" : "opacity-70 hover:opacity-100",
-                )}
-              />
-            ))}
-          </div>
+          <p className="text-[10.5px] leading-snug text-muted-foreground">
+            {allowUpload ? ICON_GUIDE : "Themes keep their storefront styling in manifest.json — the accent color is only cosmetic here."}
+          </p>
         </div>
       </Field>
     </div>
@@ -780,6 +857,7 @@ function StepOptions({
   category,
   icon,
   accent,
+  customPreview,
 }: {
   isAi: boolean
   template: StarterTemplate
@@ -797,6 +875,7 @@ function StepOptions({
   category: string
   icon: string
   accent: AccentName
+  customPreview: string | null
 }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
@@ -878,6 +957,7 @@ function StepOptions({
         withUi={withUi}
         uiFlavor={uiFlavor}
         permissionCount={permissions.length}
+        customPreview={customPreview}
       />
     </div>
   )
@@ -1008,11 +1088,24 @@ function TemplateCard({ template, selected, onSelect }: { template: StarterTempl
 
 function PermissionPicker({ permissions, onToggle }: { permissions: string[]; onToggle: (permission: string) => void }) {
   const [showAll, setShowAll] = React.useState(false)
+  const [query, setQuery] = React.useState("")
   const all = Object.keys(PERMISSION_INFO)
-  const visible = showAll ? all : all.slice(0, 8)
+  const matches = filterPermissions(all, query)
+  const searching = query.trim().length > 0
+  const visible = searching ? matches : showAll ? all : all.slice(0, 8)
 
   return (
     <div className="space-y-1.5">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={`Search ${all.length} permissions…`}
+          className="h-8 pl-8 text-xs"
+          aria-label="Search permissions"
+        />
+      </div>
       {visible.map((permission) => {
         const info = permissionInfo(permission)
         const risk = RISK_STYLES[info.risk]
@@ -1039,14 +1132,20 @@ function PermissionPicker({ permissions, onToggle }: { permissions: string[]; on
           </label>
         )
       })}
-      <button
-        type="button"
-        onClick={() => setShowAll((value) => !value)}
-        className="flex items-center gap-1 px-1 pt-0.5 text-[11px] font-semibold text-primary hover:underline"
-      >
-        <ChevronDown className={cn("h-3 w-3 transition-transform", showAll && "rotate-180")} />
-        {showAll ? "Show fewer permissions" : `Show all ${all.length} permissions`}
-      </button>
+      {searching ? (
+        matches.length === 0 ? (
+          <p className="px-1 pt-1 text-[11px] text-muted-foreground">No permissions match “{query}”.</p>
+        ) : null
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowAll((value) => !value)}
+          className="flex items-center gap-1 px-1 pt-0.5 text-[11px] font-semibold text-primary hover:underline"
+        >
+          <ChevronDown className={cn("h-3 w-3 transition-transform", showAll && "rotate-180")} />
+          {showAll ? "Show fewer permissions" : `Show all ${all.length} permissions`}
+        </button>
+      )}
     </div>
   )
 }
@@ -1065,6 +1164,7 @@ function ReviewCard({
   withUi,
   uiFlavor,
   permissionCount,
+  customPreview,
 }: {
   template: StarterTemplate
   isAi: boolean
@@ -1079,6 +1179,7 @@ function ReviewCard({
   withUi: boolean
   uiFlavor: "js" | "react"
   permissionCount: number
+  customPreview: string | null
 }) {
   const Icon = resolveIcon(icon)
   const rows: Array<[string, string]> = [
@@ -1106,8 +1207,8 @@ function ReviewCard({
           <TemplateThumb template={template} className="h-12 w-16 shrink-0" />
         )}
         <div className="flex min-w-0 items-center gap-2">
-          <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md", ACCENTS[accent].tile)}>
-            <Icon className="h-4 w-4" />
+          <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md", ACCENTS[accent].tile)}>
+            {customPreview ? <img src={customPreview} alt="" className="h-full w-full object-cover" /> : <Icon className="h-4 w-4" />}
           </span>
           <div className="min-w-0">
             <p className="truncate text-[13px] font-semibold">{name || "untitled-workspace"}</p>

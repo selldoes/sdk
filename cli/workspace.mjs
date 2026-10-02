@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import crypto from "node:crypto"
 import { execFile } from "node:child_process"
+import { resolveAsset } from "./plugin/dev/assets.mjs"
 
 /**
  * The workspace registry: which plugin/theme projects this developer has been
@@ -34,6 +35,25 @@ export function workspaceFile() {
   return path.join(workspaceDir(), "workspace.json")
 }
 
+/**
+ * Where new projects land by default: `~/Documents/Selldoes` when a Documents
+ * folder exists (Windows/macOS/Linux desktops), else `~/Selldoes`. This is only
+ * the fallback — a `defaultDir` saved in the workspace wins. The registry file
+ * itself stays at ~/.selldoes/workspace.json.
+ */
+export function defaultProjectsDir() {
+  const home = os.homedir()
+  try {
+    const documents = path.join(home, "Documents")
+    if (fs.existsSync(documents) && fs.statSync(documents).isDirectory()) {
+      return path.join(documents, "Selldoes")
+    }
+  } catch {
+    // fall through to the home-folder default
+  }
+  return path.join(home, "Selldoes")
+}
+
 const EMPTY = { version: 1, projects: [], currentId: null, defaultDir: null }
 
 /** Normalizes a path so the same folder never appears twice. */
@@ -63,10 +83,11 @@ export function projectMeta(dir, kind) {
   const manifest = readManifest(dir, kind) ?? {}
   const base = path.basename(normalizePath(dir))
   const icon = typeof manifest.icon === "string" && manifest.icon ? manifest.icon : undefined
+  const iconUrl = typeof manifest.iconUrl === "string" && manifest.iconUrl ? manifest.iconUrl : undefined
   if (kind === "theme") {
-    return { name: String(manifest.name ?? base), slug: base, icon }
+    return { name: String(manifest.name ?? base), slug: base, icon, iconUrl }
   }
-  return { name: String(manifest.name ?? base), slug: String(manifest.slug ?? base), icon }
+  return { name: String(manifest.name ?? base), slug: String(manifest.slug ?? base), icon, iconUrl }
 }
 
 export function loadWorkspace() {
@@ -116,7 +137,11 @@ export function touchProject({ dir, kind, source = "folder", name, slug, color }
     existing.kind = detected
     existing.name = name ?? meta.name
     existing.slug = slug ?? meta.slug
+    // Keep the registry in sync with the manifest — including removals.
     if (meta.icon) existing.icon = meta.icon
+    else delete existing.icon
+    if (meta.iconUrl) existing.iconUrl = meta.iconUrl
+    else delete existing.iconUrl
     existing.lastOpenedAt = now
     if (source && source !== "folder") existing.source = source
     if (cleanColor) existing.color = cleanColor
@@ -128,6 +153,7 @@ export function touchProject({ dir, kind, source = "folder", name, slug, color }
       name: name ?? meta.name,
       slug: slug ?? meta.slug,
       ...(meta.icon ? { icon: meta.icon } : {}),
+      ...(meta.iconUrl ? { iconUrl: meta.iconUrl } : {}),
       path: normalized,
       source,
       createdAt: now,
@@ -180,6 +206,16 @@ export function listProjects() {
 
 export function getProject(id) {
   return listProjects().find((project) => project.id === id) ?? null
+}
+
+/**
+ * Absolute path to a project's uploaded icon, or null when the manifest has no
+ * local `iconUrl`. Used by the workspace server to serve `/__ws/project-icon/:id`.
+ */
+export function projectIconFile(project) {
+  const value = String(project?.iconUrl ?? "").trim()
+  if (!value || /^(https?:)?\/\//.test(value) || value.startsWith("data:")) return null
+  return resolveAsset(project.path, value.replace(/^\.\//, ""))
 }
 
 /** Removes a project from the list. Never touches files on disk. */
@@ -269,8 +305,18 @@ export function getWorkspaceSettings() {
 export function setDefaultDir(dir) {
   const value = String(dir ?? "").trim()
   if (!value) throw new Error("A default directory path is required")
+  const normalized = normalizePath(value)
+  try {
+    if (fs.existsSync(normalized)) {
+      if (!fs.statSync(normalized).isDirectory()) throw new Error("that path is a file, not a folder")
+    } else {
+      fs.mkdirSync(normalized, { recursive: true })
+    }
+  } catch (error) {
+    throw new Error(`Could not use ${normalized}: ${error instanceof Error ? error.message : String(error)}`)
+  }
   const data = loadWorkspace()
-  data.defaultDir = normalizePath(value)
+  data.defaultDir = normalized
   saveWorkspace(data)
   return data.defaultDir
 }

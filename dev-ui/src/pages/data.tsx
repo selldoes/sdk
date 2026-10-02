@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { PageHead } from "@/components/shared"
+import { SkeletonCards } from "@/components/skeletons"
 import { dev } from "@/lib/api"
 import { useVisit } from "@/lib/use-visit"
 import { useApp } from "@/state/app"
@@ -107,7 +108,9 @@ export function DataPage() {
             </p>
           </CardContent>
         </Card>
-      ) : null}
+      ) : (
+        <SkeletonCards count={4} rows={3} />
+      )}
     </div>
   )
 }

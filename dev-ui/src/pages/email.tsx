@@ -3,6 +3,7 @@ import { Mail, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { PageHead } from "@/components/shared"
+import { SkeletonCards } from "@/components/skeletons"
 import { dev } from "@/lib/api"
 import { timeAgo } from "@/lib/utils"
 import { useVisit } from "@/lib/use-visit"
@@ -90,7 +91,9 @@ export function EmailPage() {
             </p>
           </CardContent>
         </Card>
-      ) : null}
+      ) : (
+        <SkeletonCards count={2} rows={3} />
+      )}
     </div>
   )
 }

@@ -12,7 +12,7 @@ import { resolveIcon } from "@/components/app-icon"
 import { ACCENTS, accentFor } from "@/lib/project-colors"
 import { cn, timeAgo } from "@/lib/utils"
 import { confirmDiscardChanges } from "@/lib/dirty-guard"
-import { ws } from "@/lib/ws-api"
+import { ws, projectIconUrl } from "@/lib/ws-api"
 import type { WsProject } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
@@ -20,9 +20,17 @@ function ProjectGlyph({
   project,
   className,
 }: {
-  project: Pick<WsProject, "kind" | "slug" | "icon" | "color">
+  project: Pick<WsProject, "kind" | "slug" | "icon" | "color"> & { id?: string; iconUrl?: string | null }
   className?: string
 }) {
+  const src = projectIconUrl(project)
+  if (src) {
+    return (
+      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/40", className)}>
+        <img src={src} alt="" className="h-full w-full object-cover" />
+      </span>
+    )
+  }
   const Icon = resolveIcon(project.icon ?? (project.kind === "theme" ? "palette" : "puzzle"))
   return (
     <span className={cn("flex shrink-0 items-center justify-center rounded-md", ACCENTS[accentFor(project)].tile, className)}>
@@ -55,6 +63,11 @@ export function WorkspaceSwitcher() {
 
   const select = (project: WsProject) => {
     if (project.id === current?.project.id) return
+    if (project.kind === "theme") {
+      // Themes render a real storefront and can't boot in the web shell.
+      toast(`Themes preview against a real store — run \`selldoes dev --store <slug>\` in ${project.path}`, "default")
+      return
+    }
     if (!confirmDiscardChanges()) return
     return run(`select:${project.id}`, async () => {
       await ws.select(project.id)
@@ -86,11 +99,6 @@ export function WorkspaceSwitcher() {
               {current ? `/${current.project.slug} · ${current.project.kind} · local` : "create or import one"}
             </span>
           </span>
-          {workspace?.sdk.dev ? (
-            <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-              dev
-            </span>
-          ) : null}
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>

@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { SkeletonEditor } from "@/components/skeletons"
 import { MonacoDiff, MonacoEditor, languageFor, type EditorProblem, type EditorSelection } from "@/components/code/monaco-editor"
 import { dev } from "@/lib/api"
 import { setEditorDirty } from "@/lib/dirty-guard"
@@ -530,6 +531,12 @@ export function CodePage() {
   const treeItems = tree ? flattenTree(tree.entries, expanded) : []
   const changedFiles = git?.files ?? []
   const dirtyCount = tabs.filter((tab) => tab.dirty).length
+
+  // First load (and project switches) — show the editor frame instead of an
+  // empty pane while `dev.files()` is in flight.
+  if (tree === null) {
+    return <SkeletonEditor className="h-[calc(100vh-168px)]" />
+  }
 
   return (
     <div className="flex h-[calc(100vh-168px)] min-h-[420px] overflow-hidden rounded-xl border border-border bg-card">

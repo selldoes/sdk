@@ -8,6 +8,7 @@ import { Topbar } from "@/components/layout/topbar"
 import { GlossaryDialog } from "@/components/layout/glossary"
 import { AssistantPanel } from "@/components/layout/assistant"
 import { WorkspaceDialog } from "@/components/layout/workspace-dialog"
+import { DashboardSkeleton } from "@/components/skeletons"
 import { CommandPalette, SearchDialog } from "@/components/command-palette"
 import { TerminalDrawer } from "@/components/terminal-drawer"
 import { AppProvider, Toaster, useApp } from "@/state/app"
@@ -95,7 +96,7 @@ function EmptyWorkspace() {
 
 function Shell() {
   const [glossaryOpen, setGlossaryOpen] = React.useState(false)
-  const { noProject } = useApp()
+  const { noProject, workspaceDialogOpen } = useApp()
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar onOpenGlossary={() => setGlossaryOpen(true)} />
@@ -104,7 +105,9 @@ function Shell() {
         <main className="flex-1 p-6 pb-24">
           <DocumentTitle />
           {noProject ? (
-            <EmptyWorkspace />
+            /* First run: the locked onboarding dialog floats over a placeholder
+               dashboard so the shell reads as "coming up", not empty. */
+            workspaceDialogOpen ? <DashboardSkeleton /> : <EmptyWorkspace />
           ) : (
             <Gate>
               <Routes>

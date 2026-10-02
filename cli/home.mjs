@@ -1,10 +1,10 @@
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import * as prompts from "@clack/prompts"
 import { unzipSync } from "fflate"
 import { die, openBrowser } from "./util.mjs"
 import {
+  defaultProjectsDir,
   detectKind,
   getProject,
   listProjects,
@@ -71,7 +71,7 @@ export function importZip(zipPath, { dir } = {}) {
     throw new Error(`Manifest in the zip is not valid JSON: ${error.message}`)
   }
   const slug = (kind === "plugin" && typeof manifest.slug === "string" ? manifest.slug : "") || path.basename(zip, path.extname(zip))
-  const target = path.resolve(String(dir ?? path.join(os.homedir(), "Selldoes", slug)))
+  const target = path.resolve(String(dir ?? path.join(defaultProjectsDir(), slug)))
   if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
     throw new Error(`${target} is not empty — the zip would overwrite existing files.`)
   }

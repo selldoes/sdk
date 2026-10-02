@@ -3,6 +3,7 @@ import { Radio, RefreshCw } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { PageHead } from "@/components/shared"
+import { SkeletonList } from "@/components/skeletons"
 import { dev } from "@/lib/api"
 import { timeAgo } from "@/lib/utils"
 import { useVisit } from "@/lib/use-visit"
@@ -92,7 +93,9 @@ export function RealtimePage() {
             </p>
           </CardContent>
         </Card>
-      ) : null}
+      ) : (
+        <SkeletonList rows={6} />
+      )}
     </div>
   )
 }

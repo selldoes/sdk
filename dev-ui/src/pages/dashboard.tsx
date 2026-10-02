@@ -4,6 +4,7 @@ import { AppIcon } from "@/components/app-icon"
 import { PermissionList } from "@/components/permission-list"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
 import { PageHead, Callout, EmptyState } from "@/components/shared"
+import { SkeletonCard } from "@/components/skeletons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -115,27 +116,31 @@ function HostPageReplica() {
   const { bootstrap, toast, setAssistantOpen } = useApp()
   const manifest = bootstrap!.manifest
   const [settings, setSettings] = React.useState<SettingsResponse | null>(null)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
   const [form, setForm] = React.useState<Record<string, unknown>>({})
   const [saving, setSaving] = React.useState(false)
   const { state, run } = useJobRunner()
   const jobs = manifest.jobs ?? []
   const permissions = (manifest.permissions ?? []) as string[]
 
-  React.useEffect(() => {
-    void (async () => {
-      try {
-        const data = await dev.settings()
-        setSettings(data)
-        const values: Record<string, unknown> = {}
-        for (const field of data.configSchema) {
-          values[field.key] = data.settings[field.key] ?? field.default ?? (field.type === "boolean" ? false : "")
-        }
-        setForm(values)
-      } catch {
-        setSettings({ configSchema: [], settings: {} })
+  const loadSettings = React.useCallback(async () => {
+    try {
+      const data = await dev.settings()
+      const values: Record<string, unknown> = {}
+      for (const field of data.configSchema) {
+        values[field.key] = data.settings[field.key] ?? field.default ?? (field.type === "boolean" ? false : "")
       }
-    })()
+      setForm(values)
+      setSettings(data)
+      setLoadError(null)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error))
+    }
   }, [])
+
+  React.useEffect(() => {
+    void loadSettings()
+  }, [loadSettings])
 
   const fields: PluginConfigField[] = settings?.configSchema ?? []
 
@@ -149,6 +154,28 @@ function HostPageReplica() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (loadError && settings === null) {
+    return (
+      <Callout kind="danger">
+        <p className="font-semibold">Could not load the host page settings</p>
+        <p className="mt-0.5 text-[12px]">{loadError}</p>
+        <Button size="sm" variant="outline" className="mt-2" onClick={() => void loadSettings()}>
+          Retry
+        </Button>
+      </Callout>
+    )
+  }
+
+  if (settings === null) {
+    return (
+      <div className="space-y-4" aria-busy="true">
+        <SkeletonCard rows={4} />
+        <SkeletonCard rows={2} />
+        <SkeletonCard rows={5} />
+      </div>
+    )
   }
 
   return (

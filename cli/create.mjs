@@ -7,6 +7,9 @@ import { die } from "./util.mjs"
 
 const PACKAGE = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"))
 
+/** Strict-enough semver: x.y.z with an optional -prerelease / +build suffix. */
+const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/
+
 function cancel() {
   prompts.cancel("Cancelled")
   process.exit(0)
@@ -68,7 +71,7 @@ export async function scaffoldProject({
   color,
 }) {
   if (!dir) throw new Error("scaffoldProject: dir is required")
-  if (!/^\d+\.\d+\.\d+/.test(String(version))) throw new Error(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
+  if (!SEMVER.test(String(version))) throw new Error(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
 
   const slug = toSlug(slugOverride || dir)
   if (!slug || slug.length < 2) throw new Error(`Cannot derive a project name from "${dir}"`)
@@ -297,7 +300,7 @@ export async function createCommand(args, flags) {
       version = String(answer || "0.1.0").trim()
     }
   }
-  if (!/^\d+\.\d+\.\d+/.test(version)) die(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
+  if (!SEMVER.test(version)) die(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
 
   let withUi = true
   let uiFlavor = "js"

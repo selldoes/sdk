@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import * as prompts from "@clack/prompts"
 import { die, openBrowser } from "./util.mjs"
+import { defaultProjectsDir } from "./workspace.mjs"
 
 /**
  * The developer-account lane of the workspace.
@@ -363,7 +364,7 @@ export async function pullPackage(slug, flags = {}) {
   const pluginMeta = meta.plugin ?? meta
   const snapshot = await devFetch(appUrl, `/api/developers/plugins/${cleanSlug}/source`, token)
 
-  const target = path.resolve(String(flags.dir ?? path.join(os.homedir(), "Selldoes", cleanSlug)))
+  const target = path.resolve(String(flags.dir ?? path.join(defaultProjectsDir(), cleanSlug)))
   if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
     throw new Error(`${target} is not empty — pass --dir <path> to pull somewhere else.`)
   }
