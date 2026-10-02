@@ -52,23 +52,32 @@ function copyTemplate(fromDir, toDir, replacements) {
 export async function scaffoldProject({
   kind = "plugin",
   dir,
+  slug: slugOverride,
+  name: nameOverride,
   version = "0.1.0",
   withUi = true,
   uiFlavor = "js",
   install = false,
   force = false,
+  description,
+  author,
+  category,
+  icon,
+  tags,
+  permissions,
+  color,
 }) {
   if (!dir) throw new Error("scaffoldProject: dir is required")
   if (!/^\d+\.\d+\.\d+/.test(String(version))) throw new Error(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
 
-  const slug = toSlug(dir)
+  const slug = toSlug(slugOverride || dir)
   if (!slug || slug.length < 2) throw new Error(`Cannot derive a project name from "${dir}"`)
   const targetDir = path.resolve(dir)
   if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0 && !force) {
     throw new Error(`${path.relative(process.cwd(), targetDir) || "."} is not empty (use --force to overwrite)`)
   }
 
-  const name = toTitle(slug)
+  const name = nameOverride ? String(nameOverride).trim() : toTitle(slug)
   const templateDir = fileURLToPath(new URL(`../templates/${kind}/`, import.meta.url))
   const replacements = {
     __PLUGIN_SLUG__: slug,
@@ -77,6 +86,10 @@ export async function scaffoldProject({
     __THEME_NAME__: name,
     __VERSION__: version,
     __SELLDOES_VERSION__: PACKAGE.version,
+    // JSON-escaped so quotes/newlines in free text can't break the manifest.
+    __PLUGIN_DESCRIPTION__: JSON.stringify(description ? String(description) : "A Selldoes plugin.").slice(1, -1),
+    __PLUGIN_AUTHOR__: JSON.stringify(author ? String(author) : "Your name").slice(1, -1),
+    __PLUGIN_CATEGORY__: JSON.stringify(category ? String(category) : "other").slice(1, -1),
   }
   copyTemplate(templateDir, targetDir, replacements)
 
@@ -119,11 +132,31 @@ export async function scaffoldProject({
 
   if (kind === "plugin" && !withUi) {
     fs.rmSync(path.join(targetDir, "ui"), { recursive: true, force: true })
+  }
+
+  // Patch manifest metadata the template can't know about (single write).
+  if (kind === "plugin") {
     const manifestPath = path.join(targetDir, "plugin.json")
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
-    delete manifest.ui
-    delete manifest.dashboardPages
-    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    let changed = false
+    if (!withUi) {
+      delete manifest.ui
+      delete manifest.dashboardPages
+      changed = true
+    }
+    if (icon) {
+      manifest.icon = String(icon)
+      changed = true
+    }
+    if (Array.isArray(tags) && tags.length > 0) {
+      manifest.tags = tags.map(String)
+      changed = true
+    }
+    if (Array.isArray(permissions)) {
+      manifest.permissions = permissions.map(String)
+      changed = true
+    }
+    if (changed) fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
   }
 
   if (install) {
@@ -149,7 +182,7 @@ export async function scaffoldProject({
   // Register the new project in the workspace so `selldoes` lists it.
   try {
     const { touchProject } = await import("./workspace.mjs")
-    touchProject({ dir: targetDir, kind, source: "create" })
+    touchProject({ dir: targetDir, kind, source: "create", color })
   } catch {
     // best-effort
   }
@@ -293,6 +326,37 @@ export async function createCommand(args, flags) {
     }
   }
 
+  let description = flags.description !== undefined ? String(flags.description).trim() : null
+  if (description === null && interactive) {
+    const answer = await prompts.text({ message: "Description (optional)", placeholder: "A Selldoes plugin.", defaultValue: "" })
+    if (prompts.isCancel(answer)) cancel()
+    description = String(answer ?? "").trim()
+  }
+
+  let author = flags.author !== undefined ? String(flags.author).trim() : null
+  if (author === null && interactive) {
+    const answer = await prompts.text({ message: "Author (optional)", placeholder: "Your name", defaultValue: "" })
+    if (prompts.isCancel(answer)) cancel()
+    author = String(answer ?? "").trim()
+  }
+
+  const category = flags.category !== undefined ? String(flags.category).trim() : undefined
+  const icon = flags.icon !== undefined ? String(flags.icon).trim() : undefined
+  const tags =
+    typeof flags.tags === "string"
+      ? flags.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : undefined
+  const permissions =
+    typeof flags.permissions === "string"
+      ? flags.permissions
+          .split(",")
+          .map((permission) => permission.trim())
+          .filter(Boolean)
+      : undefined
+
   let install = true
   if (flags["no-install"] === true) install = false
   else if (interactive) {
@@ -301,7 +365,21 @@ export async function createCommand(args, flags) {
     install = answer
   }
 
-  const { targetDir, name } = await scaffoldProject({ kind, dir, version, withUi, uiFlavor, install, force: flags.force === true })
+  const { targetDir, name } = await scaffoldProject({
+    kind,
+    dir,
+    version,
+    withUi,
+    uiFlavor,
+    install,
+    force: flags.force === true,
+    description: description || undefined,
+    author: author || undefined,
+    category,
+    icon,
+    tags,
+    permissions,
+  })
 
   const relative = path.relative(process.cwd(), targetDir) || "."
   const lines = [`Created ${name} in ${relative}/`, "", "Next steps:", `  cd ${relative}`]

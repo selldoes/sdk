@@ -70,7 +70,7 @@ async function generate(resolved, conversation, log) {
  * Scaffolds a plugin from a natural-language description.
  * `dir` is created (must be empty or absent). Returns { dir, slug, files }.
  */
-export async function scaffoldWithAi({ prompt, dir, config = {}, log = console.log }) {
+export async function scaffoldWithAi({ prompt, dir, config = {}, log = console.log, overrides = null, color = null }) {
   const description = String(prompt ?? "").trim()
   if (!description) throw new Error("Describe the plugin you want (empty prompt)")
   const target = path.resolve(String(dir ?? ""))
@@ -123,7 +123,22 @@ export async function scaffoldWithAi({ prompt, dir, config = {}, log = console.l
   }
   if (!written.includes("plugin.json")) throw new Error("Scaffold produced no plugin.json — nothing written")
 
-  const manifest = JSON.parse(fs.readFileSync(path.join(target, "plugin.json"), "utf8"))
-  touchProject({ dir: target, kind: "plugin", source: "create", name: manifest.name, slug: manifest.slug })
+  let manifest = JSON.parse(fs.readFileSync(path.join(target, "plugin.json"), "utf8"))
+
+  // Wizard-supplied identity wins over what the model happened to write.
+  if (overrides && typeof overrides === "object") {
+    const clean = {}
+    for (const field of ["name", "slug", "description", "version", "author", "category", "icon"]) {
+      const value = overrides[field]
+      if (typeof value === "string" && value.trim()) clean[field] = value.trim()
+    }
+    if (Array.isArray(overrides.tags) && overrides.tags.length > 0) clean.tags = overrides.tags.map(String)
+    if (Object.keys(clean).length > 0) {
+      manifest = { ...manifest, ...clean }
+      fs.writeFileSync(path.join(target, "plugin.json"), `${JSON.stringify(manifest, null, 2)}\n`)
+    }
+  }
+
+  touchProject({ dir: target, kind: "plugin", source: "create", name: manifest.name, slug: manifest.slug, color })
   return { dir: target, slug: manifest.slug, name: manifest.name ?? manifest.slug, files: written, summary: edits.summary }
 }

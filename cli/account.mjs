@@ -74,9 +74,49 @@ function cancel() {
   process.exit(0)
 }
 
+/**
+ * Connects a developer account: verify the token against the app, then save
+ * it next to the theme lane's merchant key. Shared by `selldoes login` and
+ * the dev-ui's `/__ws/connect` route — throws on failure, callers present
+ * the error however they like.
+ */
+export async function connectDeveloper(token, appUrlOverride) {
+  const value = String(token ?? "").trim()
+  if (!value) throw new Error("Provide a developer token (create one in the developer portal → API tokens).")
+  if (!isDeveloperToken(value)) {
+    throw new Error("Developer tokens start with sk_dev_. A plain sk_… key is a merchant API key — that's the theme lane (`selldoes login --api-key sk_…`).")
+  }
+
+  const cfg = loadConfig()
+  const appUrl = String(appUrlOverride ?? cfg.appUrl ?? process.env.SELLDOES_APP_URL ?? DEFAULT_APP_URL).replace(/\/$/, "")
+  let account
+  try {
+    ;({ account } = await devFetch(appUrl, "/api/developers/me", value))
+  } catch (error) {
+    throw new Error(`Could not verify the token against ${appUrl}: ${error.message}`)
+  }
+  if (account.status && account.status !== "active") {
+    throw new Error(`This developer account is ${account.status} — suspended accounts cannot be used.`)
+  }
+
+  cfg.developerToken = value
+  cfg.appUrl = appUrl
+  saveConfig(cfg)
+  return { appUrl, account }
+}
+
+/** Clears the developer lane's saved credentials (the dev-ui "Disconnect"). */
+export function disconnectDeveloper() {
+  const cfg = loadConfig()
+  const had = Boolean(cfg.developerToken)
+  delete cfg.developerToken
+  delete cfg.appUrl
+  saveConfig(cfg)
+  return had
+}
+
 /** `selldoes login` — routes merchant keys to the theme lane, tokens here. */
 export async function loginCommand(args, flags) {
-  const cfg = loadConfig()
   let token = flags.token ?? flags["api-key"] ?? process.env.SELLDOES_DEV_TOKEN ?? null
 
   // A plain sk_… key belongs to the theme lane — hand it over untouched.
@@ -99,25 +139,14 @@ export async function loginCommand(args, flags) {
   if (!token) {
     die("Provide a developer token: selldoes login --token sk_dev_… (create one in the developer portal → API tokens)")
   }
-  if (!isDeveloperToken(token)) {
-    die("Developer tokens start with sk_dev_. A plain sk_… key is a merchant API key — that's the theme lane (`selldoes login --api-key sk_…`).")
-  }
 
-  const appUrl = String(flags["app-url"] ?? cfg.appUrl ?? process.env.SELLDOES_APP_URL ?? DEFAULT_APP_URL).replace(/\/$/, "")
-  let account
+  let connected
   try {
-    ;({ account } = await devFetch(appUrl, "/api/developers/me", String(token)))
+    connected = await connectDeveloper(token, flags["app-url"])
   } catch (error) {
-    die(`Could not verify the token against ${appUrl}: ${error.message}`)
+    die(error.message)
   }
-  if (account.status && account.status !== "active") {
-    die(`This developer account is ${account.status} — suspended accounts cannot be used.`)
-  }
-
-  cfg.developerToken = String(token)
-  cfg.appUrl = appUrl
-  saveConfig(cfg)
-  console.log(`✓ Connected as ${account.name} <${account.email}> (${appUrl})`)
+  console.log(`✓ Connected as ${connected.account.name} <${connected.account.email}> (${connected.appUrl})`)
   console.log("  Your packages: `selldoes packages` · pull one to keep developing: `selldoes pull <slug>`")
 }
 

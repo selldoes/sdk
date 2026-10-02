@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom"
 import {
   BookOpen,
-  ChevronDown,
   Database,
   FileCode2,
   FileText,
@@ -22,6 +21,7 @@ import {
   Webhook,
   type LucideIcon,
 } from "lucide-react"
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher"
 import { useApp } from "@/state/app"
 import { cn } from "@/lib/utils"
 
@@ -73,10 +73,9 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 ]
 
 export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
-  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, setWorkspaceDialogOpen, noProject, setTerminalOpen, setPaletteOpen } = useApp()
+  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, setTerminalOpen, setPaletteOpen } = useApp()
   const manifest = bootstrap?.manifest
   const store = bootstrap?.store
-  const current = workspace?.current ?? null
   const workspaceMode = workspace !== null
 
   return (
@@ -103,35 +102,7 @@ export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
         <div className="flex-1 overflow-y-auto px-3 py-3">
           {workspaceMode ? (
             /* ── Workspace switcher (the store-switcher of the dev shell) ── */
-            <button
-              type="button"
-              onClick={() => setWorkspaceDialogOpen(true)}
-              title={
-                current
-                  ? `${current.project.path}${workspace?.sdk.dev ? " · SDK-dev mode" : ""}`
-                  : "Create, import or pull a project"
-              }
-              className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-primary/40 hover:bg-muted/50",
-                noProject && "border-dashed",
-              )}
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <Puzzle className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-bold">{current ? current.project.name : "No workspace yet"}</span>
-                <span className="block truncate text-[10px] text-muted-foreground">
-                  {current ? `/${current.project.slug} · ${current.project.kind} · local` : "create or import one"}
-                </span>
-              </span>
-              {workspace?.sdk.dev ? (
-                <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                  dev
-                </span>
-              ) : null}
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            </button>
+            <WorkspaceSwitcher />
           ) : (
             /* ── Standalone `selldoes dev`: the mock store block, unchanged ── */
             <>

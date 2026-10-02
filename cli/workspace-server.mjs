@@ -114,6 +114,12 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
   let previewSeq = 0
   let accountCache = { at: 0, value: null }
 
+  // The UI's connect/disconnect routes write ~/.selldoes.json — drop the
+  // cached identity so the next bootstrap reflects it immediately.
+  function resetAccountCache() {
+    accountCache = { at: 0, value: null }
+  }
+
   const sdkVersion = JSON.parse(fs.readFileSync(path.join(SDK_ROOT, "package.json"), "utf8")).version
   const defaultDir = path.join(os.homedir(), "Selldoes")
 
@@ -155,6 +161,7 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
             restartProject,
             currentPreviewRecord,
             getCurrentId: getCurrentProjectId,
+            resetAccountCache,
           },
         })
       }

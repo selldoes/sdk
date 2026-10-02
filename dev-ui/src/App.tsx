@@ -77,7 +77,7 @@ function DocumentTitle() {
 
 /** Workspace shell, nothing selected yet — the onboarding dialog takes over. */
 function EmptyWorkspace() {
-  const { setWorkspaceDialogOpen } = useApp()
+  const { openWorkspaceDialog } = useApp()
   return (
     <div className="mx-auto mt-24 max-w-md rounded-xl border border-dashed border-border bg-card p-10 text-center">
       <Puzzle className="mx-auto mb-3 h-9 w-9 text-primary" />
@@ -85,7 +85,7 @@ function EmptyWorkspace() {
       <p className="mt-1 text-xs text-muted-foreground">
         Create a project, import a folder or pull one of your packages — the shell fills in around it.
       </p>
-      <Button className="mt-4" size="sm" onClick={() => setWorkspaceDialogOpen(true)}>
+      <Button className="mt-4" size="sm" onClick={() => openWorkspaceDialog("new")}>
         Set up workspace
       </Button>
     </div>

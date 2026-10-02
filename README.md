@@ -37,7 +37,7 @@ selldoes open index.js:12            # jump to a file/line in VS Code, Cursor or
 
 | Surface | What it's for |
 |---|---|
-| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). Click it to switch projects in-place, create new (template or Describe-AI), import (folder/zip), pull from your account. Empty workspace → the onboarding dialog opens over the shell |
+| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding |
 | **Code + Console** (shell pages) | Monaco editor over the project (SDK types, save → rebuild, git diffs/commit, quick open, search, terminal drawer) and a live log console whose build errors jump to the offending line |
 | **Preview** (proxied per project, spawned on `4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply. The shell proxies to whichever project is selected |
 | **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant, `selldoes open` |

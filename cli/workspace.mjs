@@ -22,6 +22,9 @@ import crypto from "node:crypto"
 
 const MAX_PROJECTS = 50
 
+/** Accent colors the dev shell can store per project (cosmetic only). */
+const PROJECT_COLORS = new Set(["orange", "violet", "sky", "emerald", "rose", "amber"])
+
 export function workspaceDir() {
   return path.join(os.homedir(), ".selldoes")
 }
@@ -58,10 +61,11 @@ export function detectKind(dir) {
 export function projectMeta(dir, kind) {
   const manifest = readManifest(dir, kind) ?? {}
   const base = path.basename(normalizePath(dir))
+  const icon = typeof manifest.icon === "string" && manifest.icon ? manifest.icon : undefined
   if (kind === "theme") {
-    return { name: String(manifest.name ?? base), slug: base }
+    return { name: String(manifest.name ?? base), slug: base, icon }
   }
-  return { name: String(manifest.name ?? base), slug: String(manifest.slug ?? base) }
+  return { name: String(manifest.name ?? base), slug: String(manifest.slug ?? base), icon }
 }
 
 export function loadWorkspace() {
@@ -95,7 +99,7 @@ function idFor(normalizedPath) {
  * Registers (or refreshes) a project in the workspace.
  * `source` records how it got here: folder | zip | create | account.
  */
-export function touchProject({ dir, kind, source = "folder", name, slug }) {
+export function touchProject({ dir, kind, source = "folder", name, slug, color }) {
   const normalized = normalizePath(dir)
   const detected = kind ?? detectKind(normalized)
   if (!detected) throw new Error(`No plugin.json or manifest.json in ${normalized}`)
@@ -103,14 +107,17 @@ export function touchProject({ dir, kind, source = "folder", name, slug }) {
   const data = loadWorkspace()
   const now = new Date().toISOString()
   const existing = data.projects.find((project) => project.path === normalized)
+  const cleanColor = PROJECT_COLORS.has(String(color)) ? String(color) : null
   let id
   if (existing) {
     id = existing.id
     existing.kind = detected
     existing.name = name ?? meta.name
     existing.slug = slug ?? meta.slug
+    if (meta.icon) existing.icon = meta.icon
     existing.lastOpenedAt = now
     if (source && source !== "folder") existing.source = source
+    if (cleanColor) existing.color = cleanColor
   } else {
     id = idFor(normalized)
     data.projects.push({
@@ -118,10 +125,12 @@ export function touchProject({ dir, kind, source = "folder", name, slug }) {
       kind: detected,
       name: name ?? meta.name,
       slug: slug ?? meta.slug,
+      ...(meta.icon ? { icon: meta.icon } : {}),
       path: normalized,
       source,
       createdAt: now,
       lastOpenedAt: now,
+      ...(cleanColor ? { color: cleanColor } : {}),
     })
   }
   // Last opened/selected = the shell's current workspace.
@@ -148,6 +157,13 @@ export function setCurrentProject(id) {
   data.currentId = project.id
   saveWorkspace(data)
   return project
+}
+
+/** Clears the selection without touching any project (used when nothing is previewable). */
+export function clearCurrentProject() {
+  const data = loadWorkspace()
+  data.currentId = null
+  saveWorkspace(data)
 }
 
 /** Lists projects, newest first. `missing` flags paths that no longer exist. */

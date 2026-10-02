@@ -12,10 +12,13 @@ Everything needed lives in one package — [`selldoes`](https://www.npmjs.com/pa
 
 The SDK remembers your projects per machine (`~/.selldoes/workspace.json`), so
 you run the tooling from anywhere — the plugin folder is just a path. In the
-dev shell the **sidebar workspace switcher** shows the current project and
-opens the switch/create/import/pull dialog (it doubles as onboarding when the
-workspace is empty); switching is in-place — the shell proxies to whichever
-project's preview is selected:
+dev shell the **sidebar workspace switcher** is a dropdown (like the
+dashboard's store switcher): your projects, restart/open/remove for the
+current one, then **New workspace** — a three-step dialog (start → details →
+options) that scaffolds template or AI projects, imports a folder/.zip, or
+pulls a package you own. It doubles as onboarding when the workspace is
+empty; switching is in-place — the shell proxies to whichever project's
+preview is selected:
 
 ```bash
 selldoes                       # dev shell + browser: sidebar switcher, onboarding when empty

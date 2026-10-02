@@ -7,6 +7,10 @@ export interface WsProject {
   slug: string
   path: string
   source?: string
+  /** Built-in icon name from the project manifest, when present. */
+  icon?: string
+  /** Accent chosen in the New-workspace wizard (cosmetic, stored in workspace.json). */
+  color?: string | null
   createdAt?: string
   lastOpenedAt?: string
   missing?: boolean
@@ -64,11 +68,42 @@ function post<T>(path: string, data?: unknown): Promise<T> {
 export const ws = {
   bootstrap: () => request<WsBootstrap>("/__ws/bootstrap"),
   importFolder: (folderPath: string) => post<{ project: WsProject }>("/__ws/import", { path: folderPath }),
-  create: (input: { name: string; parentDir?: string; kind: "plugin" | "theme"; version?: string; withUi?: boolean; uiFlavor?: "js" | "react" }) =>
-    post<{ project: WsProject; needsInstall?: boolean }>("/__ws/create", input),
-  createAi: (input: { name: string; prompt: string; parentDir?: string }) =>
-    post<{ project: WsProject; files: string[] }>("/__ws/create-ai", input),
+  create: (input: {
+    name: string
+    parentDir?: string
+    kind: "plugin" | "theme"
+    version?: string
+    slug?: string
+    description?: string
+    author?: string
+    category?: string
+    icon?: string
+    tags?: string[]
+    permissions?: string[]
+    color?: string
+    withUi?: boolean
+    uiFlavor?: "js" | "react"
+    /** false = register without making it current (themes can't preview in the shell). */
+    select?: boolean
+  }) => post<{ project: WsProject; needsInstall?: boolean }>("/__ws/create", input),
+  createAi: (input: {
+    name: string
+    prompt: string
+    parentDir?: string
+    slug?: string
+    description?: string
+    version?: string
+    author?: string
+    category?: string
+    icon?: string
+    tags?: string[]
+    color?: string
+    select?: boolean
+  }) => post<{ project: WsProject; files: string[] }>("/__ws/create-ai", input),
   packages: () => request<{ appUrl: string; plugins: WsPackage[] }>("/__ws/packages"),
+  connect: (token: string) =>
+    post<{ connected: true; appUrl: string; email?: string; name?: string }>("/__ws/connect", { token }),
+  disconnect: () => post<{ connected: false }>("/__ws/disconnect"),
   pull: (slug: string, dir?: string) => post<{ project: WsProject }>("/__ws/pull", { slug, dir }),
   select: (projectId: string) => post<{ current: WsBootstrap["current"] }>("/__ws/select", { projectId }),
   restart: () => post<{ current: WsBootstrap["current"] }>("/__ws/restart", {}),

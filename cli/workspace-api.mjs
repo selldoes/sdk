@@ -47,16 +47,35 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       if (!name) return json(res, 400, { error: "Missing project name" })
       const kind = body.kind === "theme" ? "theme" : "plugin"
       const parentDir = path.resolve(String(body.parentDir ?? ctx.defaultDir))
+      const slug = typeof body.slug === "string" && body.slug.trim() ? body.slug.trim() : null
       const { scaffoldProject } = await import("./create.mjs")
+      const workspaceLib = await import("./workspace.mjs")
+      const previousCurrent = body.select === false ? workspaceLib.getCurrentProjectId() : null
       const created = await scaffoldProject({
         kind,
-        dir: path.join(parentDir, name),
+        dir: path.join(parentDir, slug || name),
+        slug,
+        name,
         version: String(body.version ?? "0.1.0"),
         withUi: kind === "theme" ? false : body.withUi !== false,
         uiFlavor: body.uiFlavor === "react" ? "react" : "js",
         install: false,
+        description: typeof body.description === "string" ? body.description : undefined,
+        author: typeof body.author === "string" ? body.author : undefined,
+        category: typeof body.category === "string" ? body.category : undefined,
+        icon: typeof body.icon === "string" ? body.icon : undefined,
+        tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+        permissions: Array.isArray(body.permissions) ? body.permissions.map(String) : undefined,
+        color: typeof body.color === "string" ? body.color : undefined,
       })
-      return json(res, 200, { project: { slug: created.slug, name: created.name, kind: created.kind, path: created.targetDir }, needsInstall: kind === "plugin" && body.uiFlavor === "react" })
+      if (body.select === false) {
+        // Scaffolding makes the project current; restore (or clear) when the
+        // caller can't preview it (themes need a connected store).
+        if (previousCurrent) workspaceLib.setCurrentProject(previousCurrent)
+        else workspaceLib.clearCurrentProject()
+      }
+      const project = workspaceLib.listProjects().find((entry) => entry.path === workspaceLib.normalizePath(created.targetDir)) ?? null
+      return json(res, 200, { project, needsInstall: kind === "plugin" && body.uiFlavor === "react" })
     }
 
     if (action === "create-ai" && method === "POST") {
@@ -67,17 +86,51 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       if (!prompt) return json(res, 400, { error: "Describe the plugin you want" })
       const parentDir = path.resolve(String(body.parentDir ?? ctx.defaultDir))
       const { scaffoldWithAi } = await import("./plugin/ai-scaffold.mjs")
+      const workspaceLib = await import("./workspace.mjs")
       const config = body.assistant && typeof body.assistant === "object" ? { assistant: body.assistant } : {}
+      const slug = typeof body.slug === "string" && body.slug.trim() ? body.slug.trim() : null
+      const previousCurrent = body.select === false ? workspaceLib.getCurrentProjectId() : null
       const created = await scaffoldWithAi({
         prompt,
-        dir: path.join(parentDir, name),
+        dir: path.join(parentDir, slug || name),
         config,
         log: () => {},
+        overrides: {
+          name,
+          slug: slug ?? undefined,
+          description: typeof body.description === "string" ? body.description : undefined,
+          version: typeof body.version === "string" ? body.version : undefined,
+          author: typeof body.author === "string" ? body.author : undefined,
+          category: typeof body.category === "string" ? body.category : undefined,
+          icon: typeof body.icon === "string" ? body.icon : undefined,
+          tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+        },
+        color: typeof body.color === "string" ? body.color : undefined,
       })
-      return json(res, 200, { project: { slug: created.slug, name: created.name, kind: "plugin", path: created.dir }, files: created.files })
+      if (body.select === false) {
+        if (previousCurrent) workspaceLib.setCurrentProject(previousCurrent)
+        else workspaceLib.clearCurrentProject()
+      }
+      const project = workspaceLib.listProjects().find((entry) => entry.path === workspaceLib.normalizePath(created.dir)) ?? null
+      return json(res, 200, { project, files: created.files })
     }
 
     // ── Developer account ──────────────────────────────────────────────────
+    if (action === "connect" && method === "POST") {
+      const body = await readBody(req)
+      const account = await import("./account.mjs")
+      const { appUrl, account: developer } = await account.connectDeveloper(String(body.token ?? ""))
+      ctx.resetAccountCache?.()
+      return json(res, 200, { connected: true, appUrl, email: developer.email, name: developer.name })
+    }
+
+    if (action === "disconnect" && method === "POST") {
+      const account = await import("./account.mjs")
+      account.disconnectDeveloper()
+      ctx.resetAccountCache?.()
+      return json(res, 200, { connected: false })
+    }
+
     if (action === "packages" && method === "GET") {
       const account = await import("./account.mjs")
       const { appUrl, plugins } = await account.listPackages()

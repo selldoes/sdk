@@ -41,6 +41,8 @@ interface AppContextValue {
   noProject: boolean
   workspaceDialogOpen: boolean
   setWorkspaceDialogOpen: (open: boolean) => void
+  workspaceDialogPane: WorkspaceDialogPane
+  openWorkspaceDialog: (pane?: WorkspaceDialogPane) => void
   /** Overlays owned by the shell. */
   terminalOpen: boolean
   setTerminalOpen: (open: boolean) => void
@@ -55,6 +57,9 @@ export interface AssistantTarget {
   language: string
   selection: { startLine: number; endLine: number; text: string } | null
 }
+
+/** Which pane the workspace dialog opens on. */
+export type WorkspaceDialogPane = "new" | "import" | "pull"
 
 const AppContext = React.createContext<AppContextValue | null>(null)
 
@@ -83,6 +88,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = React.useState<WsBootstrap | null>(null)
   const [noProject, setNoProject] = React.useState(false)
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = React.useState(false)
+  const [workspaceDialogPane, setWorkspaceDialogPane] = React.useState<WorkspaceDialogPane>("new")
   const [assistantTarget, setAssistantTarget] = React.useState<AssistantTarget | null>(null)
   const [terminalOpen, setTerminalOpen] = React.useState(false)
   const [paletteOpen, setPaletteOpen] = React.useState(false)
@@ -131,9 +137,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     void refreshWorkspace()
   }, [refreshWorkspace])
 
-  // First run or nothing selected → onboarding dialog over the normal shell.
+  // First run (or nothing selected) → open the New-workspace dialog once.
+  // Auto-opening only once keeps it from popping back over the shell while
+  // the user is doing something else (e.g. after adding a theme).
+  const autoOpenedWorkspace = React.useRef(false)
   React.useEffect(() => {
-    if (workspace && (workspace.projects.length === 0 || noProject)) {
+    if (!workspace) return
+    if (workspace.projects.length === 0 || noProject) {
+      if (autoOpenedWorkspace.current) return
+      autoOpenedWorkspace.current = true
       setWorkspaceDialogOpen(true)
     }
   }, [workspace, noProject])
@@ -151,6 +163,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setAssistantPage = React.useCallback((page: { quick?: string[]; context?: string }) => {
     setAssistantQuick(page.quick ?? [])
     setAssistantContext(page.context ?? "")
+  }, [])
+
+  const openWorkspaceDialog = React.useCallback((pane: WorkspaceDialogPane = "new") => {
+    setWorkspaceDialogPane(pane)
+    setWorkspaceDialogOpen(true)
   }, [])
 
   const value: AppContextValue = {
@@ -177,6 +194,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     noProject,
     workspaceDialogOpen,
     setWorkspaceDialogOpen,
+    workspaceDialogPane,
+    openWorkspaceDialog,
     terminalOpen,
     setTerminalOpen,
     paletteOpen,
