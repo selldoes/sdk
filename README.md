@@ -37,7 +37,7 @@ selldoes open index.js:12            # jump to a file/line in VS Code, Cursor or
 
 | Surface | What it's for |
 |---|---|
-| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding |
+| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding. A **Settings** page manages the project, the registry, connected accounts (developer + theme lanes) and the dev server — including deleting a project locally or its workspace copy remotely |
 | **Code + Console** (shell pages) | Monaco editor over the project (SDK types, save → rebuild, git diffs/commit, quick open, search, terminal drawer) and a live log console whose build errors jump to the offending line |
 | **Preview** (proxied per project, spawned on `4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply. The shell proxies to whichever project is selected |
 | **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant, `selldoes open` |
@@ -69,6 +69,8 @@ UI and never touch Vite.
 | `selldoes` | Web workspace + browser (`--no-open`, `--port <n>`, `--dev` = SDK-dev mode) |
 | `selldoes home` | Terminal launcher: recents, import, create, your packages |
 | `selldoes import <path>` | Register a folder or `.zip` in the workspace |
+| `selldoes remove [project]` | Unregister a project (files stay on disk); `--delete-files` also deletes the folder (typed-slug confirm) |
+| `selldoes delete <slug>` | Delete a package's developer workspace copy on the platform (published marketplace artifacts stay) |
 | `selldoes open [file[:line]]` | Open the project (or a file/line) in your editor; `--terminal` for an OS terminal |
 | `selldoes create [dir]` | Scaffold from a template (interactive) |
 | `selldoes create [dir] --ai "…"` | Scaffold with AI — validated before a single file is written |

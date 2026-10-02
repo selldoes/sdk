@@ -26,6 +26,7 @@ import { DataPage } from "@/pages/data"
 import { EmailPage } from "@/pages/email"
 import { RealtimePage } from "@/pages/realtime"
 import { ShipPage } from "@/pages/ship"
+import { SettingsPage } from "@/pages/settings"
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { bootstrap, loading, error, refresh } = useApp()
@@ -121,6 +122,7 @@ function Shell() {
                 <Route path="/email" element={<EmailPage />} />
                 <Route path="/realtime" element={<RealtimePage />} />
                 <Route path="/ship" element={<ShipPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </Gate>
           )}

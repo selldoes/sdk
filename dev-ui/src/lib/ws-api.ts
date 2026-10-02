@@ -47,6 +47,30 @@ export interface WsPackage {
   updatedAt?: string
 }
 
+/** Per-package detail from GET /__ws/package/<slug> (plugin + releases + listing). */
+export interface WsPackageDetail {
+  plugin: {
+    slug: string
+    name?: string
+    description?: string
+    latestVersion?: string
+    status?: string
+    updatedAt?: string
+  }
+  releases?: { version?: string; notes?: string; createdAt?: string }[]
+  listing?: { status?: string; price?: number } | null
+}
+
+/** Theme-lane (merchant API key) state — never contains the raw key. */
+export interface WsThemeStatus {
+  connected: boolean
+  baseUrl: string | null
+  defaultStoreSlug: string | null
+  apiKeyMasked: string | null
+  stores?: string[]
+  userId?: number | null
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
   const body = await response.json().catch(() => ({}))
@@ -101,15 +125,33 @@ export const ws = {
     select?: boolean
   }) => post<{ project: WsProject; files: string[] }>("/__ws/create-ai", input),
   packages: () => request<{ appUrl: string; plugins: WsPackage[] }>("/__ws/packages"),
-  connect: (token: string) =>
-    post<{ connected: true; appUrl: string; email?: string; name?: string }>("/__ws/connect", { token }),
+  connect: (token: string, appUrl?: string) =>
+    post<{ connected: true; appUrl: string; email?: string; name?: string }>("/__ws/connect", {
+      token,
+      ...(appUrl ? { appUrl } : {}),
+    }),
   disconnect: () => post<{ connected: false }>("/__ws/disconnect"),
   pull: (slug: string, dir?: string) => post<{ project: WsProject }>("/__ws/pull", { slug, dir }),
+  deleteRemote: (slug: string) =>
+    post<{ ok: boolean; slug: string; appUrl: string }>("/__ws/delete-remote", { slug, confirm: true }),
+  package: (slug: string) => request<WsPackageDetail>(`/__ws/package/${encodeURIComponent(slug)}`),
+  themeStatus: () => request<WsThemeStatus>("/__ws/theme-status"),
+  themeConnect: (input: { apiKey: string; baseUrl?: string; defaultStoreSlug?: string }) =>
+    post<WsThemeStatus>("/__ws/theme-connect", input),
+  themeDisconnect: () => post<{ connected: false; had: boolean }>("/__ws/theme-disconnect"),
   select: (projectId: string) => post<{ current: WsBootstrap["current"] }>("/__ws/select", { projectId }),
   restart: () => post<{ current: WsBootstrap["current"] }>("/__ws/restart", {}),
   previews: () => request<{ previews: WsPreview[] }>("/__ws/previews"),
   close: (id: string) => post<{ ok: boolean }>("/__ws/close", { id }),
   remove: (projectId: string) => post<{ ok: boolean }>("/__ws/remove", { projectId }),
+  /** Deletes the project folder from disk + unregisters it (typed-slug confirm server-side). */
+  deleteFiles: (input: { projectId: string; confirmSlug: string; allowDirty?: boolean }) =>
+    post<{ ok: boolean; slug: string; path: string; existed: boolean }>("/__ws/delete-files", input),
+  /** Unregisters every project (files are never touched). */
+  clearRegistry: () => post<{ ok: boolean; removed: number }>("/__ws/clear-registry", { confirm: true }),
+  saveSettings: (input: { defaultDir: string }) => post<{ ok: boolean; defaultDir: string }>("/__ws/settings", input),
+  setColor: (projectId: string, color: string | null) =>
+    post<{ ok: boolean; project: WsProject }>("/__ws/color", { projectId, color }),
   openEditor: (input: { projectId?: string; file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>
     post<{ opened: boolean; editor?: string; terminal?: string; error?: string }>("/__ws/open-editor", input),
 }

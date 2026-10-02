@@ -6,7 +6,7 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentTypeFor } from "./util.mjs"
-import { getCurrentProjectId, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
+import { getCurrentProjectId, getWorkspaceSettings, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
 import { attachTerminalServer } from "./terminal.mjs"
 
 /**
@@ -121,7 +121,16 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
   }
 
   const sdkVersion = JSON.parse(fs.readFileSync(path.join(SDK_ROOT, "package.json"), "utf8")).version
-  const defaultDir = path.join(os.homedir(), "Selldoes")
+  const defaultDirFallback = path.join(os.homedir(), "Selldoes")
+
+  /** The default parent dir for new projects — workspace.json wins, else ~/Selldoes. */
+  function resolveDefaultDir() {
+    try {
+      return getWorkspaceSettings().defaultDir ?? defaultDirFallback
+    } catch {
+      return defaultDirFallback
+    }
+  }
 
   // ── SDK-dev mode: serve the dev-ui through Vite (HMR) ──────────────────────
   let devMiddleware = null
@@ -155,7 +164,10 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
             stopPreview,
             listPreviews,
             bootstrap,
-            defaultDir,
+            // Read fresh per request so `/__ws/settings` applies immediately.
+            get defaultDir() {
+              return resolveDefaultDir()
+            },
             host,
             selectProject,
             restartProject,
@@ -429,7 +441,7 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
           : null,
       account: await accountInfo(),
       assistant,
-      defaultDir,
+      defaultDir: resolveDefaultDir(),
       previews: listPreviews().filter((preview) => preview.alive),
     }
   }

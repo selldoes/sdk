@@ -292,6 +292,20 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         return json(res, 200, { ok: true, manifest: restored })
       }
+      if (req.method === "POST" && pathname === "/__dev/undo/clear") {
+        const undoRoot = path.join(devDir, "undo")
+        let cleared = 0
+        try {
+          if (fs.existsSync(undoRoot)) {
+            cleared = fs.readdirSync(undoRoot).length
+            fs.rmSync(undoRoot, { recursive: true, force: true })
+          }
+        } catch (error) {
+          return json(res, 500, { error: `Could not clear the undo history: ${error.message}` })
+        }
+        log(`undo history cleared (${cleared} snapshot(s))`)
+        return json(res, 200, { ok: true, cleared })
+      }
 
       // ── Assets (icon + screenshots) ────────────────────────────────────────
       if (req.method === "POST" && pathname === "/__dev/assets") {
@@ -460,23 +474,115 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             DEEPINFRA_API_KEY: Boolean(process.env.DEEPINFRA_API_KEY),
             OLLAMA_HOST: process.env.OLLAMA_HOST ?? null,
           },
+          server: {
+            storeId: Number(fileConfig.storeId ?? 1),
+            storeSlug: String(fileConfig.storeSlug ?? "dev-store"),
+            storeName: String(fileConfig.storeName ?? "Dev Store"),
+            port: Number(fileConfig.port ?? 4590),
+            host: String(fileConfig.host ?? "127.0.0.1"),
+            ai: { mockReply: fileConfig.ai?.mockReply ?? null },
+            email: { disabled: Boolean(fileConfig.email?.disabled) },
+            sampleJobs: fileConfig.sampleJobs ?? null,
+          },
         }
       }
       if (pathname === "/__dev/config") {
         if (req.method === "GET") return json(res, 200, configPayload())
         if (req.method === "POST") {
+          // Sections map to selldoes.config.json keys: `assistant`, `server`
+          // (storeId/storeSlug/storeName/port/host), `ai` (mockReply),
+          // `email` (disabled) and `sampleJobs`. Assistant settings apply
+          // immediately (resolved per request); everything else is baked in at
+          // startup, so the response flags `restartRequired`.
           const body = await readBody(req)
-          const assistant = body?.assistant && typeof body.assistant === "object" ? body.assistant : null
-          if (!assistant) return json(res, 400, { error: "Missing assistant settings" })
-          const fileConfig = readConfig()
-          const merged = { ...(fileConfig.assistant ?? {}), ...assistant }
-          for (const [key, value] of Object.entries(merged)) {
-            if (value === undefined || value === null || value === "") delete merged[key]
+          const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value)
+          if (!isObject(body?.assistant) && !isObject(body?.server) && !isObject(body?.ai) && !isObject(body?.email) && body?.sampleJobs === undefined) {
+            return json(res, 400, { error: "Nothing to save — send assistant, server, ai, email or sampleJobs" })
           }
-          const next = { ...fileConfig, assistant: merged }
+          const fileConfig = readConfig()
+          const next = { ...fileConfig }
+          let restartRequired = false
+
+          if (body.assistant !== undefined) {
+            if (!isObject(body.assistant)) return json(res, 400, { error: "assistant must be an object" })
+            const merged = { ...(fileConfig.assistant ?? {}), ...body.assistant }
+            for (const [key, value] of Object.entries(merged)) {
+              if (value === undefined || value === null || value === "") delete merged[key]
+            }
+            next.assistant = merged
+          }
+
+          if (body.server !== undefined) {
+            if (!isObject(body.server)) return json(res, 400, { error: "server must be an object" })
+            const srv = body.server
+            if (srv.storeId !== undefined && srv.storeId !== null && srv.storeId !== "") {
+              const value = Number(srv.storeId)
+              if (!Number.isInteger(value) || value < 1) return json(res, 400, { error: "server.storeId must be a positive integer" })
+              if (value !== Number(fileConfig.storeId ?? 1)) restartRequired = true
+              next.storeId = value
+            }
+            if (srv.storeSlug !== undefined && srv.storeSlug !== null) {
+              const value = String(srv.storeSlug).trim()
+              if (!value) return json(res, 400, { error: "server.storeSlug cannot be empty" })
+              if (value !== String(fileConfig.storeSlug ?? "dev-store")) restartRequired = true
+              next.storeSlug = value
+            }
+            if (srv.storeName !== undefined && srv.storeName !== null) {
+              const value = String(srv.storeName).trim()
+              if (value !== String(fileConfig.storeName ?? "Dev Store")) restartRequired = true
+              next.storeName = value
+            }
+            if (srv.port !== undefined && srv.port !== null && srv.port !== "") {
+              const value = Number(srv.port)
+              if (!Number.isInteger(value) || value < 1024 || value > 65535) return json(res, 400, { error: "server.port must be between 1024 and 65535" })
+              if (value !== Number(fileConfig.port ?? 4590)) restartRequired = true
+              next.port = value
+            }
+            if (srv.host !== undefined && srv.host !== null && srv.host !== "") {
+              const value = String(srv.host).trim()
+              if (value !== String(fileConfig.host ?? "127.0.0.1")) restartRequired = true
+              next.host = value
+            }
+          }
+
+          if (body.ai !== undefined) {
+            if (!isObject(body.ai)) return json(res, 400, { error: "ai must be an object" })
+            const merged = { ...(fileConfig.ai ?? {}) }
+            if ("mockReply" in body.ai) {
+              const value = body.ai.mockReply === null || body.ai.mockReply === "" ? null : String(body.ai.mockReply)
+              if (value !== (fileConfig.ai?.mockReply ?? null)) restartRequired = true
+              if (value === null) delete merged.mockReply
+              else merged.mockReply = value
+            }
+            if (Object.keys(merged).length > 0) next.ai = merged
+            else delete next.ai
+          }
+
+          if (body.email !== undefined) {
+            if (!isObject(body.email)) return json(res, 400, { error: "email must be an object" })
+            const merged = { ...(fileConfig.email ?? {}) }
+            if ("disabled" in body.email) {
+              const value = Boolean(body.email.disabled)
+              if (value !== Boolean(fileConfig.email?.disabled)) restartRequired = true
+              if (value) merged.disabled = true
+              else delete merged.disabled
+            }
+            if (Object.keys(merged).length > 0) next.email = merged
+            else delete next.email
+          }
+
+          if (body.sampleJobs !== undefined) {
+            const value = body.sampleJobs
+            if (value !== null && !isObject(value)) return json(res, 400, { error: "sampleJobs must be an object or null" })
+            const nextValue = value ?? null
+            if (JSON.stringify(nextValue ?? null) !== JSON.stringify(fileConfig.sampleJobs ?? null)) restartRequired = true
+            if (nextValue) next.sampleJobs = nextValue
+            else delete next.sampleJobs
+          }
+
           fs.writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`)
-          log("assistant settings saved to selldoes.config.json")
-          return json(res, 200, { ok: true, ...configPayload() })
+          log(restartRequired ? "settings saved to selldoes.config.json — restart the preview to apply" : "settings saved to selldoes.config.json")
+          return json(res, 200, { ok: true, restartRequired, ...configPayload() })
         }
       }
       if (req.method === "POST" && pathname === "/__dev/assistant/test") {
@@ -814,7 +920,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   })
 
   const listenPort = Number(port ?? config.port ?? 4590)
-  const listenHost = String(host ?? "127.0.0.1")
+  const listenHost = String(host ?? config.host ?? "127.0.0.1")
 
   const terminals = attachTerminalServer({
     server,

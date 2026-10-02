@@ -32,6 +32,55 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       return json(res, ok ? 200 : 404, { ok })
     }
 
+    // ── Settings: destructive project + registry actions ────────────────────
+    if (action === "delete-files" && method === "POST") {
+      const body = await readBody(req)
+      const { getProject, deleteProjectFiles, gitProbe } = await import("./workspace.mjs")
+      const project = getProject(String(body.projectId ?? ""))
+      if (!project) return json(res, 404, { error: "Project not found" })
+      if (String(body.confirmSlug ?? "") !== project.slug) {
+        return json(res, 400, { error: `Type the slug "${project.slug}" to confirm deletion` })
+      }
+      // Stop any live preview for this project before touching the folder.
+      for (const preview of ctx.listPreviews()) {
+        if (preview.projectId === project.id && preview.alive) ctx.stopPreview(preview.id)
+      }
+      const git = await gitProbe(project.path)
+      if (git.repo && git.dirty && body.allowDirty !== true) {
+        return json(res, 409, {
+          error: `${project.path} is a git repository with uncommitted changes — they will be lost.`,
+          code: "dirty",
+        })
+      }
+      const result = deleteProjectFiles(project.id)
+      return json(res, 200, { ok: true, ...result })
+    }
+
+    if (action === "clear-registry" && method === "POST") {
+      const body = await readBody(req)
+      if (body.confirm !== true) return json(res, 400, { error: "Confirm with { confirm: true }" })
+      const { clearWorkspace } = await import("./workspace.mjs")
+      const removed = clearWorkspace()
+      // The registry no longer references any project — stop every preview.
+      for (const preview of ctx.listPreviews()) if (preview.alive) ctx.stopPreview(preview.id)
+      return json(res, 200, { ok: true, removed })
+    }
+
+    if (action === "settings" && method === "POST") {
+      const body = await readBody(req)
+      const { setDefaultDir } = await import("./workspace.mjs")
+      const defaultDir = setDefaultDir(body.defaultDir ?? "")
+      return json(res, 200, { ok: true, defaultDir })
+    }
+
+    if (action === "color" && method === "POST") {
+      const body = await readBody(req)
+      const { setProjectColor } = await import("./workspace.mjs")
+      const project = setProjectColor(String(body.projectId ?? ""), body.color ?? null)
+      if (!project) return json(res, 404, { error: "Project not found" })
+      return json(res, 200, { ok: true, project })
+    }
+
     if (action === "import" && method === "POST") {
       const body = await readBody(req)
       const target = String(body.path ?? "").trim()
@@ -119,7 +168,10 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
     if (action === "connect" && method === "POST") {
       const body = await readBody(req)
       const account = await import("./account.mjs")
-      const { appUrl, account: developer } = await account.connectDeveloper(String(body.token ?? ""))
+      const { appUrl, account: developer } = await account.connectDeveloper(
+        String(body.token ?? ""),
+        body.appUrl ? String(body.appUrl) : undefined,
+      )
       ctx.resetAccountCache?.()
       return json(res, 200, { connected: true, appUrl, email: developer.email, name: developer.name })
     }
@@ -144,6 +196,48 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       const account = await import("./account.mjs")
       const project = await account.pullPackage(slug, body.dir ? { dir: String(body.dir) } : {})
       return json(res, 200, { project })
+    }
+
+    if (action === "delete-remote" && method === "POST") {
+      const body = await readBody(req)
+      const slug = String(body.slug ?? "").trim()
+      if (!slug) return json(res, 400, { error: "Missing slug" })
+      if (body.confirm !== true) return json(res, 400, { error: "Confirm with { confirm: true }" })
+      const account = await import("./account.mjs")
+      const result = await account.deletePackage(slug)
+      ctx.resetAccountCache?.()
+      return json(res, 200, result)
+    }
+
+    if (action.startsWith("package/") && method === "GET") {
+      const slug = action.slice("package/".length)
+      const account = await import("./account.mjs")
+      return json(res, 200, await account.getPackage(slug))
+    }
+
+    // ── Theme lane (merchant API keys) ──────────────────────────────────────
+    if (action === "theme-status" && method === "GET") {
+      const account = await import("./account.mjs")
+      return json(res, 200, account.themeLaneStatus())
+    }
+
+    if (action === "theme-connect" && method === "POST") {
+      const body = await readBody(req)
+      const account = await import("./account.mjs")
+      const result = await account.themeLaneConnect({
+        apiKey: body.apiKey,
+        baseUrl: body.baseUrl,
+        defaultStoreSlug: body.defaultStoreSlug,
+      })
+      ctx.resetAccountCache?.()
+      return json(res, 200, { connected: true, ...result, ...account.themeLaneStatus() })
+    }
+
+    if (action === "theme-disconnect" && method === "POST") {
+      const account = await import("./account.mjs")
+      const had = account.themeLaneDisconnect()
+      ctx.resetAccountCache?.()
+      return json(res, 200, { connected: false, had })
     }
 
     // ── Preview spawning / workspace selection ─────────────────────────────

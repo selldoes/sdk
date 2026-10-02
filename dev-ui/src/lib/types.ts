@@ -197,6 +197,32 @@ export interface AssistantConfigResponse {
   env: Record<string, boolean | string | null>
 }
 
+/** The `server` section of selldoes.config.json (dev-server settings). */
+export interface DevServerConfig {
+  storeId: number
+  storeSlug: string
+  storeName: string
+  port: number
+  host: string
+  ai: { mockReply: string | null }
+  email: { disabled: boolean }
+  sampleJobs: Record<string, unknown> | null
+}
+
+/** Full /__dev/config payload — assistant + env + dev-server settings. */
+export interface DevConfigResponse extends AssistantConfigResponse {
+  server: DevServerConfig
+}
+
+/** Sections accepted by POST /__dev/config (all optional). */
+export interface SaveFileConfigInput {
+  assistant?: Record<string, unknown>
+  server?: Partial<DevServerConfig>
+  ai?: { mockReply?: string | null }
+  email?: { disabled?: boolean }
+  sampleJobs?: Record<string, unknown> | null
+}
+
 export interface GitFile {
   status: string
   path: string

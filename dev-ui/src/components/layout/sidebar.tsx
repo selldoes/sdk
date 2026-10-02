@@ -13,6 +13,7 @@ import {
   Rocket,
   ScrollText,
   Search,
+  Settings2,
   ShoppingBag,
   Sliders,
   Sparkles,
@@ -69,6 +70,10 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Ship",
     items: [{ to: "/ship", label: "Validate & publish", icon: Rocket }],
+  },
+  {
+    label: "Manage",
+    items: [{ to: "/settings", label: "Settings", icon: Settings2, hint: "workspace" }],
   },
 ]
 

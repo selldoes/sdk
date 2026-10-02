@@ -8,6 +8,7 @@ import {
   detectKind,
   getProject,
   listProjects,
+  normalizePath,
   projectMeta,
   relativeTime,
   removeProject,
@@ -338,4 +339,69 @@ export async function importCommand(args, flags = {}) {
   console.log(`✓ ${project.name} (${project.kind}) added to the workspace`)
   console.log(`  Path: ${project.path}`)
   console.log(`  Open it with \`selldoes dev\` from anywhere, or \`selldoes home\`.`)
+}
+
+/**
+ * `selldoes remove [project]` — unregister a project from the workspace list
+ * (files stay on disk). With `--delete-files` the folder is deleted too:
+ * typed-slug confirmation in a TTY, `--yes` for scripts, and a dirty git repo
+ * is refused unless `--force`.
+ */
+export async function removeCommand(args, flags = {}) {
+  const wanted = args.find((arg) => !arg.startsWith("-")) ?? (flags.dir !== undefined ? String(flags.dir) : null)
+  const projects = listProjects()
+  if (projects.length === 0) {
+    console.log("The workspace has no projects — add one with `selldoes import <path>` or `selldoes create`.")
+    return
+  }
+
+  let project = null
+  if (wanted) {
+    const asPath = normalizePath(path.resolve(wanted))
+    project =
+      projects.find((entry) => entry.id === wanted) ??
+      projects.find((entry) => entry.slug === wanted) ??
+      projects.find((entry) => entry.path === asPath) ??
+      null
+    if (!project) die(`No workspace project matches "${wanted}" (use a slug, id or path).`)
+  } else if (process.stdin.isTTY) {
+    const answer = await prompts.select({
+      message: "Remove which project?",
+      options: projects.map((entry) => ({
+        value: entry.id,
+        label: entry.name,
+        hint: entry.missing ? "⚠ missing on disk" : `${entry.slug} · ${entry.path}`,
+      })),
+    })
+    if (prompts.isCancel(answer)) cancel()
+    project = getProject(String(answer))
+    if (!project) die("That project is no longer in the workspace.")
+  } else {
+    die("Usage: selldoes remove <slug|path> [--delete-files]")
+  }
+
+  const deleteFiles = flags["delete-files"] === true || flags["delete-files"] === "true"
+  if (deleteFiles && !project.missing) {
+    if (flags.yes !== true && flags.yes !== "true") {
+      if (!process.stdin.isTTY) die("Deleting files needs confirmation — re-run with --yes (scripts/CI).")
+      console.log(`\n  This deletes EVERYTHING under ${project.path}`)
+      console.log("  (the folder is removed from disk and unregistered from the workspace).\n")
+      const typed = await prompts.text({ message: `Type the slug "${project.slug}" to confirm deletion` })
+      if (prompts.isCancel(typed)) cancel()
+      if (String(typed ?? "").trim() !== project.slug) die("Slug did not match — nothing deleted.")
+    }
+    const { deleteProjectFiles, gitProbe } = await import("./workspace.mjs")
+    const git = await gitProbe(project.path)
+    if (git.repo && git.dirty && flags.force !== true) {
+      die(`${project.path} is a git repository with uncommitted changes — commit them first, or pass --force.`)
+    }
+    const result = deleteProjectFiles(project.id)
+    console.log(`✓ Deleted ${result.slug} from disk → ${result.path}`)
+    console.log("  Removed from the workspace list.")
+    return
+  }
+
+  removeProject(project.id)
+  console.log(`✓ Removed ${project.name} from the workspace list (folder kept on disk).`)
+  console.log("  Re-import any time: `selldoes import <path>`.")
 }

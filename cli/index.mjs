@@ -15,6 +15,10 @@ Workspace (the SDK is your workspace — projects live anywhere on disk)
   home                     Terminal launcher: recent projects, import, create
   import <path>            Add an existing plugin/theme project to your workspace
                            (a folder with plugin.json/manifest.json, or a .zip)
+  remove [project]         Remove a project from the workspace list — by slug,
+                           id or path (files stay on disk). --delete-files also
+                           deletes the folder (typed-slug confirm, --yes for
+                           scripts; dirty git repos need --force)
   open [file[:line[:col]]] Open the project (or a file at a line) in your editor.
                            --editor <cmd> picks a specific editor; --terminal
                            opens an OS terminal at the project root instead;
@@ -54,6 +58,9 @@ Account
   packages                   List the packages your developer account owns
   pull <slug>                Download one of your packages and keep developing it
                              (--dir <path> to choose where it lands)
+  delete <slug>              Delete a package's developer workspace copy on the
+                             platform (--yes to skip the confirm). Published
+                             marketplace artifacts stay — admins manage those
   logout                     Remove saved credentials
   whoami                     Show connected identities (developer + themes)
 
@@ -84,8 +91,10 @@ Options
   --base <url>              SellDesk base URL for themes (or SELLDOES_BASE)
   --api-key <key>           Theme API key (or SELLDOES_API_KEY)
   --check                   update: report only, never install (exit 1 when outdated)
-  --yes                     update: skip the confirmation prompt
+  --yes                     update: skip the confirmation prompt; delete/remove: skip confirms
   --global / --local        update: force the install target
+  --force                   create: overwrite a non-empty directory; remove: delete files in a dirty git repo
+  --delete-files            remove: also delete the project folder from disk
   --public                  Theme: make the uploaded theme public
   --force                   create: overwrite a non-empty directory
   -y, --yes                 create: accept all defaults (plugin unless --theme)
@@ -182,6 +191,18 @@ export async function main() {
       case "import": {
         const { importCommand } = await import("./home.mjs")
         await importCommand(args, flags)
+        return
+      }
+
+      case "remove": {
+        const { removeCommand } = await import("./home.mjs")
+        await removeCommand(args, flags)
+        return
+      }
+
+      case "delete": {
+        const { deletePackageCommand } = await import("./account.mjs")
+        await deletePackageCommand(args, flags)
         return
       }
 

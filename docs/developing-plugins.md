@@ -26,6 +26,8 @@ selldoes home                  # the same launcher, in your terminal
 selldoes import ~/code/my-plugin   # folder or .zip → registered in the workspace
 selldoes login --token sk_dev_…    # developer account (portal → API tokens)
 selldoes pull my-plugin            # download a package your account owns, keep developing
+selldoes remove my-plugin          # unregister it (files stay on disk; --delete-files deletes the folder)
+selldoes delete my-plugin          # delete its developer workspace copy on the platform
 ```
 
 `dev`, `build`, `validate` and `publish` work from inside a project exactly as
@@ -99,6 +101,7 @@ dashboard:
 | **Store data** | Inspect/reset the mock database (`.selldoes-dev/db.json`) |
 | **Email / Realtime** | Calls made through `ctx.email.send` / `ctx.realtime.publish` |
 | **Validate & publish** | Validation errors/warnings and the exact CLI commands per release step |
+| **Settings** | Project identity + accent color, local danger zone (remove from workspace / delete files from disk), the developer account's packages (pull / delete workspace copy), the theme-lane API key, assistant + dev-server config (`selldoes.config.json`), the workspace registry and local danger zone (reset mock data / clear undo snapshots) |
 
 Everything the Details editor writes goes through `plugin.json` (backed up to
 `.selldoes-dev/undo/`, restorable from the same page). Screenshots and custom

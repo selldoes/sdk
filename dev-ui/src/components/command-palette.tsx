@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Rocket,
   Search,
+  Settings2,
   ShoppingBag,
   Sliders,
   Sparkles,
@@ -55,6 +56,7 @@ const PAGES: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/email", label: "Email outbox", icon: Mail },
   { to: "/realtime", label: "Realtime", icon: Radio },
   { to: "/ship", label: "Validate & publish", icon: Rocket },
+  { to: "/settings", label: "Settings", icon: Settings2 },
 ]
 
 export function CommandPalette() {

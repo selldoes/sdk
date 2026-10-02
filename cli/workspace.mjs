@@ -2,6 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import crypto from "node:crypto"
+import { execFile } from "node:child_process"
 
 /**
  * The workspace registry: which plugin/theme projects this developer has been
@@ -23,7 +24,7 @@ import crypto from "node:crypto"
 const MAX_PROJECTS = 50
 
 /** Accent colors the dev shell can store per project (cosmetic only). */
-const PROJECT_COLORS = new Set(["orange", "violet", "sky", "emerald", "rose", "amber"])
+export const PROJECT_COLORS = new Set(["orange", "violet", "sky", "emerald", "rose", "amber"])
 
 export function workspaceDir() {
   return path.join(os.homedir(), ".selldoes")
@@ -33,7 +34,7 @@ export function workspaceFile() {
   return path.join(workspaceDir(), "workspace.json")
 }
 
-const EMPTY = { version: 1, projects: [], currentId: null }
+const EMPTY = { version: 1, projects: [], currentId: null, defaultDir: null }
 
 /** Normalizes a path so the same folder never appears twice. */
 export function normalizePath(target) {
@@ -74,6 +75,7 @@ export function loadWorkspace() {
     return {
       version: 1,
       currentId: typeof stored.currentId === "string" ? stored.currentId : null,
+      defaultDir: typeof stored.defaultDir === "string" && stored.defaultDir ? stored.defaultDir : null,
       projects: (Array.isArray(stored.projects) ? stored.projects : []).map((project) => {
         const clean = { ...project }
         delete clean.missing // runtime-only flag, never persisted
@@ -188,6 +190,89 @@ export function removeProject(id) {
   if (data.currentId === id) data.currentId = data.projects[0]?.id ?? null
   saveWorkspace(data)
   return data.projects.length < before
+}
+
+/**
+ * Sets (or clears, with null) a project's accent color — the cosmetic tile
+ * color the sidebar switcher and Settings page show.
+ */
+export function setProjectColor(id, color) {
+  const data = loadWorkspace()
+  const project = data.projects.find((entry) => entry.id === String(id))
+  if (!project) return null
+  project.color = PROJECT_COLORS.has(String(color)) ? String(color) : null
+  saveWorkspace(data)
+  return project
+}
+
+/**
+ * Deletes a project's folder from disk, then unregisters it. Never runs
+ * without a prior caller-side confirmation; refuses to touch a path that is
+ * not registered in the workspace. When the folder is already gone it only
+ * unregisters (reported via `existed: false`).
+ */
+export function deleteProjectFiles(id) {
+  const data = loadWorkspace()
+  const project = data.projects.find((entry) => entry.id === String(id))
+  if (!project) throw new Error("Project not found in the workspace")
+  const dir = normalizePath(project.path)
+  const existed = fs.existsSync(dir)
+  if (existed) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: false })
+    } catch (error) {
+      throw new Error(`Could not delete ${dir}: ${error.message}`)
+    }
+    if (fs.existsSync(dir)) {
+      throw new Error(`Could not fully delete ${dir} — close any program using it (editor, terminal, watcher) and try again`)
+    }
+  }
+  removeProject(project.id)
+  return { id: project.id, slug: project.slug, path: dir, existed }
+}
+
+/**
+ * Best-effort git probe for destructive-action guards: `{ repo, dirty }`.
+ * Answers `{ repo: false }` when git is missing or the folder is not a repo —
+ * never throws, callers treat that as "no warning needed".
+ */
+export function gitProbe(dir) {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["status", "--porcelain"],
+      { cwd: dir, timeout: 5000, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
+      (error, stdout) => {
+        if (error) return resolve({ repo: false, dirty: false })
+        resolve({ repo: true, dirty: String(stdout ?? "").trim().length > 0 })
+      },
+    )
+  })
+}
+
+/** Unregisters every project (files are never touched). Returns the count. */
+export function clearWorkspace() {
+  const data = loadWorkspace()
+  const removed = data.projects.length
+  data.projects = []
+  data.currentId = null
+  saveWorkspace(data)
+  return removed
+}
+
+/** Workspace-level settings (persisted in workspace.json). */
+export function getWorkspaceSettings() {
+  return { defaultDir: loadWorkspace().defaultDir ?? null }
+}
+
+/** Sets the default parent directory for newly created/imported projects. */
+export function setDefaultDir(dir) {
+  const value = String(dir ?? "").trim()
+  if (!value) throw new Error("A default directory path is required")
+  const data = loadWorkspace()
+  data.defaultDir = normalizePath(value)
+  saveWorkspace(data)
+  return data.defaultDir
 }
 
 /** Formats a timestamp for launcher hints ("2 hours ago"). */

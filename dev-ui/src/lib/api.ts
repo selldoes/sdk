@@ -2,9 +2,9 @@
 
 import type {
   AssistantChatResult,
-  AssistantConfigResponse,
   AssistantEdits,
   Bootstrap,
+  DevConfigResponse,
   DevStatus,
   FileRead,
   FileTree,
@@ -12,6 +12,7 @@ import type {
   GitCommit,
   GitStatus,
   PluginManifest,
+  SaveFileConfigInput,
   SearchResult,
   SettingsResponse,
   SnapshotInfo,
@@ -72,8 +73,14 @@ export const dev = {
   restoreSnapshot: (name: string) => post<{ ok: boolean; meta: SnapshotInfo; validation: Validation }>("/__dev/snapshots/restore", { name }),
 
   // ── Assistant settings + chat history ─────────────────────────────────────
-  config: () => request<AssistantConfigResponse>("/__dev/config"),
-  saveConfig: (assistant: Record<string, unknown>) => post<{ ok: boolean } & AssistantConfigResponse>("/__dev/config", { assistant }),
+  config: () => request<DevConfigResponse>("/__dev/config"),
+  /** Assistant-only shortcut (the assistant panel's gear dialog). */
+  saveConfig: (assistant: Record<string, unknown>) =>
+    post<{ ok: boolean; restartRequired?: boolean } & DevConfigResponse>("/__dev/config", { assistant }),
+  /** Saves selldoes.config.json sections (assistant/server/ai/email/sampleJobs). */
+  saveFileConfig: (input: SaveFileConfigInput) =>
+    post<{ ok: boolean; restartRequired?: boolean } & DevConfigResponse>("/__dev/config", input),
+  undoClear: () => post<{ ok: boolean; cleared: number }>("/__dev/undo/clear", {}),
   testAssistant: () => post<{ ok: boolean; provider?: string; model?: string }>("/__dev/assistant/test", {}),
   chatHistory: () => request<{ items: unknown[] }>("/__dev/assistant/history"),
   saveChatHistory: (items: unknown[]) =>

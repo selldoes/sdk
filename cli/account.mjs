@@ -208,6 +208,131 @@ export async function listPackages(flags = {}) {
   return { appUrl, plugins: plugins ?? [] }
 }
 
+function cleanSlug(slug) {
+  const value = String(slug ?? "").trim()
+  if (!/^[a-z0-9-]+$/.test(value)) throw new Error(`"${value}" is not a valid slug`)
+  return value
+}
+
+/** One package with its releases + marketplace listing state (GET). */
+export async function getPackage(slug, flags = {}) {
+  const clean = cleanSlug(slug)
+  const { token, appUrl } = developerAuth(flags)
+  if (!token) throw new Error("Not connected. Run `selldoes login --token sk_dev_…` first.")
+  return devFetch(appUrl, `/api/developers/plugins/${clean}`, token)
+}
+
+/**
+ * Deletes a package's developer workspace copy on the platform
+ * (DELETE /api/developers/plugins/<slug>). The workspace package and its
+ * stored files go; published marketplace artifacts stay — admins manage the
+ * listing and immutable releases from the listings screen. Re-publishing the
+ * slug creates a fresh draft.
+ */
+export async function deletePackage(slug, flags = {}) {
+  const clean = cleanSlug(slug)
+  const { token, appUrl } = developerAuth(flags)
+  if (!token) throw new Error("Not connected. Run `selldoes login --token sk_dev_…` first.")
+  const data = await devFetch(appUrl, `/api/developers/plugins/${clean}`, token, { method: "DELETE" })
+  return { slug: clean, appUrl, ok: data?.success !== false }
+}
+
+/** `selldoes delete <slug>` — deletes the remote workspace copy (asks first). */
+export async function deletePackageCommand(args, flags) {
+  const slug = args.find((arg) => !arg.startsWith("-"))
+  if (!slug) die("Usage: selldoes delete <slug> [--yes]")
+  const clean = cleanSlug(slug)
+  if (flags.yes !== true) {
+    if (!process.stdin.isTTY) die("Refusing to delete without confirmation — re-run with --yes (scripts/CI).")
+    const answer = await prompts.confirm({
+      message: `Delete "${clean}" from your developer workspace on the platform?`,
+      initialValue: false,
+    })
+    if (prompts.isCancel(answer) || !answer) {
+      prompts.cancel("Cancelled")
+      return
+    }
+  }
+  const result = await deletePackage(clean)
+  console.log(`✓ Deleted ${clean} from ${result.appUrl}`)
+  console.log("  Published marketplace artifacts stay — admins manage those from the listings screen.")
+  console.log("  Re-publishing the slug creates a fresh draft.")
+}
+
+// ── Theme lane (merchant API keys) ──────────────────────────────────────────
+// The theme lane's credentials live in the same ~/.selldoes.json as the
+// developer token: { apiKey, baseUrl, defaultStoreSlug } — written by
+// `selldoes login --api-key` and read by theme dev/apply.
+
+function maskSecret(value) {
+  const text = String(value ?? "")
+  if (!text) return null
+  if (text.length <= 8) return "••••••••"
+  return `${text.slice(0, 4)}…${text.slice(-4)}`
+}
+
+/** Saved theme-lane state — never returns the raw key. */
+export function themeLaneStatus() {
+  const cfg = loadConfig()
+  return {
+    connected: Boolean(cfg.apiKey),
+    baseUrl: cfg.baseUrl ?? null,
+    defaultStoreSlug: cfg.defaultStoreSlug ?? null,
+    apiKeyMasked: maskSecret(cfg.apiKey),
+  }
+}
+
+/**
+ * Connects the theme lane: verifies the merchant API key against
+ * {base}/api/templates/me (the same call `selldoes login --api-key` makes),
+ * then saves apiKey/baseUrl/defaultStoreSlug next to the developer token.
+ */
+export async function themeLaneConnect({ apiKey, baseUrl, defaultStoreSlug } = {}) {
+  const key = String(apiKey ?? "").trim()
+  if (!key) throw new Error("Provide a merchant API key (Dashboard → Settings → API Keys).")
+  const base = String(baseUrl ?? loadConfig().baseUrl ?? process.env.SELLDOES_BASE ?? DEFAULT_APP_URL).replace(/\/$/, "")
+  let me = null
+  try {
+    const res = await fetch(`${base}/api/templates/me`, {
+      headers: { "x-api-key": key },
+      signal: AbortSignal.timeout(15_000),
+    })
+    const text = await res.text()
+    try {
+      me = JSON.parse(text)
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) throw new Error(me?.error || `${res.status} ${res.statusText}`)
+  } catch (error) {
+    throw new Error(`Could not verify the API key against ${base}: ${error.message}`)
+  }
+  const cfg = loadConfig()
+  const stores = Array.isArray(me?.stores) ? me.stores : []
+  const requested = String(defaultStoreSlug ?? "").trim()
+  cfg.apiKey = key
+  cfg.baseUrl = base
+  cfg.defaultStoreSlug = requested || stores[0]?.slug || null
+  saveConfig(cfg)
+  return {
+    baseUrl: base,
+    defaultStoreSlug: cfg.defaultStoreSlug,
+    stores: stores.map((store) => store?.slug).filter(Boolean),
+    userId: me?.userId ?? null,
+  }
+}
+
+/** Clears the theme lane's saved credentials (the developer token stays). */
+export function themeLaneDisconnect() {
+  const cfg = loadConfig()
+  const had = Boolean(cfg.apiKey)
+  delete cfg.apiKey
+  delete cfg.baseUrl
+  delete cfg.defaultStoreSlug
+  saveConfig(cfg)
+  return had
+}
+
 export async function packagesCommand(args, flags) {
   const { appUrl, plugins } = await listPackages(flags)
   if (plugins.length === 0) {
