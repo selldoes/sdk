@@ -12,6 +12,16 @@ export interface PluginDashboardPage {
   path: string
   icon?: string
   group?: string
+  /**
+   * Plugin-root-relative HTML entry for this sidebar page (e.g. "ui/settings.html").
+   * Falls back to `ui.entry` when omitted.
+   */
+  entry?: string
+  /**
+   * No-code components rendered instead of the iframe (kit: text, stats, table,
+   * job, settings, logs, links). Mirrors the store's SerializedSection shape.
+   */
+  sections?: { id?: string; type: string; settings?: Record<string, unknown> }[]
 }
 
 export interface PluginUi {
@@ -121,7 +131,9 @@ export interface PluginDB {
 }
 
 export interface PluginHttp {
+  /** GET a public URL. 60s default timeout (override per call with `opts.timeoutMs`, capped at 60s). */
   get(url: string, headers?: Record<string, string>, opts?: { timeoutMs?: number }): Promise<{ status: number; data: unknown }>
+  /** POST JSON to a public URL. 60s default timeout (override per call with `opts.timeoutMs`, capped at 60s). */
   post(url: string, body: unknown, headers?: Record<string, string>, opts?: { timeoutMs?: number }): Promise<{ status: number; data: unknown }>
 }
 

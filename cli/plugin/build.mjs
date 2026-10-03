@@ -4,7 +4,7 @@ import { build } from "esbuild"
 import { zipSync } from "fflate"
 import { fileExists, readJson } from "../util.mjs"
 
-const UI_SOURCE_CANDIDATES = ["src/index.tsx", "src/index.ts", "src/index.jsx", "src/index.js", "index.tsx", "index.ts", "index.jsx", "index.js"]
+const UI_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"]
 
 /** Mirrors the host's upload validator: only these extensions may be zipped. */
 const UPLOADABLE_EXTENSIONS = new Set([
@@ -30,6 +30,72 @@ const UPLOADABLE_EXTENSIONS = new Set([
 ])
 const PACK_EXCLUDED_DIRS = new Set(["node_modules", "dist", "coverage", ".git", ".github", ".selldoes-dev"])
 const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "selldoes.config.json"])
+
+/**
+ * Collects every UI HTML entry declared by the manifest: `ui.entry` plus each
+ * `dashboardPages[].entry`. Entries are plugin-root-relative ("ui/index.html").
+ */
+function collectUiEntries(manifest) {
+  const entries = new Set()
+  const add = (value) => {
+    const entry = String(value ?? "").replace(/^\.\//, "").replace(/\\/g, "/").trim()
+    if (entry) entries.add(entry)
+  }
+  add(manifest.ui?.entry)
+  for (const page of manifest.dashboardPages ?? []) add(page?.entry)
+  return [...entries]
+}
+
+/**
+ * Finds the bundle source for a UI HTML entry: `ui/<rel>.html` ← `ui/src/<rel>.<ext>`
+ * (the documented convention), with the legacy root-level `index.<ext>` fallback.
+ */
+function uiSourceCandidate(uiRoot, relHtml) {
+  const rel = relHtml.replace(/\.html?$/i, "").replace(/\\/g, "/")
+  for (const ext of UI_SOURCE_EXTENSIONS) {
+    const candidate = path.join(uiRoot, "src", `${rel}${ext}`)
+    if (fileExists(candidate)) return candidate
+  }
+  if (rel === "index") {
+    for (const ext of UI_SOURCE_EXTENSIONS) {
+      const candidate = path.join(uiRoot, `index${ext}`)
+      if (fileExists(candidate)) return candidate
+    }
+  }
+  return null
+}
+
+/** Bundle output name for an entry: "reports/summary.html" → "reports-summary". */
+function uiBundleName(relHtml) {
+  return relHtml.replace(/\.html?$/i, "").replace(/[/\\]/g, "-")
+}
+
+/** Writes a React-style HTML shell for a bundled entry (only when missing). */
+function writeUiShell(outUi, relHtml, { title, bundleName }) {
+  const target = path.join(outUi, relHtml)
+  if (fileExists(target)) return false
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(
+    target,
+    [
+      "<!doctype html>",
+      '<html lang="en">',
+      "<head>",
+      '  <meta charset="utf-8" />',
+      '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+      `  <title>${title}</title>`,
+      `  <link rel="stylesheet" href="assets/${bundleName}.css" onerror="this.remove()" />`,
+      "</head>",
+      "<body>",
+      '  <div id="root"></div>',
+      `  <script type="module" src="assets/${bundleName}.js"></script>`,
+      "</body>",
+      "</html>",
+      "",
+    ].join("\n"),
+  )
+  return true
+}
 
 /**
  * Zips the plugin **source** for upload/publish. The platform bundles the
@@ -94,11 +160,17 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
   for (const warning of result.warnings) log(`  [esbuild] ${warning.text}`)
 
   // ── Dashboard UI (optional) ─────────────────────────────────────────────────
-  if (manifest.ui?.entry) {
+  const uiEntries = collectUiEntries(manifest)
+  if (uiEntries.length > 0) {
     const uiRoot = path.join(pluginDir, "ui")
+    const entries = uiEntries.filter((entry) => {
+      if (entry.startsWith("ui/")) return true
+      log(`  ! UI entry "${entry}" is outside ui/ — the preview serves entries from ui/`)
+      return false
+    })
     if (!fs.existsSync(uiRoot)) {
-      log(`  ! manifest declares ui.entry but ${path.relative(pluginDir, uiRoot) || "ui"}/ does not exist`)
-    } else {
+      log(`  ! manifest declares UI entries but ui/ does not exist`)
+    } else if (entries.length > 0) {
       const outUi = path.join(resolvedOut, "ui")
       fs.mkdirSync(outUi, { recursive: true })
       fs.cpSync(uiRoot, outUi, {
@@ -109,41 +181,23 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
         },
       })
 
-      const uiEntry = UI_SOURCE_CANDIDATES.find((candidate) => fileExists(path.join(uiRoot, candidate)))
-      if (uiEntry) {
-        await build({
-          entryPoints: [path.join(uiRoot, uiEntry)],
-          bundle: true,
-          platform: "browser",
-          format: "esm",
-          target: "es2020",
-          outfile: path.join(outUi, "assets", "index.js"),
-          logLevel: "silent",
-          absWorkingDir: pluginDir,
-        })
-      }
-
-      if (!fileExists(path.join(outUi, "index.html"))) {
-        fs.mkdirSync(outUi, { recursive: true })
-        fs.writeFileSync(
-          path.join(outUi, "index.html"),
-          [
-            "<!doctype html>",
-            '<html lang="en">',
-            "<head>",
-            '<meta charset="utf-8" />',
-            '<meta name="viewport" content="width=device-width, initial-scale=1" />',
-            `<title>${manifest.name}</title>`,
-            '<link rel="stylesheet" href="assets/index.css" onerror="this.remove()" />',
-            "</head>",
-            "<body>",
-            '<div id="root"></div>',
-            '<script type="module" src="assets/index.js"></script>',
-            "</body>",
-            "</html>",
-            "",
-          ].join("\n"),
-        )
+      for (const entry of entries) {
+        const relHtml = entry.slice("ui/".length)
+        const bundleName = uiBundleName(relHtml)
+        const source = uiSourceCandidate(uiRoot, relHtml)
+        if (source) {
+          await build({
+            entryPoints: [source],
+            bundle: true,
+            platform: "browser",
+            format: "esm",
+            target: "es2020",
+            outfile: path.join(outUi, "assets", `${bundleName}.js`),
+            logLevel: "silent",
+            absWorkingDir: pluginDir,
+          })
+          writeUiShell(outUi, relHtml, { title: manifest.ui?.title ?? manifest.name, bundleName })
+        }
       }
     }
   }

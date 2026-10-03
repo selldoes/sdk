@@ -1,6 +1,22 @@
 import * as React from "react"
-import { Check, LayoutDashboard, Loader2, Play, Puzzle, ShieldAlert, Sparkles, Square } from "lucide-react"
-import { AppIcon } from "@/components/app-icon"
+import { useSearchParams } from "react-router-dom"
+import {
+  Check,
+  ExternalLink,
+  FileCode2,
+  LayoutDashboard,
+  Loader2,
+  Play,
+  Plus,
+  Puzzle,
+  Route as RouteIcon,
+  ShieldAlert,
+  Sparkles,
+  Square,
+  Webhook,
+} from "lucide-react"
+import { AppIcon, resolveIcon } from "@/components/app-icon"
+import { SectionKit } from "@/components/kit/section-kit"
 import { PermissionList } from "@/components/permission-list"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
 import { PageHead, Callout, EmptyState } from "@/components/shared"
@@ -8,98 +24,609 @@ import { SkeletonCard } from "@/components/skeletons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { dev } from "@/lib/api"
-import type { PluginConfigField, SettingsResponse } from "@/lib/types"
+import { cn } from "@/lib/utils"
+import type { PluginConfigField, PluginDashboardSection, PluginManifest, SettingsResponse, UiEntriesResponse, Validation } from "@/lib/types"
+import { useDevStream } from "@/lib/use-dev-stream"
 import { useVisit } from "@/lib/use-visit"
 import { useApp } from "@/state/app"
 
+interface ResolvedPage {
+  label: string
+  path: string
+  icon?: string
+  group?: string
+  entry: string | null
+  sections?: PluginDashboardSection[]
+}
+
+type CreateKind = "page" | "job" | "hook" | "route"
+
 export function DashboardPage() {
-  const { bootstrap, setAssistantOpen, setAssistantPage } = useApp()
+  const { bootstrap, setAssistantOpen, setAssistantPage, applyManifest, refresh, toast } = useApp()
   useVisit("dashboard")
   const manifest = bootstrap!.manifest
   const store = bootstrap!.store
-  const hasUi = Boolean(manifest.ui?.entry)
+  const [params, setParams] = useSearchParams()
+
+  // ── UI entry status (which declared pages exist in source + dist) ─────────
+  const [entries, setEntries] = React.useState<UiEntriesResponse | null>(null)
+  const [scaffolding, setScaffolding] = React.useState(false)
+  const [frameNonce, setFrameNonce] = React.useState(0)
+
+  const loadEntries = React.useCallback(async () => {
+    try {
+      setEntries(await dev.uiEntries())
+    } catch {
+      setEntries(null)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    void loadEntries()
+  }, [loadEntries, manifest.slug])
+
+  // UI file saves + rebuilds keep the status (and the iframe) fresh.
+  useDevStream(
+    (event) => {
+      if (event.type === "files" && event.paths.some((path) => path.startsWith("ui/"))) void loadEntries()
+      if (event.type === "build") setFrameNonce((nonce) => nonce + 1)
+    },
+    { key: manifest.slug },
+  )
+
+  // ── Pages: dashboardPages[] with per-page entries, else the bare ui.entry ──
+  const pages: ResolvedPage[] = React.useMemo(() => {
+    const normalize = (value?: string | null) => (value ? String(value).replace(/^\.\//, "").replace(/\\/g, "/") : null)
+    const declared: ResolvedPage[] = []
+    for (const page of manifest.dashboardPages ?? []) {
+      const entry = normalize(page.entry) ?? normalize(manifest.ui?.entry)
+      // A page with sections needs no entry — the kit renders it natively.
+      if (!entry && !(Array.isArray(page.sections) && page.sections.length > 0)) continue
+      declared.push({ label: page.label, path: page.path, icon: page.icon, group: page.group, entry, sections: page.sections })
+    }
+    if (declared.length === 0 && normalize(manifest.ui?.entry)) {
+      return [
+        {
+          label: manifest.ui?.title ?? manifest.name,
+          path: "/",
+          icon: manifest.icon,
+          entry: normalize(manifest.ui?.entry)!,
+        },
+      ]
+    }
+    return declared
+  }, [manifest])
+
+  const hasUi = pages.length > 0
+  const activePath = params.get("page") ?? pages[0]?.path ?? "/"
+  const activePage = pages.find((page) => page.path === activePath) ?? pages[0] ?? null
+  const activeStatus = activePage ? entries?.entries.find((entry) => entry.entry === activePage.entry) ?? null : null
+
+  // ── Scaffold the default notes UI (button + in-iframe fallback postMessage) ─
+  const scaffold = React.useCallback(
+    async (entry?: string) => {
+      setScaffolding(true)
+      try {
+        const result = await dev.scaffoldUi(entry ? { entry } : {})
+        applyManifest(result.manifest, result.validation)
+        if (result.written.length) toast(`Created ${result.written.join(", ")}`, "success")
+        else toast("Notes UI already present — rebuilt", "success")
+        if (result.rebuildError) toast(result.rebuildError, "error")
+        await refresh()
+        await loadEntries()
+        setFrameNonce((nonce) => nonce + 1)
+        const defaultEntry = String(result.manifest.ui?.entry ?? "").replace(/^\.\//, "")
+        const landed = (result.manifest.dashboardPages ?? []).find(
+          (page) => (page.entry ? String(page.entry).replace(/^\.\//, "") : defaultEntry) === result.entry,
+        )
+        if (landed?.path && landed.path !== params.get("page")) setParams({ page: landed.path }, { replace: true })
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error), "error")
+      } finally {
+        setScaffolding(false)
+      }
+    },
+    [applyManifest, loadEntries, params, refresh, setParams, toast],
+  )
+
+  // The fallback page inside the iframe posts back to its parent (same-origin).
+  React.useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      const data = event.data as { type?: string; slug?: string; entry?: string }
+      if (!data || data.type !== "selldoes:ui-scaffold") return
+      if (data.slug && data.slug !== manifest.slug) return
+      void scaffold(typeof data.entry === "string" && data.entry ? data.entry : undefined)
+    }
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+  }, [manifest.slug, scaffold])
+
+  const rebuild = React.useCallback(async () => {
+    try {
+      await dev.rebuild()
+      setFrameNonce((nonce) => nonce + 1)
+      await loadEntries()
+      toast("UI rebuilt", "success")
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), "error")
+    }
+  }, [loadEntries, toast])
+
+  // ── Creation: New page / New job / New hook / New route ───────────────────
+  const [createKind, setCreateKind] = React.useState<CreateKind | null>(null)
+
+  const handleScaffolded = React.useCallback(
+    (next: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string }) => {
+      applyManifest(next, validation)
+      toast(message, "success")
+      void refresh()
+      void loadEntries()
+      setFrameNonce((nonce) => nonce + 1)
+      if (extra?.pagePath) setParams({ page: extra.pagePath }, { replace: true })
+    },
+    [applyManifest, loadEntries, refresh, setParams, toast],
+  )
+
+  // ── Components editor (dashboardPages[].sections) ─────────────────────────
+  const [editOpen, setEditOpen] = React.useState(false)
+  const [editJson, setEditJson] = React.useState("[]")
+  const [editError, setEditError] = React.useState<string | null>(null)
+  const [editSaving, setEditSaving] = React.useState(false)
+  const activeSections = activePage?.sections ?? []
+
+  const openSectionsEditor = React.useCallback(() => {
+    setEditJson(JSON.stringify(activeSections, null, 2))
+    setEditError(null)
+    setEditOpen(true)
+  }, [activeSections])
+
+  const saveSections = React.useCallback(async () => {
+    if (!activePage) return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(editJson)
+    } catch (error) {
+      setEditError(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+    if (!Array.isArray(parsed)) {
+      setEditError("Sections must be a JSON array, e.g. [{ \"type\": \"stats\", \"settings\": { … } }]")
+      return
+    }
+    setEditSaving(true)
+    try {
+      const next = JSON.parse(JSON.stringify(bootstrap!.manifest)) as PluginManifest
+      const list = Array.isArray(next.dashboardPages) ? next.dashboardPages : []
+      const target = list.find((page) => page.path === activePage.path)
+      if (!target) throw new Error(`Page "${activePage.path}" is not declared in dashboardPages`)
+      target.sections = parsed as PluginDashboardSection[]
+      next.dashboardPages = list
+      const response = await dev.saveManifest(next)
+      applyManifest(response.manifest, response.validation)
+      toast("Components saved — this page now renders from sections", "success")
+      setEditOpen(false)
+      setFrameNonce((nonce) => nonce + 1)
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), "error")
+    } finally {
+      setEditSaving(false)
+    }
+  }, [activePage, applyManifest, bootstrap, editJson, toast])
+
+  /** AI at the top of the funnel: the assistant rewrites the sections manifest block. */
+  const askAiAboutSections = React.useCallback(() => {
+    setEditOpen(false)
+    setAssistantPage({
+      context: `The developer is editing the components of dashboard page "${activePage?.label}" (${activePage?.path}). Current sections JSON:\n${editJson.slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?}, job {job, title?, input?, maxTicks?}, settings (renders configSchema), logs {lines?}, links {items:[{label,href}]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new dashboardPages[].sections array (keep "entry" as fallback).`,
+      quick: [
+        "Add a stats row and a job runner to this page",
+        "Show my /stats API route as a table on this page",
+        "Replace these components with the default notes iframe",
+      ],
+    })
+    setAssistantOpen(true)
+  }, [activePage, editJson, setAssistantOpen, setAssistantPage])
 
   React.useEffect(() => {
     setAssistantPage({
       context: hasUi
-        ? "The developer is previewing their plugin's dashboard UI in the sandboxed iframe."
+        ? `The developer is previewing dashboard page "${activePage?.label}" — ${activeSections.length > 0 ? "rendered from dashboardPages sections (no-code components)" : "a sandboxed iframe"}; they can add pages/jobs/hooks/routes from the Dashboard page and edit components or ask the AI to rearrange them.`
         : "The developer is previewing the host's standard settings + jobs page (plugin has no ui.entry).",
-      quick: ["Scaffold a dashboard UI for this plugin", "Explain the settings + jobs page"],
+      quick: hasUi
+        ? ["Add a new dashboard page with a job runner", "Convert this page to no-code components", "Scaffold an import job for my scraper"]
+        : ["Scaffold a dashboard UI for this plugin", "Explain the settings + jobs page"],
     })
-  }, [setAssistantPage, hasUi])
+  }, [setAssistantPage, hasUi, activePage?.label, activeSections.length])
 
-  if (hasUi) {
-    const source = `/api/plugins/${manifest.slug}/ui/${manifest.ui!.entry}?storeId=${store.id}&storeSlug=${encodeURIComponent(store.slug)}`
+  if (!hasUi) {
     return (
+      <>
+        <div className="space-y-4">
+          <PageHead
+            title="Dashboard page"
+            description={
+              <>
+                This plugin has no <code>ui.entry</code>, so the host renders its standard page: identity, permissions, settings (from{" "}
+                <code>configSchema</code>) and runnable jobs. This is a faithful replica.
+              </>
+            }
+          />
+          <CreateBar onPick={setCreateKind} />
+          <Callout kind="info">
+            Want your own UI instead? Scaffold the default notes example — it wires <code>ui.entry</code>,{" "}
+            <code>dashboardPages</code> and a working notes app you can build on.{" "}
+            <Button size="sm" variant="outline" className="ml-1" disabled={scaffolding} onClick={() => void scaffold()}>
+              {scaffolding ? <Loader2 className="animate-spin" /> : <Sparkles />}
+              Scaffold the notes dashboard UI
+            </Button>
+          </Callout>
+
+          <HostPageReplica />
+        </div>
+        <CreateDialog kind={createKind} onOpenChange={(open) => { if (!open) setCreateKind(null) }} onScaffolded={handleScaffolded} />
+      </>
+    )
+  }
+
+  const hasSections = activeSections.length > 0
+  const source = activePage!.entry
+    ? `/api/plugins/${manifest.slug}/ui/${activePage!.entry}?storeId=${store.id}&storeSlug=${encodeURIComponent(store.slug)}&v=${frameNonce}`
+    : null
+
+  // Group rail items the way the host sidebar does.
+  const groups: { group: string | null; pages: ResolvedPage[] }[] = []
+  for (const page of pages) {
+    const key = page.group ?? null
+    const bucket = groups.find((entry) => entry.group === key)
+    if (bucket) bucket.pages.push(page)
+    else groups.push({ group: key, pages: [page] })
+  }
+
+  return (
+    <>
       <div className="space-y-4">
         <PageHead
           title="Dashboard page"
           description={
             <>
               Rendered exactly like the host does — a sandboxed iframe calling{" "}
-              <code>/api/plugin-api/{manifest.slug}/…</code> with the mock store.
+              <code>/api/plugin-api/{manifest.slug}/…</code> with the mock store, or the no-code components kit when a page declares{" "}
+              <code>sections</code>.
             </>
           }
         />
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <LayoutDashboard className="h-4 w-4" />
-                  Your UI
-                </CardTitle>
-                <CardDescription>
-                  Source: <code>{manifest.ui!.entry}</code> · rebuilt on every file save.
-                </CardDescription>
+        <CreateBar onPick={setCreateKind} />
+
+        {activePage!.entry && activeStatus && !activeStatus.sourceExists ? (
+          <Callout kind="danger">
+            <p className="font-semibold">
+              Page entry <code>{activePage!.entry}</code> doesn’t exist in the plugin source
+            </p>
+            <p className="mt-0.5 text-[12px]">
+              Create the file under <code>ui/</code>, fix <code>plugin.json</code>, or scaffold the default notes example for this page.
+            </p>
+            <Button size="sm" className="mt-2" disabled={scaffolding} onClick={() => void scaffold(activePage!.entry!)}>
+              {scaffolding ? <Loader2 className="animate-spin" /> : <Sparkles />}
+              {scaffolding ? "Creating…" : `Create ${activePage!.entry}`}
+            </Button>
+          </Callout>
+        ) : activePage!.entry && activeStatus && activeStatus.sourceExists && !activeStatus.builtExists ? (
+          <Callout kind="warn">
+            <span>
+              <code>{activePage!.entry}</code> exists in source but is not in the built UI output yet — it should appear after the next
+              rebuild.
+            </span>
+            <Button size="sm" variant="outline" className="ml-2" disabled={scaffolding} onClick={() => void rebuild()}>
+              <Play />
+              Rebuild
+            </Button>
+          </Callout>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <Card className="h-fit">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Sidebar pages</CardTitle>
+              <CardDescription className="text-[11.5px]">From <code>dashboardPages</code> in plugin.json.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {groups.map((bucket) => (
+                <div key={bucket.group ?? "__ungrouped__"} className="space-y-1">
+                  {bucket.group ? (
+                    <p className="px-1 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">{bucket.group}</p>
+                  ) : null}
+                  {bucket.pages.map((page) => {
+                    const Icon = resolveIcon(page.icon)
+                    const isActive = page.path === activePage?.path
+                    return (
+                      <button
+                        key={page.path}
+                        type="button"
+                        onClick={() => setParams(page.path === "/" ? {} : { page: page.path })}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors",
+                          isActive ? "border-primary bg-primary/5 font-semibold" : "border-border hover:bg-muted",
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{page.label}</span>
+                        <code className="shrink-0 text-[9.5px] text-muted-foreground">
+                          {page.entry ? page.entry.replace(/^ui\//, "") : "kit"}
+                        </code>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <LayoutDashboard className="h-4 w-4" />
+                    {activePage!.label}
+                    {hasSections ? <Badge className="border-0 bg-violet-100 text-violet-700">components</Badge> : null}
+                  </CardTitle>
+                  <CardDescription>
+                    {hasSections ? (
+                      <>
+                        Rendered from <code>dashboardPages[].sections</code> — no iframe. Edit JSON or ask the AI to rearrange.
+                      </>
+                    ) : (
+                      <>
+                        Source: <code>{activePage!.entry}</code> · rebuilt on every file save.
+                      </>
+                    )}
+                  </CardDescription>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={openSectionsEditor}>
+                    <Sparkles />
+                    {hasSections ? "Edit components" : "Add components"}
+                  </Button>
+                  {source ? (
+                    <Button size="sm" variant="outline" onClick={() => window.open(source, "_blank")}>
+                      <ExternalLink />
+                      Open raw
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => window.open(source, "_blank")}>
-                Open raw
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <iframe
-              key={source}
-              src={source}
-              title="Plugin dashboard UI"
-              className="h-[720px] w-full rounded-xl border border-border bg-white"
-            />
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              {hasSections ? (
+                <SectionKit slug={manifest.slug} store={store} sections={activeSections} />
+              ) : source ? (
+                <iframe
+                  key={source}
+                  src={source}
+                  title={`Plugin dashboard UI — ${activePage!.label}`}
+                  className="h-[720px] w-full rounded-xl border border-border bg-white"
+                />
+              ) : (
+                <Callout kind="info">
+                  This page has no <code>entry</code> and no <code>sections</code> yet — add components or scaffold the notes UI.
+                </Callout>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    )
+
+      <CreateDialog kind={createKind} onOpenChange={(open) => { if (!open) setCreateKind(null) }} onScaffolded={handleScaffolded} />
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Components — {activePage!.label}</DialogTitle>
+            <DialogDescription>
+              A JSON array rendered by the kit: <code>text</code>, <code>stats</code>, <code>table</code>, <code>job</code>,{" "}
+              <code>settings</code>, <code>logs</code>, <code>links</code>. The assistant can rewrite this for you.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={editJson}
+            onChange={(event) => setEditJson(event.target.value)}
+            rows={18}
+            className="font-mono text-[12px]"
+            placeholder='[{ "type": "stats", "settings": { "items": [{ "label": "Jobs", "value": "3" }] } }]'
+          />
+          {editError ? <p className="text-[12px] text-destructive">{editError}</p> : null}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={askAiAboutSections}>
+              <Sparkles />
+              Ask AI to edit
+            </Button>
+            <Button onClick={() => void saveSections()} disabled={editSaving}>
+              {editSaving ? <Loader2 className="animate-spin" /> : <Check />}
+              Save components
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+/** The creation bar — New page / New job / New hook / New route. */
+function CreateBar({ onPick }: { onPick: (kind: CreateKind) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button size="sm" onClick={() => onPick("page")}>
+        <Plus />
+        New page
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => onPick("job")}>
+        <FileCode2 />
+        New job
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => onPick("hook")}>
+        <Webhook />
+        New hook
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => onPick("route")}>
+        <RouteIcon />
+        New route
+      </Button>
+      <span className="text-[11px] text-muted-foreground">
+        codegen into <code>ui/</code>, <code>jobs/</code>, <code>hooks/</code>, <code>routes/</code> + plugin.json, wired automatically
+      </span>
+    </div>
+  )
+}
+
+/** Dialog for the four creation kinds — writes files, patches the manifest, rebuilds. */
+function CreateDialog({
+  kind,
+  onOpenChange,
+  onScaffolded,
+}: {
+  kind: CreateKind | null
+  onOpenChange: (open: boolean) => void
+  onScaffolded: (manifest: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string }) => void
+}) {
+  const { toast } = useApp()
+  const [label, setLabel] = React.useState("")
+  const [path, setPath] = React.useState("")
+  const [icon, setIcon] = React.useState("")
+  const [type, setType] = React.useState("")
+  const [description, setDescription] = React.useState("")
+  const [busy, setBusy] = React.useState(false)
+
+  React.useEffect(() => {
+    if (kind) {
+      setLabel("")
+      setPath("")
+      setIcon("")
+      setType("")
+      setDescription("")
+    }
+  }, [kind])
+
+  const titles: Record<CreateKind, { title: string; blurb: string }> = {
+    page: { title: "New dashboard page", blurb: "Creates the page file (notes example) and a dashboardPages entry — appears in the sidebar rail instantly." },
+    job: { title: "New job", blurb: "Creates jobs/<type>.js (init/step/finalize skeleton), declares it in plugin.json and wires it into the entry." },
+    hook: { title: "New hook", blurb: "Creates hooks/<name>.js, declares it in plugin.json and wires it into the entry." },
+    route: { title: "New API route", blurb: "Creates routes/<path>.js, declares it in apiRoutes and wires it into the entry." },
   }
 
-  // No ui.entry: replicate the host's standard page.
-  return (
-    <div className="space-y-4">
-      <PageHead
-        title="Dashboard page"
-        description={
-          <>
-            This plugin has no <code>ui.entry</code>, so the host renders its standard page: identity, permissions, settings (from{" "}
-            <code>configSchema</code>) and runnable jobs. This is a faithful replica.
-          </>
-        }
-      />
-      <Callout kind="info">
-        Want your own UI instead? Add <code>ui.entry</code> to plugin.json and export a page — the host will render it in a sandboxed
-        iframe.{" "}
-        <button type="button" className="font-semibold underline" onClick={() => setAssistantOpen(true)}>
-          Ask the AI assistant to scaffold one
-        </button>
-        .
-      </Callout>
+  const ready = kind === "page" ? label.trim().length > 0 : kind === "job" ? type.trim().length > 0 : kind === "hook" ? label.trim().length > 0 : (path.trim() || label.trim()).length > 0
 
-      <HostPageReplica />
-    </div>
+  const submit = async () => {
+    if (!kind || !ready) return
+    setBusy(true)
+    try {
+      if (kind === "page") {
+        const name = label.trim()
+        const rawPath = path.trim() || `/${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "page"}`
+        const pagePath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
+        const entry = pagePath === "/" ? "ui/index.html" : `ui/${pagePath.replace(/^\//, "").replace(/\/$/, "")}.html`
+        const result = await dev.scaffoldUi({ entry, label: name, path: pagePath, ...(icon.trim() ? { icon: icon.trim() } : {}) })
+        onScaffolded(result.manifest, result.validation, result.written.length ? `Page created: ${result.written.join(", ")}` : "Page UI already present — rebuilt", { pagePath })
+      } else if (kind === "job") {
+        const result = await dev.scaffoldJob({
+          type: type.trim(),
+          ...(label.trim() ? { name: label.trim() } : {}),
+          ...(description.trim() ? { description: description.trim() } : {}),
+        })
+        onScaffolded(result.manifest, result.validation, `Job scaffolded: ${result.file}`)
+      } else if (kind === "hook") {
+        const result = await dev.scaffoldHook({ name: label.trim() })
+        onScaffolded(result.manifest, result.validation, `Hook scaffolded: ${result.file}`)
+      } else if (kind === "route") {
+        const result = await dev.scaffoldRoute({ path: (path.trim() || label.trim()).startsWith("/") ? (path.trim() || label.trim()) : `/${path.trim() || label.trim()}` })
+        onScaffolded(result.manifest, result.validation, `Route scaffolded: ${result.file}`)
+      }
+      onOpenChange(false)
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), "error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!kind) return null
+  const meta = titles[kind]
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{meta.title}</DialogTitle>
+          <DialogDescription>{meta.blurb}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {kind === "page" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-label">Label</Label>
+                <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Reports" autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-path">Path (optional)</Label>
+                <Input id="create-path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="/reports" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-icon">Icon (optional lucide name)</Label>
+                <Input id="create-icon" value={icon} onChange={(event) => setIcon(event.target.value)} placeholder="bar-chart-2" />
+              </div>
+            </>
+          ) : null}
+          {kind === "job" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-type">Job type</Label>
+                <Input id="create-type" value={type} onChange={(event) => setType(event.target.value)} placeholder="import-products" autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-label">Display name (optional)</Label>
+                <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Import products" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-desc">Description (optional)</Label>
+                <Input id="create-desc" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Walks the catalog in chunks" />
+              </div>
+            </>
+          ) : null}
+          {kind === "hook" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="create-label">Hook name (event)</Label>
+              <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="order:delivered" autoFocus />
+            </div>
+          ) : null}
+          {kind === "route" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="create-path">Route path</Label>
+              <Input id="create-path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="/stats" autoFocus />
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => void submit()} disabled={!ready || busy}>
+            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About — __PLUGIN_NAME__</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header>
+      <h1>About __PLUGIN_NAME__</h1>
+      <p class="muted">
+        Second dashboard page — <code>dashboardPages[1].entry</code> points at <code>ui/about.html</code>.
+        Add more pages the same way: a <code>.html</code> file under <code>ui/</code>, declared in plugin.json.
+      </p>
+    </header>
+
+    <ul>
+      <li><strong>Page 1</strong> — <code>ui/index.html</code>: the notes example, calling <code>/api/plugin-api/__PLUGIN_SLUG__/notes</code>.</li>
+      <li><strong>Page 2</strong> — this file: static content, no extra build step.</li>
+      <li><strong>Next</strong> — drop another file in <code>ui/</code>, add it to <code>dashboardPages</code>, and it appears in the sidebar.</li>
+    </ul>
+
+    <p class="muted">Switch pages with the sidebar in the store dashboard — or the page rail in the preview.</p>
+  </body>
+</html>

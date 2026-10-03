@@ -152,7 +152,7 @@ function collectContext({ pluginDir, manifest, validation, activity }) {
 const SDK_REFERENCE = `Runtime is sandboxed (QuickJS in production; Node locally with the same permission checks).
 Only these capabilities exist, gated by manifest permissions:
 - ctx.db.select/count/insert/insertMany/update/delete/ensureTable (db:read/db:write/db:schema)
-- ctx.http.get/post (api:external) — 10s timeout, public URLs only
+- ctx.http.get/post (api:external) — 60s default timeout (opts.timeoutMs, capped at 60s), public URLs only
 - ctx.ai.complete({prompt}) / ctx.ai.image() (ai:use)
 - ctx.email.send({to,subject,html,text}) (email:send)
 - ctx.files.upload/importFromUrl/list/delete (files:read/files:write)
@@ -163,7 +163,8 @@ No require(), no process/Buffer/fs/fetch. Tables: own tables are plugin_<slug>_*
 API routes: exports.apiRoutes = { "<path>": { GET(ctx, request) {...}, POST(ctx, request) {...} } } — declared in manifest apiRoutes.
 Jobs are chunked: exports.jobs = { "<type>": { init(input, ctx), step(state, ctx), finalize(state, ctx) } } — step returns { state, progress, done, result }; use ctx.jobs.progress/item/log.
 Hooks: exports.hooks = { "<name>": async (payload, ctx) => result }.
-Dashboard UI: manifest ui.entry points at an HTML file; plain JS or a bundled ui/src/index.tsx; it calls /api/plugin-api/<slug>/<route> with storeId/storeSlug query params.
+Dashboard UI: manifest ui.entry points at an HTML file under ui/ (plugin-root-relative, e.g. "ui/index.html"); plain JS or a bundled ui/src/index.tsx; it calls /api/plugin-api/<slug>/<route> with storeId/storeSlug query params. Multiple pages: each dashboardPages[] item may declare its own entry ("ui/settings.html" ← ui/src/settings.tsx); pages without an entry fall back to ui.entry. Every plugin should ship a working example UI (the notes app) — never declare ui.entry without the file.
+Dashboard page components (no-code): dashboardPages[].sections renders in the dashboard WITHOUT an iframe. Each item is { "type": "...", "settings": {...} }. Kit types: text {title, body (markdown: **bold**, \`code\`, - lists)}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?} (route is your apiRoutes path; handler returns an array or {rows:[…]}/{items:[…]}), job {job (declared job type), title?, input?, maxTicks?}, settings (renders the configSchema form), logs {lines?}, links {items:[{label,href}]}. Edit sections through manifest edits — keep the page's "entry" as a fallback. Developers often ask to "add a stats row", "show /stats as a table", or "add a job runner button".
 Default export with init/destroy is optional.`
 
 function systemPrompt({ manifest, context, editor }) {

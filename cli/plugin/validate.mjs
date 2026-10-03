@@ -55,6 +55,20 @@ export function validatePluginDir(pluginDir, { expectedSlug } = {}) {
     }
   }
 
+  const dashboardPaths = new Set()
+  for (const page of manifest.dashboardPages ?? []) {
+    if (!page?.path?.startsWith("/")) errors.push(`dashboardPages path "${page?.path}" must start with /`)
+    if (dashboardPaths.has(page?.path)) errors.push(`duplicate dashboardPages path "${page?.path}"`)
+    dashboardPaths.add(page?.path)
+    if (!page?.label) errors.push(`dashboardPages "${page?.path}" needs a label`)
+    if (page?.entry) {
+      if (!UI_PATH.test(page.entry)) errors.push(`dashboardPages "${page.path}" entry "${page.entry}" contains invalid characters`)
+      else if (!fileExists(path.join(pluginDir, page.entry))) {
+        errors.push(`dashboardPages "${page.path}" entry "${page.entry}" does not exist`)
+      }
+    }
+  }
+
   const seenRoutes = new Set()
   for (const route of manifest.apiRoutes ?? []) {
     if (!route?.path?.startsWith("/")) errors.push(`apiRoutes path "${route?.path}" must start with /`)

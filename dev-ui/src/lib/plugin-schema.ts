@@ -49,6 +49,21 @@ export const PLUGIN_SCHEMA = {
           path: { type: "string" },
           icon: { type: "string" },
           group: { type: "string" },
+          entry: { type: "string", description: "Plugin-root-relative HTML entry for this page (falls back to ui.entry)." },
+          sections: {
+            type: "array",
+            description:
+              "No-code components rendered instead of the iframe: text, stats, table, job, settings, logs, links.",
+            items: {
+              type: "object",
+              required: ["type"],
+              properties: {
+                id: { type: "string" },
+                type: { type: "string", enum: ["text", "stats", "table", "job", "settings", "logs", "links"] },
+                settings: { type: "object" },
+              },
+            },
+          },
         },
       },
     },

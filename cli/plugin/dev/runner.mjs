@@ -207,7 +207,7 @@ export class PluginRunner {
   }
 
   hasUi() {
-    return Boolean(this.manifest.ui?.entry)
+    return Boolean(this.manifest.ui?.entry) || (this.manifest.dashboardPages ?? []).some((page) => page?.entry)
   }
 
   uiEntry() {

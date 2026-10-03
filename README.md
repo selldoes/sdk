@@ -62,6 +62,13 @@ projects (e.g. a first-party plugin) into the same workspace and develop them
 against the local SDK — that's the dogfood loop. Installed users get the built
 UI and never touch Vite.
 
+> **Restart the server after backend edits.** Vite hot-reloads only the UI
+> (`dev-ui/src`). The server-side `cli/*.mjs` modules are loaded once at
+> startup and cached by Node for the process lifetime, so a new `/__ws/*`
+> route added after boot answers `Unknown workspace route` until you restart
+> (`Ctrl+C`, then `npm run dev` again). The UI will happily show buttons for
+> routes the running server does not know yet.
+
 ## Commands
 
 | Command | What it does |

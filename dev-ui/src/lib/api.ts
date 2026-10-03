@@ -16,6 +16,9 @@ import type {
   SearchResult,
   SettingsResponse,
   SnapshotInfo,
+  ScaffoldCodeResult,
+  ScaffoldUiResult,
+  UiEntriesResponse,
   Validation,
 } from "./types"
 
@@ -56,6 +59,15 @@ export const dev = {
     post<AssistantChatResult>("/__dev/assistant/chat", { messages, context }),
   assistantApply: (edits: AssistantEdits, options?: { testJob?: boolean }) =>
     post<ApplyResult>("/__dev/assistant/apply", { edits, testJob: options?.testJob === true }),
+
+  // ── Dashboard UI (entries + one-click notes scaffold) ─────────────────────
+  uiEntries: () => request<UiEntriesResponse>("/__dev/ui/entries"),
+  scaffoldUi: (input: { entry?: string; label?: string; path?: string; icon?: string } = {}) =>
+    post<ScaffoldUiResult>("/__dev/ui/scaffold", input),
+  // ── Code scaffolds (New job / New hook / New route) ───────────────────────
+  scaffoldJob: (input: { type: string; name?: string; description?: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/job", input),
+  scaffoldHook: (input: { name: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/hook", input),
+  scaffoldRoute: (input: { path: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/route", input),
 
   // ── Code editor ───────────────────────────────────────────────────────────
   files: () => request<FileTree>("/__dev/files"),

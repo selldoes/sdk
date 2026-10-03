@@ -74,7 +74,9 @@ export function useApp() {
 function initialTheme(): "light" | "dark" {
   const stored = localStorage.getItem("selldoes-dev-theme")
   if (stored === "light" || stored === "dark") return stored
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  // Default light — the preview mirrors the (light) Selldoes dashboard. The
+  // topbar toggle (or Ctrl+K) still switches and persists the choice.
+  return "light"
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {

@@ -11,6 +11,8 @@ import { PluginRunner, cleanPath } from "./runner.mjs"
 import { ManifestStore } from "./manifest-store.mjs"
 import { DevState } from "./dev-state.mjs"
 import { deleteAsset, resolveAsset, saveAsset } from "./assets.mjs"
+import { applyNotesPlan, detectUiFlavor, planNotesUi, resolveUiAsset, uiFallbackHtml } from "./ui-scaffold.mjs"
+import { applyCodePlan, planCodeScaffold } from "./code-scaffold.mjs"
 import { assistantChat, assistantSummary, normalizeEdits, resolveAssistant } from "./assistant.mjs"
 import { createFilesService } from "./files.mjs"
 import { createGit } from "./git.mjs"
@@ -175,7 +177,8 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   let uiDir = null
   const buildUi = async () => {
     const manifest = manifestStore.read()
-    if (!manifest.ui?.entry) {
+    const wantsUi = Boolean(manifest.ui?.entry) || (manifest.dashboardPages ?? []).some((page) => page?.entry)
+    if (!wantsUi) {
       uiDir = null
       return
     }
@@ -305,6 +308,159 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         log(`undo history cleared (${cleared} snapshot(s))`)
         return json(res, 200, { ok: true, cleared })
+      }
+
+      // ── Dashboard UI: entry status + one-click notes scaffold ─────────────
+      if (req.method === "GET" && pathname === "/__dev/ui/entries") {
+        const manifest = manifestStore.read()
+        const resolvedUiEntry = manifest.ui?.entry ? String(manifest.ui.entry).replace(/^\.\//, "").replace(/\\/g, "/") : null
+        const byEntry = new Map()
+        const touch = (entry, page) => {
+          if (!entry) return
+          const record = byEntry.get(entry) ?? { entry, isDefault: entry === resolvedUiEntry, pages: [] }
+          if (page) record.pages.push({ label: page.label ?? entry, path: page.path ?? "/" })
+          byEntry.set(entry, record)
+        }
+        touch(resolvedUiEntry, null)
+        for (const page of manifest.dashboardPages ?? []) {
+          touch(page?.entry ? String(page.entry).replace(/^\.\//, "").replace(/\\/g, "/") : resolvedUiEntry, page)
+        }
+        const uiRoot = path.resolve(pluginDir, "ui")
+        const builtRoot = uiDir ? path.resolve(uiDir) : null
+        const isFile = (file) => Boolean(file && fs.existsSync(file) && fs.statSync(file).isFile())
+        const entries = [...byEntry.values()].map((record) => {
+          const underUi = record.entry.startsWith("ui/")
+          const sourceFile = underUi ? path.resolve(pluginDir, record.entry) : null
+          const builtFile = builtRoot && underUi ? path.resolve(builtRoot, record.entry.slice(3)) : null
+          return {
+            ...record,
+            underUi,
+            sourceExists: Boolean(sourceFile && sourceFile.startsWith(uiRoot + path.sep) && isFile(sourceFile)),
+            builtExists: Boolean(builtFile && builtFile.startsWith(builtRoot + path.sep) && isFile(builtFile)),
+          }
+        })
+        return json(res, 200, { hasUi: Boolean(resolvedUiEntry), flavor: detectUiFlavor(pluginDir), entries })
+      }
+      if (req.method === "POST" && pathname === "/__dev/ui/scaffold") {
+        const body = await readBody(req)
+        try {
+          const current = manifestStore.read()
+          const plan = planNotesUi({
+            pluginDir,
+            manifest: current,
+            entry: body?.entry || current.ui?.entry || "ui/index.html",
+          })
+
+          // Ensure manifest wiring: ui.entry + a dashboardPages entry for the page.
+          const manifest = JSON.parse(JSON.stringify(current))
+          let manifestChanged = false
+          if (!manifest.ui?.entry) {
+            manifest.ui = { ...(manifest.ui ?? {}), entry: "ui/index.html", title: manifest.ui?.title ?? manifest.name }
+            manifestChanged = true
+          }
+          const pages = Array.isArray(manifest.dashboardPages) ? manifest.dashboardPages : []
+          const resolved = (page) => String(page?.entry ?? manifest.ui?.entry ?? "").replace(/^\.\//, "")
+          if (!pages.some((page) => resolved(page) === plan.entry)) {
+            const requestedLabel = typeof body?.label === "string" && body.label.trim() ? body.label.trim() : null
+            const requestedPath = typeof body?.path === "string" && body.path.trim() ? body.path.trim() : null
+            const requestedIcon = typeof body?.icon === "string" && body.icon.trim() ? body.icon.trim() : null
+            if (pages.length === 0) {
+              pages.push({
+                label: requestedLabel ?? manifest.name,
+                path: requestedPath && requestedPath.startsWith("/") ? requestedPath : "/",
+                ...(requestedIcon ? { icon: requestedIcon } : manifest.icon ? { icon: manifest.icon } : {}),
+                entry: plan.entry,
+              })
+            } else if (plan.isRoot) {
+              const target = pages.find((page) => !page?.entry) ?? pages[0]
+              target.entry = plan.entry
+            } else {
+              const rel = plan.relHtml.replace(/\.html?$/i, "")
+              const derived = rel
+                .split(/[/\\-]+/)
+                .filter(Boolean)
+                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(" ")
+              pages.push({
+                label: requestedLabel ?? derived,
+                path: requestedPath && requestedPath.startsWith("/") ? requestedPath : `/${rel}`,
+                ...(requestedIcon ? { icon: requestedIcon } : {}),
+                entry: plan.entry,
+              })
+            }
+            manifestChanged = true
+          }
+          if (manifestChanged) manifest.dashboardPages = pages
+
+          // One snapshot covers the whole scaffold — a single undo reverts it.
+          manifestStore.snapshots.create({ reason: "scaffold dashboard ui", files: [...plan.files, "plugin.json"] })
+          const written = applyNotesPlan(pluginDir, plan)
+          if (manifestChanged) manifestStore.write(manifest)
+
+          let rebuildError = null
+          try {
+            await rebuildAll()
+          } catch (error) {
+            rebuildError = error.message
+          }
+          log(`scaffolded dashboard UI (${plan.flavor})${written.length ? `: ${written.join(", ")}` : " — files already present"}`)
+          if (written.length) {
+            stream.broadcast("files", { paths: written })
+            stream.broadcast("snapshots", {})
+          }
+          return json(res, 200, {
+            ok: true,
+            entry: plan.entry,
+            flavor: plan.flavor,
+            written,
+            manifest: manifestStore.read(),
+            validation: manifestStore.validation(),
+            ...(rebuildError ? { rebuildError } : {}),
+          })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+
+      // ── Code scaffolds: New job / New hook / New route ─────────────────────
+      if (req.method === "POST" && pathname.startsWith("/__dev/scaffold/")) {
+        const kind = pathname.slice("/__dev/scaffold/".length)
+        if (!["job", "hook", "route"].includes(kind)) return json(res, 404, { error: `Unknown scaffold "${kind}" (expected job, hook or route)` })
+        const body = await readBody(req)
+        try {
+          const current = manifestStore.read()
+          const plan = planCodeScaffold({
+            pluginDir,
+            manifest: current,
+            kind,
+            name: body?.type ?? body?.name ?? body?.path,
+            description: body?.description,
+          })
+          // One snapshot covers module + wiring + manifest — one undo reverts it.
+          manifestStore.snapshots.create({ reason: `scaffold ${kind}`, files: [...plan.files, plan.entry, "plugin.json"] })
+          const written = applyCodePlan(pluginDir, plan)
+          manifestStore.write(plan.manifest)
+          let rebuildError = null
+          try {
+            await rebuildAll()
+          } catch (error) {
+            rebuildError = error.message
+          }
+          log(`scaffolded ${kind}: ${plan.file}${written.includes(plan.entry) ? " (+ entry wiring)" : ""}`)
+          stream.broadcast("files", { paths: written })
+          stream.broadcast("snapshots", {})
+          return json(res, 200, {
+            ok: true,
+            kind,
+            file: plan.file,
+            written,
+            manifest: manifestStore.read(),
+            validation: manifestStore.validation(),
+            ...(rebuildError ? { rebuildError } : {}),
+          })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
       }
 
       // ── Assets (icon + screenshots) ────────────────────────────────────────
@@ -862,12 +1018,16 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         const [, slug, ...rest] = uiMatch
         const manifest = manifestStore.read()
         if (slug !== manifest.slug) return json(res, 404, { error: `Only "${manifest.slug}" runs in this dev server` })
-        if (!uiDir) return json(res, 404, { error: "This plugin declares no ui.entry" })
-        const root = path.resolve(uiDir)
-        const file = path.resolve(root, rest.join("/"))
-        if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
-          return json(res, 404, { error: `Asset "${rest.join("/")}" not found` })
-        }
+        const requested = decodeURIComponent(rest.join("/"))
+        const fallback = (reason) =>
+          html(
+            res,
+            404,
+            uiFallbackHtml({ title: manifest.ui?.title ?? manifest.name, entry: reason === "missing" ? requested : null, reason, slug: manifest.slug }),
+          )
+        if (!uiDir) return fallback("no-ui")
+        const file = resolveUiAsset(uiDir, requested)
+        if (!file) return fallback("missing")
         res.writeHead(200, {
           "Content-Type": contentTypeFor(file),
           "Content-Security-Policy": UI_CSP,

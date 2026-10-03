@@ -13,7 +13,34 @@
     {
       "label": "__PLUGIN_NAME__",
       "path": "/",
-      "icon": "puzzle"
+      "icon": "puzzle",
+      "entry": "ui/index.html"
+    },
+    {
+      "label": "About",
+      "path": "/about",
+      "icon": "book-open",
+      "entry": "ui/about.html",
+      "sections": [
+        {
+          "type": "text",
+          "settings": {
+            "title": "__PLUGIN_NAME__ — built with components",
+            "body": "This page renders from `dashboardPages[].sections` — **no iframe**. The same kit powers every page: stats, tables over your API routes, job runner buttons, settings forms.\n\nAsk the AI assistant to rearrange these components, or use **Edit components** above the preview."
+          }
+        },
+        {
+          "type": "stats",
+          "settings": {
+            "items": [
+              { "label": "Pages", "value": "2", "hint": "one iframe, one kit" },
+              { "label": "Components", "value": "2", "hint": "text + stats" },
+              { "label": "Flavor", "value": "JS / React" },
+              { "label": "Next", "value": "add a table" }
+            ]
+          }
+        }
+      ]
     }
   ],
   "ui": {

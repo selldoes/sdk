@@ -74,11 +74,83 @@ my-plugin/
   plugin.json          manifest — permissions, API routes, UI, storefront widget/pages
   index.js             runtime entry (sandboxed); exports apiRoutes / jobs / hooks / deliveryProvider
   ui/                  dashboard UI (sandboxed iframe), optional
-    index.html
-    app.js
+    index.html         page 1 — wired via ui.entry + dashboardPages[0].entry
+    app.js             plain-JS pages share this script (React: ui/src/*.tsx → ui/assets/*.js)
+    about.html         page 2 — one .html per dashboardPages entry
   selldoes.config.json dev-server settings (store id/slug, mock AI, sample data)
   jsconfig.json        editor + typecheck config using the SDK types
 ```
+
+## Dashboard UI
+
+Every plugin created from the templates ships a working **notes example** —
+plain JS (`ui/index.html` + `ui/app.js`) or React + TypeScript
+(`ui/index.html` + `ui/src/index.tsx`, bundled by esbuild on every save). The
+host renders it in a sandboxed iframe; the UI calls
+`/api/plugin-api/<slug>/<route>` with `storeId`/`storeSlug` query params.
+
+**Multiple pages.** Each `dashboardPages[]` item may declare its own `entry`
+(plugin-root-relative, under `ui/`); pages without an entry fall back to
+`ui.entry`:
+
+```json
+{
+  "ui": { "entry": "ui/index.html", "title": "My Plugin" },
+  "dashboardPages": [
+    { "label": "My Plugin", "path": "/", "icon": "puzzle", "entry": "ui/index.html" },
+    { "label": "Settings", "path": "/settings", "icon": "settings", "entry": "ui/settings.html" }
+  ]
+}
+```
+
+For plain JS, each entry is just another HTML file under `ui/`. For React, a
+page entry `ui/<name>.html` is bundled from `ui/src/<name>.tsx` (or `.ts`/`.jsx`/`.js`)
+into `ui/assets/<name>.js` — if the HTML file is missing, the build generates a
+shell for it. The **Dashboard page** preview shows a sidebar-style page rail;
+`?page=/settings` deep-links a page.
+
+**When an entry is missing** (deleted file, typo in `plugin.json`), the
+preview shows a friendly fallback page in the iframe plus a callout with a
+**Create** button — it scaffolds the default notes example for that page,
+wires `plugin.json` (snapshot first, one undo reverts everything) and rebuilds.
+The same button appears when a plugin has no `ui.entry` at all.
+
+### No-code components (kit)
+
+A `dashboardPages` item may declare `sections` instead of (or alongside) an
+iframe entry — the preview renders them with the shared **kit** (no iframe),
+the same idea as the store's section registries:
+
+```json
+{
+  "label": "Reports",
+  "path": "/reports",
+  "sections": [
+    { "type": "stats", "settings": { "items": [{ "label": "Rows", "value": "42" }] } },
+    { "type": "table", "settings": { "route": "/stats", "columns": ["sku", "price"] } },
+    { "type": "job", "settings": { "job": "import-products", "maxTicks": 20 } },
+    { "type": "settings" }
+  ]
+}
+```
+
+Kit types: `text` (markdown), `stats`, `table` (your `apiRoutes` path — the
+handler returns an array or `{ rows: [...] }` / `{ items: [...] }`), `job`
+(run button + live transcript), `settings` (renders `configSchema`), `logs`,
+`links`. Pages with `sections` need no `entry`; keep one as a fallback for
+hosts that render iframes. Edit the JSON via **Edit components** on the
+Dashboard page — or ask the AI assistant ("add a stats row", "show /stats as
+a table"), which rewrites `dashboardPages[].sections` through the normal
+manifest-edit pipeline.
+
+### Creation buttons
+
+The Dashboard page has **New page / New job / New hook / New route** buttons.
+They codegen readable modules (`ui/<name>.html`, `jobs/<type>.js`,
+`hooks/<name>.js`, `routes/<path>.js`), patch `plugin.json` and append an
+idempotent wiring block to the entry (`// <selldoes-scaffold:…>` markers,
+inlined by esbuild) — then rebuild. Everything is snapshotted: one undo
+reverts the whole scaffold.
 
 ## The local preview server
 
@@ -93,7 +165,7 @@ dashboard:
 | **Console** | Live dev-server logs and build errors — click a `file:line` error to open it in the editor |
 | **Details & permissions** | Edit `plugin.json` from a form: name, description, icon (built-in picker or uploaded image), screenshots, category, tags and permissions (with the platform's risk/impact text). Saves are validated and undoable |
 | **In Selldoes** | Exactly what store owners see: marketplace card, listing page (with screenshots), the install dialog and where your dashboard pages land in the sidebar |
-| **Dashboard page** | Your `ui/entry` in a sandboxed iframe; without a UI, a faithful replica of the host's settings + jobs page |
+| **Dashboard page** | Your dashboard UI in a sandboxed iframe, with a page rail for every `dashboardPages` entry; missing pages get a one-click "scaffold the notes example" button. Without a UI, a faithful replica of the host's settings + jobs page (plus the same scaffold button) |
 | **Storefront** | A demo store with your `storefrontWidget` and every `storefrontPages` entry |
 | **Jobs** | Run a declared job — chunked (`{ init, step, finalize }`) or a legacy function — with progress, per-item results and logs |
 | **API console** | Pick a declared route, edit query/body, send and inspect JSON |
@@ -199,7 +271,7 @@ code in Node, while production uses a QuickJS sandbox — avoid Node globals
 |---|---|
 | `db:read` / `db:write` | Read/write permitted tables + own `plugin_<slug>_*` tables |
 | `db:schema` | `ctx.db.ensureTable(name, columns)` |
-| `api:external` | `ctx.http.get/post` (10s timeout) |
+| `api:external` | `ctx.http.get/post` (60s default timeout, `opts.timeoutMs` capped at 60s) |
 | `ai:use` | `ctx.ai.complete` / `ctx.ai.image` |
 | `email:send` | `ctx.email.send` through the platform SMTP |
 | `files:read` / `files:write` | `ctx.files` (S3 media) |
@@ -207,7 +279,8 @@ code in Node, while production uses a QuickJS sandbox — avoid Node globals
 | `realtime:publish` | `ctx.realtime.publish/poll` |
 | `webhooks:register`, `sections:register`, `dashboard:pages` | Platform integrations |
 
-Manifest extras: `ui` (dashboard iframe), `storefrontWidget` (bubble on every
+Manifest extras: `ui` (dashboard iframe; `ui.entry` + per-page
+`dashboardPages[].entry`), `storefrontWidget` (bubble on every
 storefront page), `storefrontPages` (public pages such as `/kb`),
 `publicRoutes` (visitor-callable API, no session), `delivery` (order-detail
 sections), `jobs`, `hooks`, `configSchema`, `allowedTables`, plus listing

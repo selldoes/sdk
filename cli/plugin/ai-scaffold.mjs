@@ -19,7 +19,7 @@ Generate these files:
   Jobs are chunked: exports.jobs = { "<type>": { init(input, ctx), step(state, ctx), finalize(state, ctx) } } — step returns { state, progress, done, result }.
   API routes: exports.apiRoutes = { "<path>": { GET(ctx, request), POST(ctx, request) } }.
   Hooks: exports.hooks = { "<name>": async (payload, ctx) => result }.
-- ui/index.html (+ ui/app.js) only when the plugin needs dashboard UI. The UI calls /api/plugin-api/<slug>/<route> with storeId/storeSlug query params.
+- ui/index.html (+ ui/app.js) — REQUIRED whenever the manifest declares ui.entry or dashboardPages with entries. This is the developer's starter UI (the notes example pattern): plain HTML/JS under ui/, calling /api/plugin-api/<slug>/<route> with storeId/storeSlug query params. Multiple pages: one .html per dashboardPages entry (e.g. ui/settings.html), each declared as "entry" on its dashboardPages item; entries are plugin-root-relative paths under ui/.
 
 Respond with exactly ONE fenced block and nothing else after it:
 
@@ -30,7 +30,7 @@ Respond with exactly ONE fenced block and nothing else after it:
 }
 \`\`\`
 
-Rules: always COMPLETE file contents (never diffs or snippets); keep it small and idiomatic; declare every permission the code needs; sandbox-safe code only.`
+Rules: always COMPLETE file contents (never diffs or snippets); keep it small and idiomatic; declare every permission the code needs; sandbox-safe code only. If plugin.json declares ui.entry or any dashboardPages[].entry, the matching ui/*.html file MUST be included in files — a declared entry without its file is rejected.`
 
 const UNSAFE_SEGMENT = (segment) => segment === ".." || segment === "." || segment.startsWith(".")
 
@@ -56,6 +56,19 @@ function validateScaffold(edits) {
   const entryPath = String(manifest.entry).replace(/^\.\//, "")
   if (!edits.files.some((file) => file.path === entryPath)) {
     return { ok: false, error: `the entry file "${entryPath}" is missing from the generated files` }
+  }
+  // A declared dashboard-UI entry must exist in the generated files — otherwise
+  // the preview would show the "Asset not found" fallback instead of a UI.
+  const uiEntries = new Set()
+  if (manifest.ui?.entry) uiEntries.add(String(manifest.ui.entry).replace(/^\.\//, "").replace(/\\/g, "/"))
+  for (const page of manifest.dashboardPages ?? []) {
+    if (page?.entry) uiEntries.add(String(page.entry).replace(/^\.\//, "").replace(/\\/g, "/"))
+  }
+  const generated = new Set(edits.files.map((file) => String(file.path).replace(/^\.\//, "").replace(/\\/g, "/")))
+  for (const uiEntry of uiEntries) {
+    if (!generated.has(uiEntry)) {
+      return { ok: false, error: `plugin.json declares "${uiEntry}" but that file is missing from the generated files` }
+    }
   }
   return { ok: true, manifest }
 }
