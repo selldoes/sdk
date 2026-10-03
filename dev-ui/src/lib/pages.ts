@@ -2,6 +2,7 @@
 export const PAGE_TITLES: Record<string, string> = {
   "/": "Overview",
   "/code": "Code",
+  "/packages": "Packages",
   "/console": "Console",
   "/details": "Details & permissions",
   "/listing": "In Selldoes",

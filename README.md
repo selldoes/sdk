@@ -82,6 +82,7 @@ UI and never touch Vite.
 | `selldoes create [dir]` | Scaffold from a template (interactive) |
 | `selldoes create [dir] --ai "…"` | Scaffold with AI — validated before a single file is written |
 | `selldoes ask ["…"]` | Terminal assistant: chat about the current plugin, apply edits with `--yes` |
+| `selldoes add <pkg>` | Install an npm package and declare it in `plugin.json` |
 | `selldoes dev` | Preview server for a project (`:4590`, or spawned by the workspace) |
 | `selldoes build` / `pack` / `validate` | Bundle / zip / validate |
 | `selldoes publish` | Publish through your developer account (`sk_dev_…`) |

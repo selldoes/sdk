@@ -14,8 +14,8 @@ import { touchProject } from "../workspace.mjs"
 const SCAFFOLD_SYSTEM = `You are the Selldoes plugin scaffolder. The developer describes a plugin in plain language; you generate a complete, working first version.
 
 Generate these files:
-- plugin.json — slug (kebab-case), name, one-line description, version "0.1.0", author "Your name", icon (a lucide name like "puzzle"), category, permissions (MINIMAL — only what the code actually uses), allowedTables [], entry "./index.js", dashboardPages + ui only when a dashboard UI makes sense
-- index.js — sandbox-safe CommonJS. NO require(), process, Buffer, fs or fetch. Available capabilities (gated by permissions): ctx.db (db:read/db:write/db:schema via ensureTable plugin_<slug>_ tables), ctx.http.get/post (api:external), ctx.ai.complete/image (ai:use), ctx.email.send (email:send), ctx.files.upload/importFromUrl (files:read/files:write), ctx.products (products:read/products:write), ctx.realtime (realtime:publish), ctx.storeId, ctx.config.
+- plugin.json — slug (kebab-case), name, one-line description, version "0.1.0", author "Your name", icon (a lucide name like "puzzle"), category, permissions (MINIMAL — only what the code actually uses), allowedTables [], entry "./index.js", dashboardPages + ui only when a dashboard UI makes sense, and "dependencies" ({ "package": "^1.2.3" }) listing every npm package the entry imports (registry ranges only, max 25)
+- index.js — sandbox-safe CommonJS. You MAY require/import npm packages listed in "dependencies" — the bundler inlines them. Never use Node builtins (fs, net, http, child_process…), never call fetch(), and never rely on process/Buffer at runtime. Available capabilities (gated by permissions): ctx.db (db:read/db:write/db:schema via ensureTable plugin_<slug>_ tables), ctx.http.get/post (api:external), ctx.ai.complete/image (ai:use), ctx.email.send (email:send), ctx.files.upload/importFromUrl (files:read/files:write), ctx.products (products:read/products:write), ctx.realtime (realtime:publish), ctx.storeId, ctx.config.
   Jobs are chunked: exports.jobs = { "<type>": { init(input, ctx), step(state, ctx), finalize(state, ctx) } } — step returns { state, progress, done, result }.
   API routes: exports.apiRoutes = { "<path>": { GET(ctx, request), POST(ctx, request) } }.
   Hooks: exports.hooks = { "<name>": async (payload, ctx) => result }.
@@ -30,7 +30,7 @@ Respond with exactly ONE fenced block and nothing else after it:
 }
 \`\`\`
 
-Rules: always COMPLETE file contents (never diffs or snippets); keep it small and idiomatic; declare every permission the code needs; sandbox-safe code only. If plugin.json declares ui.entry or any dashboardPages[].entry, the matching ui/*.html file MUST be included in files — a declared entry without its file is rejected.`
+Rules: always COMPLETE file contents (never diffs or snippets); keep it small and idiomatic; declare every permission the code needs; declare every npm package the entry imports in "dependencies"; sandbox-safe code only (npm packages are fine, Node builtins are not). If plugin.json declares ui.entry or any dashboardPages[].entry, the matching ui/*.html file MUST be included in files — a declared entry without its file is rejected.`
 
 const UNSAFE_SEGMENT = (segment) => segment === ".." || segment === "." || segment.startsWith(".")
 

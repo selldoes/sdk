@@ -3,6 +3,7 @@ import path from "node:path"
 import { createRequire } from "node:module"
 import { build, context } from "esbuild"
 import { readJson } from "../../util.mjs"
+import { checkSandboxBundle, sandboxBuildOptions } from "../sandbox.mjs"
 
 const nodeRequire = createRequire(import.meta.url)
 
@@ -29,6 +30,10 @@ export class PluginRunner {
     this.exports = null
     this.watchContext = null
     this.rebuilds = 0
+    /** Result of the last sandbox check (errors, warnings, packages…). */
+    this.sandbox = null
+    /** Set when the bundle failed to evaluate in the sandbox (exports are null). */
+    this.loadError = null
   }
 
   entryPoint() {
@@ -36,24 +41,44 @@ export class PluginRunner {
   }
 
   buildOptions(extraPlugins = []) {
-    return {
+    // The same profile as `selldoes build` — browser-resolved, Node builtins
+    // polyfilled, nothing left as an external require. What you preview is
+    // what the sandbox will execute.
+    return sandboxBuildOptions({
+      pluginDir: this.pluginDir,
       entryPoints: [this.entryPoint()],
-      bundle: true,
-      platform: "node",
-      format: "cjs",
-      target: "es2020",
       outfile: this.bundlePath,
-      logLevel: "silent",
-      absWorkingDir: this.pluginDir,
-      plugins: extraPlugins,
+      metafile: true,
+      extraPlugins,
+    })
+  }
+
+  /** Logs esbuild/sandbox output and loads the bundle, never throwing. */
+  finishBuild(result) {
+    for (const warning of result.warnings) this.log(`[esbuild] ${warning.text}`)
+    this.sandbox = checkSandboxBundle({
+      bundlePath: this.bundlePath,
+      metafile: result.metafile,
+      manifest: this.manifest,
+    })
+    for (const warning of this.sandbox.warnings) this.log(`[sandbox] ${warning}`)
+    for (const error of this.sandbox.errors) this.log(`[sandbox] ✗ ${error}`)
+    this.loadError = null
+    try {
+      this.load()
+    } catch (error) {
+      this.loadError = error instanceof Error ? error.message : String(error)
+      this.exports = null
+      this.log(`[sandbox] ✗ bundle failed to load: ${this.loadError}`)
     }
+    return this.sandbox
   }
 
   async build() {
     fs.mkdirSync(this.devDir, { recursive: true })
     const result = await build(this.buildOptions())
-    for (const warning of result.warnings) this.log(`[esbuild] ${warning.text}`)
-    this.load()
+    this.finishBuild(result)
+    return this.exports
   }
 
   /** Rebuilds on every change; `onRebuild` runs after a successful build. */
@@ -72,7 +97,12 @@ export class PluginRunner {
                 return
               }
               this.rebuilds += 1
-              this.load()
+              try {
+                this.finishBuild(result)
+              } catch (error) {
+                this.loadError = error instanceof Error ? error.message : String(error)
+                this.log(`[sandbox] ✗ ${this.loadError}`)
+              }
               onRebuild?.()
             })
           },
@@ -96,8 +126,15 @@ export class PluginRunner {
     return this.exports
   }
 
+  /** The loaded bundle, or a clear error when the sandbox refused it. */
+  bundle() {
+    if (this.loadError) throw new Error(`The bundle failed to load in the sandbox: ${this.loadError}`)
+    if (!this.exports) throw new Error("The plugin bundle has not been built yet")
+    return this.exports
+  }
+
   routes() {
-    return this.exports?.apiRoutes ?? {}
+    return this.bundle().apiRoutes ?? {}
   }
 
   /** Mirrors the host's handler lookup (leading slash optional, trailing slash tolerated). */
@@ -132,7 +169,7 @@ export class PluginRunner {
    * `{ kind, ticks, state, result, done }`.
    */
   async runJob(type, input, ctx, maxTicks = 50) {
-    const job = this.exports?.jobs?.[type]
+    const job = this.bundle().jobs?.[type]
     if (!job) throw new Error(`Job "${type}" is not exported from the bundle`)
 
     if (typeof job === "function") {
@@ -188,7 +225,7 @@ export class PluginRunner {
 
   async runHook(name, payload, ctx) {
     const declared = this.manifest.hooks?.[name]
-    const bundled = this.exports?.hooks?.[name]
+    const bundled = this.bundle().hooks?.[name]
     if (typeof bundled === "function") return bundled(payload, ctx)
     if (declared?.handler) {
       throw new Error(
@@ -200,10 +237,11 @@ export class PluginRunner {
   }
 
   async runDelivery(order, ctx) {
-    if (typeof this.exports?.deliveryProvider !== "function") {
+    const bundle = this.bundle()
+    if (typeof bundle.deliveryProvider !== "function") {
       throw new Error("The plugin does not export deliveryProvider()")
     }
-    return this.exports.deliveryProvider(ctx.storeId, order, ctx)
+    return bundle.deliveryProvider(ctx.storeId, order, ctx)
   }
 
   hasUi() {

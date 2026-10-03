@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileExists, readJson } from "../util.mjs"
+import { validateDependencies } from "./dependencies.mjs"
 
 const SLUG = /^[a-z0-9-]+$/
 const VERSION = /^\d+\.\d+\.\d+$/
@@ -91,8 +92,9 @@ export function validatePluginDir(pluginDir, { expectedSlug } = {}) {
   if (manifest.permissions?.includes("db:read") && !(manifest.allowedTables ?? []).length) {
     warnings.push("db:read without allowedTables — the plugin can only read its own plugin_<slug>_* tables")
   }
-  if (manifest.dependencies && Object.keys(manifest.dependencies).length > 25) {
-    errors.push(`too many dependencies (${Object.keys(manifest.dependencies).length}); the limit is 25`)
+  if (manifest.dependencies) {
+    const dependencyCheck = validateDependencies(manifest.dependencies)
+    for (const error of dependencyCheck.errors) errors.push(error)
   }
 
   return { slug, manifest, errors, warnings }

@@ -1,0 +1,10 @@
+{
+  "name": "demo-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "flags": "^4.3.1",
+    "html-json": "^1.0.2"
+  }
+}

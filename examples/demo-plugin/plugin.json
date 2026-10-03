@@ -6,14 +6,154 @@
   "author": "Selldoes",
   "icon": "sparkles",
   "category": "productivity",
-  "permissions": ["db:read", "db:write", "db:schema", "products:read", "ai:use"],
-  "allowedTables": ["products"],
+  "permissions": [
+    "db:read",
+    "db:write",
+    "db:schema",
+    "products:read",
+    "ai:use"
+  ],
+  "allowedTables": [
+    "products"
+  ],
   "entry": "./index.js",
   "dashboardPages": [
     {
       "label": "Demo Plugin",
       "path": "/",
-      "icon": "sparkles"
+      "icon": "sparkles",
+      "sections": [
+        {
+          "type": "stats",
+          "settings": {
+            "items": [
+              {
+                "label": "Metric",
+                "value": "0",
+                "hint": ""
+              },
+              {
+                "label": "Metric",
+                "value": "0",
+                "hint": ""
+              }
+            ]
+          }
+        },
+        {
+          "type": "table",
+          "settings": {
+            "title": "Data",
+            "route": "/notes",
+            "columns": [],
+            "maxRows": 50
+          }
+        },
+        {
+          "type": "job",
+          "settings": {
+            "title": "Run a job",
+            "job": "import-products",
+            "maxTicks": 20
+          }
+        },
+        {
+          "type": "text",
+          "settings": {
+            "title": "About",
+            "body": "Describe what this plugin does and how to use it."
+          }
+        },
+        {
+          "type": "links",
+          "settings": {
+            "items": [
+              {
+                "label": "Documentation",
+                "href": "https://selldoes.com"
+              }
+            ]
+          }
+        },
+        {
+          "type": "job",
+          "settings": {
+            "title": "Run a job",
+            "job": "import-products",
+            "maxTicks": 20
+          }
+        },
+        {
+          "type": "logs",
+          "settings": {
+            "title": "Dev logs",
+            "lines": 20
+          }
+        },
+        {
+          "type": "stats",
+          "settings": {
+            "items": [
+              {
+                "label": "Metric",
+                "value": "0",
+                "hint": ""
+              },
+              {
+                "label": "Metric",
+                "value": "0",
+                "hint": ""
+              }
+            ]
+          }
+        },
+        {
+          "type": "links",
+          "settings": {
+            "items": [
+              {
+                "label": "Documentation",
+                "href": "https://selldoes.com"
+              }
+            ]
+          }
+        },
+        {
+          "type": "text",
+          "settings": {
+            "title": "New text",
+            "body": "Write **markdown** here — or ask the AI assistant to fill it in."
+          }
+        },
+        {
+          "type": "table",
+          "settings": {
+            "title": "Data",
+            "route": "/notes",
+            "columns": [],
+            "maxRows": 50
+          }
+        },
+        {
+          "type": "logs",
+          "settings": {
+            "title": "Dev logs",
+            "lines": 20
+          }
+        },
+        {
+          "type": "job",
+          "settings": {
+            "title": "Run a job",
+            "job": "import-products",
+            "maxTicks": 20
+          }
+        },
+        {
+          "type": "settings",
+          "settings": {}
+        }
+      ]
     }
   ],
   "ui": {
@@ -21,12 +161,41 @@
     "title": "Demo Plugin"
   },
   "apiRoutes": [
-    { "path": "/notes", "methods": ["GET", "POST", "DELETE"] },
-    { "path": "/stats", "methods": ["GET"] },
-    { "path": "/settings", "methods": ["GET"] },
-    { "path": "/blurb", "methods": ["POST"] }
+    {
+      "path": "/notes",
+      "methods": [
+        "GET",
+        "POST",
+        "DELETE"
+      ]
+    },
+    {
+      "path": "/stats",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/settings",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/blurb",
+      "methods": [
+        "POST"
+      ]
+    }
   ],
-  "publicRoutes": [{ "path": "/hello", "methods": ["GET"] }],
+  "publicRoutes": [
+    {
+      "path": "/hello",
+      "methods": [
+        "GET"
+      ]
+    }
+  ],
   "storefrontWidget": {
     "entry": "ui/widget.html",
     "width": 64,
@@ -45,7 +214,9 @@
     }
   ],
   "hooks": {
-    "demo:ping": { "handler": "index.js" }
+    "demo:ping": {
+      "handler": "index.js"
+    }
   },
   "configSchema": [
     {
@@ -69,6 +240,16 @@
       "default": true
     }
   ],
-  "tags": ["demo", "example"],
-  "screenshots": ["screenshots/overview.svg"]
+  "tags": [
+    "demo",
+    "example"
+  ],
+  "screenshots": [
+    "screenshots/overview.svg"
+  ],
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "flags": "^4.3.1",
+    "html-json": "^1.0.2"
+  }
 }

@@ -159,7 +159,7 @@ Only these capabilities exist, gated by manifest permissions:
 - ctx.products.list/get/create/update/findBySku/upsertBySku (products:read/products:write)
 - ctx.realtime.publish/poll (realtime:publish)
 - ctx.storeId, ctx.config (declared configSchema values), ctx.permissions, ctx.tablePrefix
-No require(), no process/Buffer/fs/fetch. Tables: own tables are plugin_<slug>_* via ensureTable; store tables must be in allowedTables.
+No require() of Node builtins, no process/Buffer/fs/fetch at runtime; npm packages are allowed — the bundler inlines anything listed in manifest "dependencies" (registry ranges, max 25). Tables: own tables are plugin_<slug>_* via ensureTable; store tables must be in allowedTables.
 API routes: exports.apiRoutes = { "<path>": { GET(ctx, request) {...}, POST(ctx, request) {...} } } — declared in manifest apiRoutes.
 Jobs are chunked: exports.jobs = { "<type>": { init(input, ctx), step(state, ctx), finalize(state, ctx) } } — step returns { state, progress, done, result }; use ctx.jobs.progress/item/log.
 Hooks: exports.hooks = { "<name>": async (payload, ctx) => result }.

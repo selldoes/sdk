@@ -3,6 +3,7 @@ import path from "node:path"
 import { build } from "esbuild"
 import { zipSync } from "fflate"
 import { fileExists, readJson } from "../util.mjs"
+import { checkSandboxBundle, formatSandboxIssues, sandboxBuildOptions } from "./sandbox.mjs"
 
 const UI_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"]
 
@@ -101,8 +102,12 @@ function writeUiShell(outUi, relHtml, { title, bundleName }) {
  * Zips the plugin **source** for upload/publish. The platform bundles the
  * runtime server-side, so the archive must contain `plugin.json`, the entry
  * file and `ui/**` — not the prebuilt `dist/` output.
+ *
+ * When `bundlePath` is provided the finished sandbox bundle is added as
+ * `dist/bundle.js`: the platform runs that file directly instead of installing
+ * dependencies and rebuilding on the server.
  */
-export async function packPluginSource(pluginDir, { zipPath } = {}) {
+export async function packPluginSource(pluginDir, { zipPath, bundlePath } = {}) {
   const manifest = readJson(path.join(pluginDir, "plugin.json"))
   const entries = {}
 
@@ -121,6 +126,12 @@ export async function packPluginSource(pluginDir, { zipPath } = {}) {
     }
   }
   walk(pluginDir)
+
+  // Prebuilt sandbox bundle (what the platform will execute). It sits at
+  // dist/bundle.js in the zip so a stale local dist/ is never picked up.
+  if (bundlePath && fileExists(bundlePath)) {
+    entries["dist/bundle.js"] = new Uint8Array(fs.readFileSync(bundlePath))
+  }
 
   const target = zipPath ?? path.join(pluginDir, "dist", `${manifest.slug}.zip`)
   fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -147,17 +158,25 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
   fs.mkdirSync(resolvedOut, { recursive: true })
 
   // ── Runtime bundle ──────────────────────────────────────────────────────────
-  const result = await build({
-    entryPoints: [path.join(pluginDir, String(manifest.entry ?? "./index.js").replace(/^\.\//, ""))],
-    bundle: true,
-    platform: "node",
-    format: "cjs",
-    target: "es2020",
-    outfile: path.join(resolvedOut, "bundle.js"),
-    logLevel: "silent",
-    absWorkingDir: pluginDir,
-  })
+  const bundlePath = path.join(resolvedOut, "bundle.js")
+  const result = await build(
+    sandboxBuildOptions({
+      pluginDir,
+      entryPoints: [path.join(pluginDir, String(manifest.entry ?? "./index.js").replace(/^\.\//, ""))],
+      outfile: bundlePath,
+      minify: true,
+      metafile: true,
+    }),
+  )
   for (const warning of result.warnings) log(`  [esbuild] ${warning.text}`)
+
+  // The bundle is the artifact the sandbox will execute — check it here so a
+  // package that needs fs/net or exceeds 4 MB fails the build, not a store.
+  const sandbox = checkSandboxBundle({ bundlePath, metafile: result.metafile, manifest })
+  for (const warning of sandbox.warnings) log(`  [sandbox] ${warning}`)
+  if (!sandbox.ok) {
+    throw new Error(`The plugin bundle does not match the sandbox contract:\n${formatSandboxIssues(sandbox)}`)
+  }
 
   // ── Dashboard UI (optional) ─────────────────────────────────────────────────
   const uiEntries = collectUiEntries(manifest)
@@ -204,13 +223,17 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
 
   fs.writeFileSync(path.join(resolvedOut, "plugin.json"), JSON.stringify(manifest, null, 2))
 
-  const sizeKb = (fs.statSync(path.join(resolvedOut, "bundle.js")).size / 1024).toFixed(1)
+  const sizeKb = (fs.statSync(bundlePath).size / 1024).toFixed(1)
   let zipPath = null
   if (zip) {
-    // Upload/publish format: the plugin source, bundled server-side.
-    const packed = await packPluginSource(pluginDir, { zipPath: path.join(path.dirname(resolvedOut), `${manifest.slug}.zip`) })
+    // Upload/publish format: source + the prebuilt sandbox bundle, so the
+    // platform does not install npm dependencies or rebuild on the server.
+    const packed = await packPluginSource(pluginDir, {
+      zipPath: path.join(path.dirname(resolvedOut), `${manifest.slug}.zip`),
+      bundlePath,
+    })
     zipPath = packed.zipPath
   }
 
-  return { manifest, outDir: resolvedOut, zipPath, sizeKb }
+  return { manifest, outDir: resolvedOut, zipPath, sizeKb, sandbox, bundlePath }
 }

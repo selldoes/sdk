@@ -16,6 +16,7 @@ import {
   Webhook,
 } from "lucide-react"
 import { AppIcon, resolveIcon } from "@/components/app-icon"
+import { SectionBuilder } from "@/components/kit/section-builder"
 import { SectionKit } from "@/components/kit/section-kit"
 import { PermissionList } from "@/components/permission-list"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
@@ -54,9 +55,10 @@ interface ResolvedPage {
 }
 
 type CreateKind = "page" | "job" | "hook" | "route"
+type PageMode = "components" | "html"
 
 export function DashboardPage() {
-  const { bootstrap, setAssistantOpen, setAssistantPage, applyManifest, refresh, toast } = useApp()
+  const { bootstrap, setAssistantPage, applyManifest, refresh, toast } = useApp()
   useVisit("dashboard")
   const manifest = bootstrap!.manifest
   const store = bootstrap!.store
@@ -94,8 +96,8 @@ export function DashboardPage() {
     const declared: ResolvedPage[] = []
     for (const page of manifest.dashboardPages ?? []) {
       const entry = normalize(page.entry) ?? normalize(manifest.ui?.entry)
-      // A page with sections needs no entry — the kit renders it natively.
-      if (!entry && !(Array.isArray(page.sections) && page.sections.length > 0)) continue
+      // A page that declares sections (even empty) needs no entry — the kit renders it natively.
+      if (!entry && !Array.isArray(page.sections)) continue
       declared.push({ label: page.label, path: page.path, icon: page.icon, group: page.group, entry, sections: page.sections })
     }
     if (declared.length === 0 && normalize(manifest.ui?.entry)) {
@@ -167,80 +169,26 @@ export function DashboardPage() {
     }
   }, [loadEntries, toast])
 
+  // ── Components builder (dashboardPages[].sections) ────────────────────────
+  const [builderOpen, setBuilderOpen] = React.useState(false)
+
   // ── Creation: New page / New job / New hook / New route ───────────────────
   const [createKind, setCreateKind] = React.useState<CreateKind | null>(null)
 
   const handleScaffolded = React.useCallback(
-    (next: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string }) => {
+    (next: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string; openBuilder?: boolean }) => {
       applyManifest(next, validation)
       toast(message, "success")
       void refresh()
       void loadEntries()
       setFrameNonce((nonce) => nonce + 1)
       if (extra?.pagePath) setParams({ page: extra.pagePath }, { replace: true })
+      if (extra?.openBuilder) setBuilderOpen(true)
     },
     [applyManifest, loadEntries, refresh, setParams, toast],
   )
 
-  // ── Components editor (dashboardPages[].sections) ─────────────────────────
-  const [editOpen, setEditOpen] = React.useState(false)
-  const [editJson, setEditJson] = React.useState("[]")
-  const [editError, setEditError] = React.useState<string | null>(null)
-  const [editSaving, setEditSaving] = React.useState(false)
   const activeSections = activePage?.sections ?? []
-
-  const openSectionsEditor = React.useCallback(() => {
-    setEditJson(JSON.stringify(activeSections, null, 2))
-    setEditError(null)
-    setEditOpen(true)
-  }, [activeSections])
-
-  const saveSections = React.useCallback(async () => {
-    if (!activePage) return
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(editJson)
-    } catch (error) {
-      setEditError(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
-      return
-    }
-    if (!Array.isArray(parsed)) {
-      setEditError("Sections must be a JSON array, e.g. [{ \"type\": \"stats\", \"settings\": { … } }]")
-      return
-    }
-    setEditSaving(true)
-    try {
-      const next = JSON.parse(JSON.stringify(bootstrap!.manifest)) as PluginManifest
-      const list = Array.isArray(next.dashboardPages) ? next.dashboardPages : []
-      const target = list.find((page) => page.path === activePage.path)
-      if (!target) throw new Error(`Page "${activePage.path}" is not declared in dashboardPages`)
-      target.sections = parsed as PluginDashboardSection[]
-      next.dashboardPages = list
-      const response = await dev.saveManifest(next)
-      applyManifest(response.manifest, response.validation)
-      toast("Components saved — this page now renders from sections", "success")
-      setEditOpen(false)
-      setFrameNonce((nonce) => nonce + 1)
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    } finally {
-      setEditSaving(false)
-    }
-  }, [activePage, applyManifest, bootstrap, editJson, toast])
-
-  /** AI at the top of the funnel: the assistant rewrites the sections manifest block. */
-  const askAiAboutSections = React.useCallback(() => {
-    setEditOpen(false)
-    setAssistantPage({
-      context: `The developer is editing the components of dashboard page "${activePage?.label}" (${activePage?.path}). Current sections JSON:\n${editJson.slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?}, job {job, title?, input?, maxTicks?}, settings (renders configSchema), logs {lines?}, links {items:[{label,href}]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new dashboardPages[].sections array (keep "entry" as fallback).`,
-      quick: [
-        "Add a stats row and a job runner to this page",
-        "Show my /stats API route as a table on this page",
-        "Replace these components with the default notes iframe",
-      ],
-    })
-    setAssistantOpen(true)
-  }, [activePage, editJson, setAssistantOpen, setAssistantPage])
 
   React.useEffect(() => {
     setAssistantPage({
@@ -398,7 +346,7 @@ export function DashboardPage() {
                   </CardDescription>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={openSectionsEditor}>
+                  <Button size="sm" variant="outline" onClick={() => setBuilderOpen(true)}>
                     <Sparkles />
                     {hasSections ? "Edit components" : "Add components"}
                   </Button>
@@ -423,7 +371,20 @@ export function DashboardPage() {
                 />
               ) : (
                 <Callout kind="info">
-                  This page has no <code>entry</code> and no <code>sections</code> yet — add components or scaffold the notes UI.
+                  <p>
+                    This page has no components yet — open the builder to add the first one, or scaffold the notes UI as an iframe
+                    fallback.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => setBuilderOpen(true)}>
+                      <Sparkles />
+                      Add components
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={scaffolding} onClick={() => void scaffold()}>
+                      {scaffolding ? <Loader2 className="animate-spin" /> : <Play />}
+                      Scaffold the notes UI
+                    </Button>
+                  </div>
                 </Callout>
               )}
             </CardContent>
@@ -433,35 +394,17 @@ export function DashboardPage() {
 
       <CreateDialog kind={createKind} onOpenChange={(open) => { if (!open) setCreateKind(null) }} onScaffolded={handleScaffolded} />
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Components — {activePage!.label}</DialogTitle>
-            <DialogDescription>
-              A JSON array rendered by the kit: <code>text</code>, <code>stats</code>, <code>table</code>, <code>job</code>,{" "}
-              <code>settings</code>, <code>logs</code>, <code>links</code>. The assistant can rewrite this for you.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={editJson}
-            onChange={(event) => setEditJson(event.target.value)}
-            rows={18}
-            className="font-mono text-[12px]"
-            placeholder='[{ "type": "stats", "settings": { "items": [{ "label": "Jobs", "value": "3" }] } }]'
-          />
-          {editError ? <p className="text-[12px] text-destructive">{editError}</p> : null}
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={askAiAboutSections}>
-              <Sparkles />
-              Ask AI to edit
-            </Button>
-            <Button onClick={() => void saveSections()} disabled={editSaving}>
-              {editSaving ? <Loader2 className="animate-spin" /> : <Check />}
-              Save components
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SectionBuilder
+        open={builderOpen}
+        onOpenChange={setBuilderOpen}
+        slug={manifest.slug}
+        store={store}
+        manifest={manifest}
+        pageLabel={activePage!.label}
+        pagePath={activePage!.path}
+        hasEntry={Boolean(activePage!.entry)}
+        sections={activeSections}
+      />
     </>
   )
 }
@@ -501,14 +444,15 @@ function CreateDialog({
 }: {
   kind: CreateKind | null
   onOpenChange: (open: boolean) => void
-  onScaffolded: (manifest: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string }) => void
+  onScaffolded: (manifest: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string; openBuilder?: boolean }) => void
 }) {
-  const { toast } = useApp()
+  const { bootstrap, toast } = useApp()
   const [label, setLabel] = React.useState("")
   const [path, setPath] = React.useState("")
   const [icon, setIcon] = React.useState("")
   const [type, setType] = React.useState("")
   const [description, setDescription] = React.useState("")
+  const [pageMode, setPageMode] = React.useState<PageMode>("components")
   const [busy, setBusy] = React.useState(false)
 
   React.useEffect(() => {
@@ -518,11 +462,16 @@ function CreateDialog({
       setIcon("")
       setType("")
       setDescription("")
+      setPageMode("components")
     }
   }, [kind])
 
   const titles: Record<CreateKind, { title: string; blurb: string }> = {
-    page: { title: "New dashboard page", blurb: "Creates the page file (notes example) and a dashboardPages entry — appears in the sidebar rail instantly." },
+    page: {
+      title: "New dashboard page",
+      blurb:
+        "A components page adds a dashboardPages entry (no iframe) and opens the visual builder; an HTML page scaffolds the notes example under ui/.",
+    },
     job: { title: "New job", blurb: "Creates jobs/<type>.js (init/step/finalize skeleton), declares it in plugin.json and wires it into the entry." },
     hook: { title: "New hook", blurb: "Creates hooks/<name>.js, declares it in plugin.json and wires it into the entry." },
     route: { title: "New API route", blurb: "Creates routes/<path>.js, declares it in apiRoutes and wires it into the entry." },
@@ -538,9 +487,23 @@ function CreateDialog({
         const name = label.trim()
         const rawPath = path.trim() || `/${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "page"}`
         const pagePath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
-        const entry = pagePath === "/" ? "ui/index.html" : `ui/${pagePath.replace(/^\//, "").replace(/\/$/, "")}.html`
-        const result = await dev.scaffoldUi({ entry, label: name, path: pagePath, ...(icon.trim() ? { icon: icon.trim() } : {}) })
-        onScaffolded(result.manifest, result.validation, result.written.length ? `Page created: ${result.written.join(", ")}` : "Page UI already present — rebuilt", { pagePath })
+        if (pageMode === "html") {
+          const entry = pagePath === "/" ? "ui/index.html" : `ui/${pagePath.replace(/^\//, "").replace(/\/$/, "")}.html`
+          const result = await dev.scaffoldUi({ entry, label: name, path: pagePath, ...(icon.trim() ? { icon: icon.trim() } : {}) })
+          onScaffolded(result.manifest, result.validation, result.written.length ? `Page created: ${result.written.join(", ")}` : "Page UI already present — rebuilt", { pagePath })
+        } else {
+          const current = bootstrap?.manifest
+          if (!current) throw new Error("The plugin manifest is not loaded yet")
+          const next = JSON.parse(JSON.stringify(current)) as PluginManifest
+          const list = Array.isArray(next.dashboardPages) ? next.dashboardPages : []
+          if (list.some((page) => page.path === pagePath)) throw new Error(`A dashboard page at "${pagePath}" already exists`)
+          const page: NonNullable<PluginManifest["dashboardPages"]>[number] = { label: name, path: pagePath, sections: [] }
+          if (icon.trim()) page.icon = icon.trim()
+          list.push(page)
+          next.dashboardPages = list
+          const response = await dev.saveManifest(next)
+          onScaffolded(response.manifest, response.validation, `Components page created: ${pagePath}`, { pagePath, openBuilder: true })
+        }
       } else if (kind === "job") {
         const result = await dev.scaffoldJob({
           type: type.trim(),
@@ -576,6 +539,27 @@ function CreateDialog({
         <div className="space-y-3">
           {kind === "page" ? (
             <>
+              <div className="space-y-1.5">
+                <Label>Page type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["components", "html"] as PageMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setPageMode(mode)}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-left transition-colors",
+                        pageMode === mode ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
+                      )}
+                    >
+                      <span className="block text-[12.5px] font-semibold">{mode === "components" ? "Components" : "HTML"}</span>
+                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                        {mode === "components" ? "No-code kit — build it in the visual builder" : "Notes example under ui/ (iframe)"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="create-label">Label</Label>
                 <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Reports" autoFocus />

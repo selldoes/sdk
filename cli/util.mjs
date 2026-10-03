@@ -80,6 +80,25 @@ export function contentTypeFor(file) {
   return CONTENT_TYPES[path.extname(file).toLowerCase()] || "application/octet-stream"
 }
 
+/**
+ * Environment for spawning a package manager inside a project.
+ *
+ * Shells started by npm/opencode inherit `npm_config_*` env vars, and npm 11
+ * treats an inherited `npm_config_allow_scripts` like a CLI flag: project-scoped
+ * installs/uninstalls then fail with EALLOWSCRIPTS ("not allowed in
+ * project-scoped installs"). Strip every npm config var so the project's own
+ * .npmrc/package.json decides, and force lifecycle scripts off — the platform
+ * installs plugin dependencies with scripts disabled too.
+ */
+export function packageManagerEnv(env = process.env) {
+  const clean = { ...env }
+  for (const key of Object.keys(clean)) {
+    if (key.toLowerCase().startsWith("npm_config_")) delete clean[key]
+  }
+  clean.npm_config_ignore_scripts = "true"
+  return clean
+}
+
 export function openBrowser(url) {
   const platform = process.platform
   const command = platform === "win32" ? `start "" "${url}"` : platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`

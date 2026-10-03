@@ -194,6 +194,46 @@ export interface ScaffoldCodeResult {
   rebuildError?: string
 }
 
+// ─── Packages ────────────────────────────────────────────────────────────────
+
+export type PackageStatus = "ok" | "warn" | "blocked" | "missing"
+
+export interface PackageInfo {
+  name: string
+  declared: boolean
+  range?: string
+  installed: string | null
+  status: PackageStatus
+  message: string
+  sizeKb?: number | null
+  bundled: boolean
+}
+
+export interface SandboxSummary {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  sizeKb: number
+}
+
+export interface PackagesResponse {
+  manager: string
+  dependencies: Record<string, string>
+  packages: PackageInfo[]
+  /** Imported by the bundle but missing from plugin.json dependencies. */
+  missing: string[]
+  sandbox: SandboxSummary
+}
+
+export interface NpmSearchResult {
+  name: string
+  version?: string
+  description?: string
+  date?: string | null
+  publisher?: string | null
+  links?: { npm?: string; homepage?: string }
+}
+
 // ─── Code editor ─────────────────────────────────────────────────────────────
 
 export interface FileTreeEntry {

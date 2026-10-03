@@ -36,6 +36,7 @@ Assistant (the same brain as the preview's right panel)
 
 Plugin projects (a directory with plugin.json)
   dev                       Local preview server (dashboard UI, storefront, API console, jobs)
+  add <pkg>[@version]       Install an npm package and declare it in plugin.json
   build                     Bundle the plugin into dist/ (--zip to also write <slug>.zip)
   pack                      Bundle + zip without publishing
   validate                  Validate plugin.json, entries and route declarations
@@ -234,6 +235,7 @@ export async function main() {
       }
 
       case "dev":
+      case "add":
       case "build":
       case "pack":
       case "validate":
@@ -312,6 +314,18 @@ async function runProjectCommand(command, args, flags) {
   }
 
   switch (command) {
+    case "add": {
+      const spec = args.find((arg) => !arg.startsWith("-"))
+      if (!spec) die("Usage: selldoes add <package>[@version]")
+      const at = spec.lastIndexOf("@")
+      const name = at > 0 ? spec.slice(0, at) : spec
+      const range = at > 0 ? spec.slice(at + 1) : undefined
+      const { addDependency } = await import("./plugin/dependencies.mjs")
+      const result = await addDependency({ pluginDir: projectDir, name, range, log: (line) => console.log(line) })
+      console.log(`✓ ${result.name}@${result.range} declared in plugin.json (${result.manager})`)
+      return
+    }
+
     case "dev": {
       const { startDevServer } = await import("./plugin/dev/server.mjs")
       const server = await startDevServer({

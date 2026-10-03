@@ -15,6 +15,7 @@ import { AppProvider, Toaster, useApp } from "@/state/app"
 import { PAGE_TITLES } from "@/lib/pages"
 import { OverviewPage } from "@/pages/overview"
 import { CodePage } from "@/pages/code"
+import { PackagesPage } from "@/pages/packages"
 import { ConsolePage } from "@/pages/console"
 import { DetailsPage } from "@/pages/details"
 import { ListingPage } from "@/pages/listing"
@@ -113,6 +114,7 @@ function Shell() {
               <Routes>
                 <Route path="/" element={<OverviewPage />} />
                 <Route path="/code" element={<CodePage />} />
+                <Route path="/packages" element={<PackagesPage />} />
                 <Route path="/console" element={<ConsolePage />} />
                 <Route path="/details" element={<DetailsPage />} />
                 <Route path="/listing" element={<ListingPage />} />

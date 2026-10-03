@@ -12,6 +12,8 @@ import type {
   GitCommit,
   GitStatus,
   PluginManifest,
+  PackagesResponse,
+  NpmSearchResult,
   SaveFileConfigInput,
   SearchResult,
   SettingsResponse,
@@ -112,6 +114,15 @@ export const dev = {
   gitUnstage: (paths: string[]) => post<GitStatus>("/__dev/git/unstage", { paths }),
   gitCommit: (message: string, paths?: string[]) => post<GitStatus>("/__dev/git/commit", { message, paths }),
   gitInit: () => post<GitStatus>("/__dev/git/init", {}),
+
+  // ── Packages (npm dependencies + sandbox compatibility) ───────────────────
+  packages: () => request<PackagesResponse>("/__dev/packages"),
+  checkPackages: () => post<PackagesResponse>("/__dev/packages/check", {}),
+  searchNpm: (query: string) => request<{ results: NpmSearchResult[] }>(`/__dev/packages/search?q=${encodeURIComponent(query)}`),
+  addPackage: (name: string, range?: string) =>
+    post<PackagesResponse & { ok: boolean; rebuildError?: string }>("/__dev/packages/add", { name, ...(range ? { range } : {}) }),
+  removePackage: (name: string) =>
+    post<PackagesResponse & { ok: boolean; rebuildError?: string }>("/__dev/packages/remove", { name }),
 
   // ── External editor / OS terminal ─────────────────────────────────────────
   openEditor: (input: { file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>

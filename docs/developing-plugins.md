@@ -138,15 +138,30 @@ Kit types: `text` (markdown), `stats`, `table` (your `apiRoutes` path — the
 handler returns an array or `{ rows: [...] }` / `{ items: [...] }`), `job`
 (run button + live transcript), `settings` (renders `configSchema`), `logs`,
 `links`. Pages with `sections` need no `entry`; keep one as a fallback for
-hosts that render iframes. Edit the JSON via **Edit components** on the
-Dashboard page — or ask the AI assistant ("add a stats row", "show /stats as
-a table"), which rewrites `dashboardPages[].sections` through the normal
-manifest-edit pipeline.
+hosts that render iframes.
+
+**Add/Edit components** on the Dashboard page opens the visual builder:
+component palette on the left (click or drag onto the canvas), a live preview
+in the middle (the exact kit renderer the host uses), and a settings inspector
+on the right. It ships starter templates (Reports, About, Ops, Settings),
+drag/arrow reordering, duplicate/delete, an optional per-section `id`, and a
+**JSON** tab that stays in sync with the canvas for raw edits. **Save** writes
+`dashboardPages[].sections` through the normal manifest pipeline — validated,
+snapshotted and undoable (the builder's Undo button restores the previous
+`plugin.json`).
+
+**New page → Components** creates a kit-only page (a `dashboardPages` entry
+with `sections: []` and no `entry`) and opens the builder; **New page → HTML**
+scaffolds the notes example under `ui/` as before. You can also ask the AI
+assistant ("add a stats row", "show /stats as a table"), which rewrites
+`dashboardPages[].sections` through the normal manifest-edit pipeline.
 
 ### Creation buttons
 
 The Dashboard page has **New page / New job / New hook / New route** buttons.
-They codegen readable modules (`ui/<name>.html`, `jobs/<type>.js`,
+New page can create a **Components** page (kit-only, no `entry` — opens the
+visual builder) or an **HTML** page (the notes example under `ui/`). Jobs,
+hooks and routes codegen readable modules (`jobs/<type>.js`,
 `hooks/<name>.js`, `routes/<path>.js`), patch `plugin.json` and append an
 idempotent wiring block to the entry (`// <selldoes-scaffold:…>` markers,
 inlined by esbuild) — then rebuild. Everything is snapshotted: one undo
@@ -162,10 +177,11 @@ dashboard:
 |---|---|
 | **Overview** | A generated checklist (describe → preview → test → publish), quick job runs and what the manifest exposes |
 | **Code** | The built-in editor: file tree, tabs, Monaco with the SDK's own types (IntelliSense for `definePlugin`, routes, jobs), save → rebuild, git changes with diffs and commit, quick open |
+| **Packages** | Search npm, add/remove dependencies (installs + writes `plugin.json`), and rate each package against the sandbox — ✅ works, ⚠️ works with care, ❌ not allowed, with the reason |
 | **Console** | Live dev-server logs and build errors — click a `file:line` error to open it in the editor |
 | **Details & permissions** | Edit `plugin.json` from a form: name, description, icon (built-in picker or uploaded image), screenshots, category, tags and permissions (with the platform's risk/impact text). Saves are validated and undoable |
 | **In Selldoes** | Exactly what store owners see: marketplace card, listing page (with screenshots), the install dialog and where your dashboard pages land in the sidebar |
-| **Dashboard page** | Your dashboard UI in a sandboxed iframe, with a page rail for every `dashboardPages` entry; missing pages get a one-click "scaffold the notes example" button. Without a UI, a faithful replica of the host's settings + jobs page (plus the same scaffold button) |
+| **Dashboard page** | Your dashboard UI in a sandboxed iframe, with a page rail for every `dashboardPages` entry; pages with `sections` render from the no-code kit and open in the visual components builder (palette, live canvas, inspector, templates, JSON tab); missing pages get a one-click "scaffold the notes example" button. Without a UI, a faithful replica of the host's settings + jobs page (plus the same scaffold button) |
 | **Storefront** | A demo store with your `storefrontWidget` and every `storefrontPages` entry |
 | **Jobs** | Run a declared job — chunked (`{ init, step, finalize }`) or a legacy function — with progress, per-item results and logs |
 | **API console** | Pick a declared route, edit query/body, send and inspect JSON |
@@ -325,15 +341,44 @@ supported.
 
 ## npm dependencies
 
-Plugins may declare npm dependencies (registry version ranges only, max 25) in
-the manifest. The platform installs them at publish time (scripts disabled),
-rejects native addons and inlines everything into the sandbox bundle (4 MB
-limit). Only a small allow-list of pure-JS Node builtins is available at
-runtime (`buffer`, `crypto`, `events`, `stream`, `string_decoder`, `url`,
-`util`, …) and the QuickJS lane has no `require` at all — avoid packages that
-need `fs`, `net`, `http` or other Node-only APIs. For local development add a
-plugin-local `package.json` and `npm install`, because the CLI's `build`/`dev`
-bundle with the local `node_modules`.
+Plugins can use npm packages. Add one from the dev shell's **Packages** page
+(search npm, click Add — it installs, declares the dependency and rates it
+against the sandbox) or from the CLI:
+
+```bash
+selldoes add cheerio          # installs + declares the installed version
+selldoes add cheerio@^1.2.0   # or pin a registry range
+```
+
+Declared versions live in `plugin.json`
+(`"dependencies": { "cheerio": "^1.2.0" }`, registry ranges only, max 25).
+Keep the plugin-local `package.json` in sync with `npm install` — the CLI
+bundles with the local `node_modules`.
+
+**What the checker means**
+
+| Badge | Meaning |
+|---|---|
+| ✅ Works | Pure-JS or browser-compatible package: bundles cleanly, loads in the sandbox |
+| ⚠️ Works with care | Bundles, but large (close to the 4 MB limit) or has warnings |
+| ❌ Not allowed | Needs Node-only powers (`fs`, `net`, `http`, `child_process`, native addons) — use `ctx.db` / `ctx.http` / `ctx.files`, or a browser-friendly alternative |
+
+The build resolves packages with **browser-style resolution**, so packages that
+ship a browser build (cheerio, for example) work without their Node-only
+dependencies (cheerio's `undici` is skipped; `fromURL` is unavailable — use
+`ctx.http.get`). Common Node builtins (`buffer`, `crypto`, `events`, `stream`,
+`path`, `url`, `util`, …) are polyfilled into the bundle, and a tiny `atob` /
+`TextEncoder` / `TextDecoder` shim is injected, so bundles are self-contained:
+the production sandbox (QuickJS) has **no `require()`** and no Node globals.
+
+Everything else fails at build time with the offending import, instead of
+failing in a store. Bundles are capped at **4 MB**; `selldoes build` and
+`selldoes publish` enforce it. `selldoes add` installs with the project's
+package manager (npm, pnpm, yarn or bun — detected from the lockfile).
+
+At publish time the zip carries the finished bundle (`dist/bundle.js`); the
+platform runs that exact file, so what passed your checker is what runs in
+production.
 
 ## Build & publish
 

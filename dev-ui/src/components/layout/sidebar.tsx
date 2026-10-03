@@ -6,6 +6,7 @@ import {
   FileText,
   LayoutDashboard,
   Mail,
+  Package,
   Play,
   Plug,
   Puzzle,
@@ -48,6 +49,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Develop",
     items: [
       { to: "/code", label: "Code", icon: FileCode2, hint: "editor" },
+      { to: "/packages", label: "Packages", icon: Package, hint: "npm" },
       { to: "/console", label: "Console", icon: ScrollText, hint: "logs" },
     ],
   },

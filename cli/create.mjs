@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
+import { packageManagerEnv } from "./util.mjs"
 import * as prompts from "@clack/prompts"
 import { die } from "./util.mjs"
 
@@ -172,6 +173,8 @@ export async function scaffoldProject({
       encoding: "utf8",
       shell: true,
       windowsHide: true,
+      // Inherited npm_config_* (e.g. allow-scripts) breaks project installs.
+      env: packageManagerEnv(),
     })
     if (result.status === 0) {
       spinner.stop("Dependencies installed")
