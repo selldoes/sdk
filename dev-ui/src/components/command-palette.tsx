@@ -23,6 +23,7 @@ import {
   SquareTerminal,
   Store,
   Sun,
+  UserRoundCog,
   Webhook,
   type LucideIcon,
 } from "lucide-react"
@@ -56,7 +57,8 @@ const PAGES: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/email", label: "Email outbox", icon: Mail },
   { to: "/realtime", label: "Realtime", icon: Radio },
   { to: "/ship", label: "Validate & publish", icon: Rocket },
-  { to: "/settings", label: "Settings", icon: Settings2 },
+  { to: "/settings", label: "Project settings", icon: Settings2 },
+  { to: "/user-settings", label: "User settings", icon: UserRoundCog },
 ]
 
 export function CommandPalette() {

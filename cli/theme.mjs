@@ -7,6 +7,7 @@ import os from "node:os"
 import http from "node:http"
 import { createRequire } from "node:module"
 import { unzipSync, zipSync, strFromU8 } from "fflate"
+import { sendNotFound } from "./not-found-page.mjs"
 
 const require = createRequire(import.meta.url)
 const esbuild = require("esbuild")
@@ -252,7 +253,7 @@ async function devCommand() {
       }
       return
     }
-    if (url.pathname === "/" || url.pathname === "/preview") {
+    if (url.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html" })
       res.end(previewHtml(slug, pages, JSON.stringify(initPayload)))
       return
@@ -274,13 +275,17 @@ async function devCommand() {
         res.writeHead(200, { "content-type": file.endsWith(".js") ? "text/javascript" : "application/octet-stream" })
         res.end(data)
       } catch {
-        res.writeHead(404)
-        res.end("not found")
+        sendNotFound(req, res, { pathname: url.pathname, homeUrl: "/", homeLabel: "Back to the preview", hint: "This theme asset hasn't been built yet — save a change in src/ and the dev server will rebuild it." })
       }
       return
     }
-    res.writeHead(404)
-    res.end()
+    sendNotFound(req, res, {
+      pathname: url.pathname,
+      homeUrl: "/",
+      homeLabel: "Back to the preview",
+      hint: "The template preview serves /, /page and /dev/* — other addresses aren't part of it.",
+      links: [{ to: "/", label: "Preview home" }, { to: "/page", label: "Theme frame" }],
+    })
   })
 
   server.listen(port, () => {

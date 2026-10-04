@@ -5,6 +5,7 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentTypeFor } from "./util.mjs"
+import { sendNotFound } from "./not-found-page.mjs"
 import { defaultProjectsDir, getCurrentProjectId, getWorkspaceSettings, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
 import { attachTerminalServer } from "./terminal.mjs"
 
@@ -16,8 +17,11 @@ import { attachTerminalServer } from "./terminal.mjs"
  *                               the SDK developer's mode (`npm run dev`)
  *
  * Serves:
- *   /              → 302 /preview
- *   /preview/*     → the workspace SPA (ui-dist, or Vite in --dev mode)
+ *   /              → 302 /<projectId> (the current project's internal id)
+ *   /<projectId>/* → the workspace SPA (ui-dist, or Vite in --dev mode) —
+ *                    the id is the first URL segment (YouTube-style, 11
+ *                    base64url chars) and also selects that project (deep
+ *                    links included)
  *   /__ws/*        → workspace API (projects, import, create, packages, pull,
  *                    preview spawning)
  *
@@ -49,6 +53,33 @@ function json(res, status, data) {
 function html(res, status, body) {
   res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" })
   res.end(body)
+}
+
+/**
+ * 404 for the workspace shell: a styled page for browsers (with links back
+ * into the workspace), the usual JSON body for API clients.
+ */
+function notFound(req, res, pathname) {
+  const currentId = getCurrentProjectId()
+  const project = currentId ? listProjects().find((entry) => entry.id === currentId) ?? null : null
+  const homeUrl = project && !project.missing ? `/${project.id}` : "/"
+  return sendNotFound(req, res, {
+    pathname,
+    homeUrl,
+    homeLabel: project && !project.missing ? `Back to ${project.name}` : "Open workspace",
+    hint:
+      project && !project.missing
+        ? "If you followed a link from the sidebar, the page may have been renamed — pick it from the sidebar or press Ctrl+K for the command palette."
+        : "Create or import a project to fill the workspace, or open User settings for machine-wide preferences.",
+    links: project && !project.missing
+      ? [
+          { to: `/${project.id}`, label: "Overview" },
+          { to: `/${project.id}/code`, label: "Code" },
+          { to: `/${project.id}/settings`, label: "Project settings" },
+          { to: `/${project.id}/user-settings`, label: "User settings" },
+        ]
+      : [{ to: "/user-settings", label: "User settings" }],
+  })
 }
 
 function readBody(req) {
@@ -88,7 +119,9 @@ async function findFreePort(host, start = 4591, end = 4640) {
 /** Serves the built SPA (ui-dist) with an index.html fallback. */
 function serveSpa(res, pathname, { devMiddleware } = {}) {
   if (devMiddleware) return null // caller delegates to Vite
-  const requested = pathname.replace(/^\/preview\/?/, "")
+  // URLs are /<projectId>/<page> — asset requests (/assets/…) resolve against
+  // ui-dist by full pathname; anything else falls back to the SPA shell.
+  const requested = pathname.replace(/^\//, "")
   const candidate = requested ? path.join(UI_DIST, ...requested.split("/")) : path.join(UI_DIST, "index.html")
   const root = path.resolve(UI_DIST)
   const relative = path.relative(root, path.resolve(candidate))
@@ -124,6 +157,20 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
 
   const sdkVersion = JSON.parse(fs.readFileSync(path.join(SDK_ROOT, "package.json"), "utf8")).version
   const defaultDirFallback = defaultProjectsDir()
+
+  // One-time migration: assistant credentials older SDK versions saved into
+  // project folders move up to ~/.selldoes/settings.json (fill-if-unset).
+  void (async () => {
+    try {
+      const { migrateProjectAssistantConfigs } = await import("./user-settings.mjs")
+      const result = migrateProjectAssistantConfigs(listProjects())
+      if (result.migrated.length > 0) {
+        console.log(`  moved assistant credentials from ${result.migrated.length} project(s) to ~/.selldoes/settings.json`)
+      }
+    } catch {
+      // migration is best-effort — never block the workspace on it
+    }
+  })()
 
   /** The default parent dir for new projects — workspace.json wins, else ~/Documents/Selldoes. */
   function resolveDefaultDir() {
@@ -232,20 +279,35 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
       }
 
       // ── SPA shell ──────────────────────────────────────────────────────────
-      if (req.method === "GET" && pathname === "/") {
-        res.writeHead(302, { Location: "/preview" })
-        res.end()
-        return
-      }
-      if (req.method === "GET" && (pathname === "/preview" || pathname.startsWith("/preview/"))) {
+      // URLs are /<projectId>/<page> — the project's internal id (YouTube-
+      // style, 11 base64url chars). The segment is authoritative: opening
+      // /{id}/… selects that project (deep links open the right workspace),
+      // then the SPA is served. Assets (/assets/…) fall through to ui-dist.
+      if (req.method === "GET") {
+        const [requestedId] = pathname.split("/").filter(Boolean)
+        if (requestedId && requestedId !== "assets") {
+          const project = listProjects().find((entry) => entry.id === requestedId)
+          if (project && !project.missing && getCurrentProjectId() !== project.id) {
+            setCurrentProject(project.id)
+          }
+        }
+        if (pathname === "/") {
+          const currentId = getCurrentProjectId()
+          const project = currentId ? listProjects().find((entry) => entry.id === currentId) ?? null : null
+          if (project && !project.missing) {
+            res.writeHead(302, { Location: `/${project.id}` })
+            res.end()
+            return
+          }
+        }
         if (devMiddleware) {
-          // Vite owns /preview/* in SDK-dev mode (base is /preview/).
-          return devMiddleware(req, res, () => html(res, 404, "Not found"))
+          // Vite owns the SPA + assets in SDK-dev mode (base is "/").
+          return devMiddleware(req, res, () => notFound(req, res, pathname))
         }
         return serveSpa(res, pathname)
       }
 
-      json(res, 404, { error: `Not found: ${pathname}` })
+      notFound(req, res, pathname)
     } catch (error) {
       json(res, 500, { error: error instanceof Error ? error.message : String(error) })
     }
@@ -364,7 +426,7 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
       slug: project.slug,
       name: project.name,
       port: previewPort,
-      url: `http://${host === "0.0.0.0" ? "localhost" : host}:${previewPort}/preview`,
+      url: `http://${host === "0.0.0.0" ? "localhost" : host}:${previewPort}/${project.id}`,
       proc: child,
       log: [],
       startedAt: new Date().toISOString(),
@@ -428,6 +490,13 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     } catch {
       // assistant module unavailable
     }
+    let userSettings = null
+    try {
+      const { userSettingsView } = await import("./user-settings.mjs")
+      userSettings = userSettingsView()
+    } catch {
+      // user-settings module unavailable
+    }
     const currentId = getCurrentProjectId()
     const currentProject = currentId ? listProjects().find((entry) => entry.id === currentId) ?? null : null
     const currentPreview = currentPreviewRecord()
@@ -446,6 +515,7 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
           : null,
       account: await accountInfo(),
       assistant,
+      userSettings,
       defaultDir: resolveDefaultDir(),
       previews: listPreviews().filter((preview) => preview.alive),
     }
@@ -464,14 +534,18 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     const viteServer = await vite.createServer({
       configFile: path.join(SDK_ROOT, "dev-ui", "vite.config.ts"),
       root: path.join(SDK_ROOT, "dev-ui"),
-      base: "/preview/",
+      base: "/",
       appType: "spa",
       server: { middlewareMode: true, hmr: { server } },
     })
     devMiddleware = viteServer.middlewares
   }
 
-  const url = `http://${host === "0.0.0.0" ? "localhost" : host}:${listenPort}/preview`
+  // The shell opens on the current project's URL (/{projectId}) — bare root
+  // when nothing is selected (the onboarding dialog takes over).
+  const currentId = getCurrentProjectId()
+  const current = currentId ? listProjects().find((entry) => entry.id === currentId) ?? null : null
+  const url = `http://${host === "0.0.0.0" ? "localhost" : host}:${listenPort}${current && !current.missing ? `/${current.id}` : ""}`
 
   const shutdown = () => {
     for (const preview of previews.values()) {

@@ -41,6 +41,11 @@ interface AppContextValue {
   refreshWorkspace: () => Promise<void>
   /** True when the shell runs on a workspace server but nothing is selected. */
   noProject: boolean
+  /**
+   * Re-reads the URL's project segment and remounts the router — called after
+   * the URL is rewritten in place (project switch keeps the current page).
+   */
+  routeBump: () => void
   workspaceDialogOpen: boolean
   setWorkspaceDialogOpen: (open: boolean) => void
   workspaceDialogPane: WorkspaceDialogPane
@@ -79,7 +84,14 @@ function initialTheme(): "light" | "dark" {
   return "light"
 }
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
+export function AppProvider({
+  children,
+  onRouteBump,
+}: {
+  children: React.ReactNode
+  /** Remounts the router after the URL's project segment is rewritten. */
+  onRouteBump?: () => void
+}) {
   const [bootstrap, setBootstrap] = React.useState<Bootstrap | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -200,6 +212,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     workspaceLoaded,
     refreshWorkspace,
     noProject,
+    routeBump: onRouteBump ?? (() => {}),
     workspaceDialogOpen,
     setWorkspaceDialogOpen,
     workspaceDialogPane,

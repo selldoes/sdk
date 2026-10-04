@@ -1,3 +1,5 @@
+import type { UserSettingsPatch, UserSettingsResponse } from "./types"
+
 /** Client for the workspace server (`/__ws/*`) — the web front door. */
 
 export interface WsProject {
@@ -179,6 +181,11 @@ export const ws = {
   /** Unregisters every project (files are never touched). */
   clearRegistry: () => post<{ ok: boolean; removed: number }>("/__ws/clear-registry", { confirm: true }),
   saveSettings: (input: { defaultDir: string }) => post<{ ok: boolean; defaultDir: string }>("/__ws/settings", input),
+  /** User (global) settings — ~/.selldoes/settings.json (assistant, defaultDir, editor, publish fallback). */
+  userSettings: () => request<UserSettingsResponse>("/__ws/user-settings"),
+  saveUserSettings: (input: UserSettingsPatch) => post<{ ok: boolean } & UserSettingsResponse>("/__ws/user-settings", input),
+  /** Pings the assistant provider from the user settings (no project preview needed). */
+  testUserAssistant: () => post<{ ok: boolean; provider?: string; model?: string }>("/__ws/user-settings/test", {}),
   /** Opens the native OS folder picker on the machine running the server. */
   chooseFolder: (initialDir?: string) =>
     post<{ path: string | null; cancelled: boolean }>("/__ws/choose-folder", initialDir ? { initialDir } : {}),

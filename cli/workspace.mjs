@@ -4,6 +4,7 @@ import path from "node:path"
 import crypto from "node:crypto"
 import { execFile } from "node:child_process"
 import { resolveAsset } from "./plugin/dev/assets.mjs"
+import { applyUserSettingsPatch, loadUserSettings } from "./user-settings.mjs"
 
 /**
  * The workspace registry: which plugin/theme projects this developer has been
@@ -13,13 +14,16 @@ import { resolveAsset } from "./plugin/dev/assets.mjs"
  *
  * File: ~/.selldoes/workspace.json
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "projects": [
- *     { "id": "…", "kind": "plugin", "name": "OTRCat Scraper", "slug": "otrcat-scraper",
+ *     { "id": "Xk9Qm2ZpL7A", "kind": "plugin", "name": "OTRCat Scraper", "slug": "otrcat-scraper",
  *       "path": "C:/…/plugins/otrcat-scraper", "source": "folder",
  *       "createdAt": "…", "lastOpenedAt": "…" }
  *   ]
  * }
+ *
+ * Project ids are YouTube-style: 11 random base64url chars (A–Z a–z 0–9 - _),
+ * URL-safe and opaque — they lead every dev-shell URL (/{id}/settings).
  */
 
 const MAX_PROJECTS = 50
@@ -54,7 +58,7 @@ export function defaultProjectsDir() {
   return path.join(home, "Selldoes")
 }
 
-const EMPTY = { version: 1, projects: [], currentId: null, defaultDir: null }
+const EMPTY = { version: 2, projects: [], currentId: null, defaultDir: null }
 
 /** Normalizes a path so the same folder never appears twice. */
 export function normalizePath(target) {
@@ -94,8 +98,8 @@ export function projectMeta(dir, kind) {
 export function loadWorkspace() {
   try {
     const stored = JSON.parse(fs.readFileSync(workspaceFile(), "utf8"))
-    return {
-      version: 1,
+    const data = {
+      version: 2,
       currentId: typeof stored.currentId === "string" ? stored.currentId : null,
       defaultDir: typeof stored.defaultDir === "string" && stored.defaultDir ? stored.defaultDir : null,
       projects: (Array.isArray(stored.projects) ? stored.projects : []).map((project) => {
@@ -104,6 +108,21 @@ export function loadWorkspace() {
         return clean
       }),
     }
+    // v1 → v2: legacy 12-hex ids ("79fefc289e48") become YouTube-style ids
+    // ("Xk9Qm2ZpL7A") — regenerated once and persisted, currentId remapped.
+    if (Number(stored.version ?? 1) < 2 && data.projects.some((project) => typeof project.id === "string" && !NEW_ID.test(project.id))) {
+      const remap = new Map()
+      for (const project of data.projects) {
+        if (typeof project.id === "string" && !NEW_ID.test(project.id)) {
+          const next = newProjectId()
+          remap.set(project.id, next)
+          project.id = next
+        }
+      }
+      if (data.currentId && remap.has(data.currentId)) data.currentId = remap.get(data.currentId)
+      saveWorkspace(data)
+    }
+    return data
   } catch {
     return JSON.parse(JSON.stringify(EMPTY))
   }
@@ -114,16 +133,50 @@ function saveWorkspace(data) {
   fs.writeFileSync(workspaceFile(), `${JSON.stringify(data, null, 2)}\n`, "utf8")
 }
 
-/** Stable id from the normalized path — re-importing the same folder dedupes. */
-function idFor(normalizedPath) {
-  return crypto.createHash("sha1").update(normalizedPath).digest("hex").slice(0, 12)
+// ── Project ids (YouTube-style) ─────────────────────────────────────────────
+// YouTube video ids are 11 characters of base64url (A–Z a–z 0–9 - _): URL
+// safe, case-sensitive, randomly generated and opaque — not derived from the
+// content they name. We copy the format: 11 crypto-random chars ≈ 66 bits of
+// entropy, ~64^11 possibilities.
+
+const ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+const ID_LENGTH = 11
+/** Ids in this format (checked by loadWorkspace to find legacy hex ids). */
+const NEW_ID = new RegExp(`^[A-Za-z0-9_-]{${ID_LENGTH}}$`)
+
+/** A fresh YouTube-style project id. `byte % 64` is bias-free (256 % 64 === 0). */
+function newProjectId() {
+  const bytes = crypto.randomBytes(ID_LENGTH)
+  let id = ""
+  for (let i = 0; i < ID_LENGTH; i += 1) id += ID_ALPHABET[bytes[i] % 64]
+  return id
+}
+
+/**
+ * The internal id a project's URLs carry (/{id}/page). Stable for a folder:
+ * registered projects keep their id, unregistered ones are registered
+ * (without stealing the shell's current selection) so the URL survives
+ * restarts.
+ */
+export function projectIdFor(dir) {
+  const normalized = normalizePath(dir)
+  const existing = loadWorkspace().projects.find((project) => project.path === normalized)
+  if (existing) return existing.id
+  try {
+    return touchProject({ dir: normalized, source: "folder", select: false }).id
+  } catch {
+    // Not a plugin folder (yet) — still give the URL an id.
+    return newProjectId()
+  }
 }
 
 /**
  * Registers (or refreshes) a project in the workspace.
  * `source` records how it got here: folder | zip | create | account.
+ * `select` (default true) makes it the shell's current workspace — pass
+ * false to register without switching to it.
  */
-export function touchProject({ dir, kind, source = "folder", name, slug, color }) {
+export function touchProject({ dir, kind, source = "folder", name, slug, color, select = true }) {
   const normalized = normalizePath(dir)
   const detected = kind ?? detectKind(normalized)
   if (!detected) throw new Error(`No plugin.json or manifest.json in ${normalized}`)
@@ -149,7 +202,7 @@ export function touchProject({ dir, kind, source = "folder", name, slug, color }
     if (source && source !== "folder") existing.source = source
     if (cleanColor) existing.color = cleanColor
   } else {
-    id = idFor(normalized)
+    id = newProjectId()
     data.projects.push({
       id,
       kind: detected,
@@ -165,8 +218,9 @@ export function touchProject({ dir, kind, source = "folder", name, slug, color }
       ...(cleanColor ? { color: cleanColor } : {}),
     })
   }
-  // Last opened/selected = the shell's current workspace.
-  data.currentId = id
+  // Last opened/selected = the shell's current workspace (unless the caller
+  // only registers — e.g. projectIdFor pinning an id for the URL).
+  if (select) data.currentId = id
   // Keep the newest MAX_PROJECTS entries.
   data.projects.sort((a, b) => String(b.lastOpenedAt).localeCompare(String(a.lastOpenedAt)))
   if (data.projects.length > MAX_PROJECTS) data.projects = data.projects.slice(0, MAX_PROJECTS)
@@ -300,8 +354,14 @@ export function clearWorkspace() {
   return removed
 }
 
-/** Workspace-level settings (persisted in workspace.json). */
+/** Workspace-level settings (defaultDir lives in ~/.selldoes/settings.json). */
 export function getWorkspaceSettings() {
+  try {
+    const fromUser = loadUserSettings().defaultDir
+    if (fromUser) return { defaultDir: fromUser }
+  } catch {
+    // fall through to the legacy workspace.json value
+  }
   return { defaultDir: loadWorkspace().defaultDir ?? null }
 }
 
@@ -319,10 +379,12 @@ export function setDefaultDir(dir) {
   } catch (error) {
     throw new Error(`Could not use ${normalized}: ${error instanceof Error ? error.message : String(error)}`)
   }
+  // The user settings win; workspace.json keeps a copy for older readers.
+  applyUserSettingsPatch({ defaultDir: normalized })
   const data = loadWorkspace()
   data.defaultDir = normalized
   saveWorkspace(data)
-  return data.defaultDir
+  return normalized
 }
 
 /** Formats a timestamp for launcher hints ("2 hours ago"). */

@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { AssistantSettingsDialog } from "@/components/layout/assistant-settings"
 import { dev } from "@/lib/api"
 import type { ApplyResult } from "@/lib/api"
+import { urlPage } from "@/lib/project-url"
 import type { AssistantEdits, AssistantFileEdit, SnapshotInfo, Validation } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/state/app"
@@ -506,7 +507,7 @@ export function AssistantPanel() {
         .slice(-12)
         .map((item) => ({ role: item.kind as "user" | "assistant", content: item.content }))
       const result = await dev.assistantChat([...history, { role: "user", content: text }], {
-        page: window.location.pathname,
+        page: urlPage(),
         context: assistantContext,
         file: assistantTarget?.file,
         language: assistantTarget?.language,
@@ -730,7 +731,7 @@ export function AssistantPanel() {
             </p>
             {bootstrap ? (
               <p className="mt-0.5 text-[10.5px] text-muted-foreground">
-                Context: <code className="text-[10px]">{bootstrap.manifest.slug}</code> · {window.location.pathname}
+                Context: <code className="text-[10px]">{bootstrap.manifest.slug}</code> · {urlPage()}
               </p>
             ) : null}
           </div>

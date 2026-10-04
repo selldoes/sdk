@@ -77,7 +77,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   },
   {
     label: "Manage",
-    items: [{ to: "/settings", label: "Settings", icon: Settings2, hint: "workspace" }],
+    items: [{ to: "/settings", label: "Project settings", icon: Settings2, hint: "this project" }],
   },
 ]
 

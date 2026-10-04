@@ -97,7 +97,7 @@ export async function scaffoldWithAi({ prompt, dir, config = {}, log = console.l
   const resolved = resolveAssistant({ config })
   if (!resolved.configured) {
     throw new Error(
-      'No AI provider for scaffolding. Set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, use Ollama (assistant.provider: "ollama", no key), or assistant.apiKey in selldoes.config.json.',
+      'No AI provider for scaffolding. Set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, use Ollama (local, no key), or save an assistant key in User settings (~/.selldoes/settings.json).',
     )
   }
 

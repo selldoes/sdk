@@ -37,7 +37,8 @@ Or directly:
 node bin/selldoes.mjs dev --dir examples/demo-plugin --open
 ```
 
-Then open http://127.0.0.1:4590/preview. Try the checklist: run **Import
+Then open http://127.0.0.1:4590/<projectId> (printed by the server — the
+project's internal id leads the URL). Try the checklist: run **Import
 products** from the Overview, send a request in the **API console**, fire the
 hook, and check **In Selldoes** for the listing preview.
 

@@ -9,7 +9,8 @@ npm install
 npm run dev
 ```
 
-The preview server opens at http://127.0.0.1:4590/preview with:
+The preview server opens at http://127.0.0.1:4590/<projectId> (the project's
+internal id leads the URL, pages follow it) with:
 
 - **Overview** — a checklist that walks you to publish
 - **Details & permissions** — edit `plugin.json` (description, icon, screenshots, permissions) with undo

@@ -171,8 +171,9 @@ reverts the whole scaffold.
 ## The local preview server
 
 `selldoes dev` builds the runtime bundle and starts a preview server on
-`http://127.0.0.1:4590/preview` — a React UI that mirrors the Selldoes
-dashboard:
+`http://127.0.0.1:4590/<projectId>` (the project's internal id leads the URL,
+pages follow: `/{projectId}/settings`, …) — a React UI that mirrors the
+Selldoes dashboard:
 
 | Page | What it shows |
 |---|---|
@@ -190,7 +191,8 @@ dashboard:
 | **Store data** | Inspect/reset the mock database (`.selldoes-dev/db.json`) |
 | **Email / Realtime** | Calls made through `ctx.email.send` / `ctx.realtime.publish` |
 | **Validate & publish** | One-click release: current version with the predicted bump, a bump-before-publish checkbox (patch/minor/major), release notes and a Publish button that builds, uploads and sends the listing to review through your connected developer account. Validation errors/warnings and the equivalent CLI commands are right there |
-| **Settings** | Project identity + accent color, local danger zone (remove from workspace / delete files from disk), default release bump (patch/minor/major, saved per project), the developer account's packages (pull / update in place / delete workspace copy), the theme-lane API key, assistant + dev-server config (`selldoes.config.json`), the workspace registry and local danger zone (reset mock data / clear undo snapshots) |
+| **Settings (Project)** | Project identity + accent color, local danger zone (remove from workspace / delete files from disk), default release bump (patch/minor/major, saved per project, overrides the User settings fallback), the assistant **model** override (provider/key stay in User settings), dev-server config (`selldoes.config.json`: mock store identity, port, mocks) and the local danger zone (reset mock data / clear undo snapshots) |
+| **Settings (User — header icon)** | Machine-level: assistant provider + API key (`~/.selldoes/settings.json`, applies to every project — never stored in a project folder), the developer account's packages (pull / update in place / delete workspace copy), the theme-lane API key, the workspace registry (default project directory, project list, clear registry), the default editor for `selldoes open` and the default release-bump fallback |
 
 Everything the Details editor writes goes through `plugin.json` (backed up to
 `.selldoes-dev/undo/`, restorable from the same page). Screenshots and custom
@@ -232,27 +234,27 @@ tree and recent activity, then proposes edits **as real per-file diffs** (the
 current file content travels with each proposal) that you approve before
 anything is written. Supported providers: OpenRouter, OpenAI, DeepInfra,
 **Anthropic** (`ANTHROPIC_API_KEY`), **Gemini** (`GEMINI_API_KEY`) and
-**Ollama** (local models — no key; `assistant.provider: "ollama"`). Set a
-provider key and restart `selldoes dev`:
+**Ollama** (local models — no key; `assistant.provider: "ollama"`). The
+provider key is **machine-level**: set it in the environment, or in **User
+settings** (the header icon — stored in `~/.selldoes/settings.json`, applied
+to every project, never written into a project folder so nothing leaks into
+git). A project can pin a different model in **Project settings → Assistant
+model override** (`assistant.model` in `selldoes.config.json` — safe to
+commit). Older SDK versions saved the full assistant section into each
+project's `selldoes.config.json`; the workspace migrates those credentials up
+to the user settings on startup (fill-if-unset).
 
 ```bash
 export OPENROUTER_API_KEY="sk-or-…"   # or ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / …
 ```
 
-or in `selldoes.config.json`:
-
-```json
-{ "assistant": { "provider": "anthropic", "model": "claude-sonnet-4-5", "apiKey": "sk-ant-…" } }
-```
-
-`assistant.baseUrl` overrides the endpoint (proxies, gateways, mock servers).
-Keep that file out of git when it holds a key. Every applied change is
-snapshotted under `.selldoes-dev/undo/`. The gear icon in the panel opens a
-**settings dialog** (provider, model, key, base URL, "test connection") that
-writes `selldoes.config.json` and applies immediately — no restart. Chat
-history persists per project, and selecting code in the editor attaches the
-file + selection to your next message ("Explain" / "Improve" shortcuts
-included).
+`assistant.baseUrl` (User settings) overrides the endpoint (proxies,
+gateways, mock servers). Every applied change is snapshotted under
+`.selldoes-dev/undo/`. The gear icon in the panel opens a **settings dialog**
+(provider, model, key, base URL, "test connection") that writes the user
+settings and applies immediately — no restart. Chat history persists per
+project, and selecting code in the editor attaches the file + selection to
+your next message ("Explain" / "Improve" shortcuts included).
 
 **Closed loop**: the Apply card can run your plugin's test-like job (the first
 declared job whose type matches `test`/`preview`/`probe`) after a successful
@@ -269,7 +271,8 @@ no test job is declared.
 - `ai.mockReply`, `email.disabled` — runtime mocks for `ctx.ai` / `ctx.email`.
 - `sampleJobs` — prefill for the Jobs page and quick runs, e.g.
   `{ "import-products": { "input": { "url": "https://…" }, "maxTicks": 10 } }`.
-- `assistant` — provider/model for the AI rightbar.
+- `assistant.model` — optional per-project model override; the provider, key
+  and base URL live in the User settings (`~/.selldoes/settings.json`).
 
 Settings entered into a plugin's `configSchema` form (Dashboard page → the
 host-page replica) are persisted to `.selldoes-dev/settings.json` and merged
@@ -366,17 +369,27 @@ Node-only imports never reach the QuickJS bundle:
 ```
 
 ```js
-// server/scrape.js
-const { chromium } = require("playwright")
+// server/scrape.js — serverless-friendly headless Chromium.
+// `playwright` itself downloads browsers in a postinstall script, which the
+// platform disables; use playwright-core plus a browser build that ships as a
+// regular dependency.
+const chromium = require("@sparticuz/chromium")
+const { chromium: playwright } = require("playwright-core")
 
 module.exports = async (input, ctx) => {
-  const browser = await chromium.launch()
-  // … your code, any npm package …
+  const browser = await playwright.launch({
+    executablePath: await chromium.executablePath(),
+    args: chromium.args,
+  })
+  // … your code, any npm package (sharp, mysql2, …) …
   await browser.close()
   await ctx.storage.set("last-scrape", Date.now())
   return { ok: true }
 }
 ```
+
+On a container/VM host tier the browsers can be installed into the image
+(`npx playwright install --with-deps chromium`) and plain `playwright` works.
 
 - The module's default export (or `module.exports =`) is the handler; it runs
   once and returns a JSON-serializable result.
@@ -386,7 +399,9 @@ module.exports = async (input, ctx) => {
   or direct database access.
 - Limits: `timeoutMs` 1s–30min (default 5min), `memoryMb` 128–4096 (default
   512). Jobs are queued, and concurrent runs per store are capped by the
-  platform.
+  platform. The host may enforce a lower cap than the manifest asks for (the
+  current AWS tier runs up to 14 minutes with a ~0.9 GB heap); the
+  [runtime contract](node-jobs-runtime.md) lists the exact numbers.
 - `selldoes build`/`publish` ship `dist/node/<type>.cjs` plus your
   `package.json` and lockfile; the platform installs dependencies once into an
   immutable image per release, so native addons work. Commit the lockfile and

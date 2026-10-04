@@ -16,7 +16,9 @@ npm install -g selldoes
 selldoes                 # boots the dev shell and opens your browser
 ```
 
-The shell opens on `/preview` with a **workspace switcher in the sidebar** (the
+The shell opens on `/{projectId}` — each project's internal id is the first
+URL segment (like a Next.js store id), so every page lives at
+`/{projectId}/{page}` — with a **workspace switcher in the sidebar** (the
 store-switcher of the dev world): the current project, when it was last open,
 and a click away — switch projects in-place, create new ones (from a template
 **or by describing them**), import existing folders or zips, pull packages your
@@ -37,15 +39,19 @@ selldoes open index.js:12            # jump to a file/line in VS Code, Cursor or
 
 | Surface | What it's for |
 |---|---|
-| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding. A **Settings** page manages the project, the registry, connected accounts (developer + theme lanes), the default release bump and the dev server — including deleting a project locally or its workspace copy remotely. **Validate & publish** bumps the version (patch/minor/major), builds and ships the release to review in one click |
+| **Dev shell** (`selldoes`, bare → `/{projectId}`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). Every page lives at `/{projectId}/{page}` — the project's internal id leads the URL, and switching projects keeps you on the same page. The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding. Two settings surfaces keep machine and project concerns apart: **User settings** (the icon in the header) — assistant provider/key, connected accounts (developer + theme lanes), workspace registry, default editor and the default release bump; and **Project settings** (sidebar) — the current project's dev server, release-bump override, assistant model override and danger-zone actions. **Validate & publish** bumps the version (patch/minor/major), builds and ships the release to review in one click |
 | **Code + Console** (shell pages) | Monaco editor over the project (SDK types, save → rebuild, git diffs/commit, quick open, search, terminal drawer) and a live log console whose build errors jump to the offending line |
 | **Preview** (proxied per project, spawned on `4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply. The shell proxies to whichever project is selected |
 | **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant, `selldoes open` |
 
-State lives in `~/.selldoes/workspace.json` (your projects) and
-`~/.selldoes.json` (developer token / theme API key) — per machine, not per
-plugin folder, so the same workspace works from a global install or from a
-checkout of this repo.
+State lives in `~/.selldoes/workspace.json` (your projects),
+`~/.selldoes/settings.json` (user settings — assistant provider/key, default
+project dir, editor, default release bump) and `~/.selldoes.json` (developer
+token / theme API key) — per machine, not per plugin folder, so the same
+workspace works from a global install or from a checkout of this repo. Project
+folders keep only per-project config in `selldoes.config.json` (dev server,
+mock store, release-bump override, an optional `assistant.model` override) —
+never credentials, so keys cannot leak into git.
 
 ## Working on this repo (SDK development)
 
@@ -98,9 +104,10 @@ workspace's "Describe AI" create, and `selldoes ask`:
 
 - **Providers**: OpenRouter, OpenAI, DeepInfra, **Anthropic**, **Gemini** and
   **Ollama** (local models, no key). Set a key in the environment or in
-  `selldoes.config.json` (`assistant.provider` / `assistant.apiKey` /
-  `assistant.model` / `assistant.baseUrl`) — or use the settings dialog in the
-  assistant panel, which applies without a restart.
+  **User settings** (the header icon — stored in `~/.selldoes/settings.json`,
+  applies to every project); a project can pin a different `assistant.model`
+  in Project settings. The settings dialog in the assistant panel applies
+  without a restart.
 - **Nothing is written without approval**: edits are proposed as per-file
   diffs, and every apply is snapshotted for undo (restore any snapshot from
   the panel's **History** tab).

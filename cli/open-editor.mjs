@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
+import { loadUserSettings } from "./user-settings.mjs"
 
 const run = promisify(execFile)
 
@@ -23,9 +24,19 @@ async function commandExists(command) {
   }
 }
 
-/** Picks the editor to open: explicit → SELDOES_EDITOR → known CLIs. */
+/** The editor saved in the user settings (~/.selldoes/settings.json), if any. */
+function savedEditor() {
+  try {
+    const value = String(loadUserSettings().editor ?? "").trim()
+    return value && value !== "auto" ? value : ""
+  } catch {
+    return ""
+  }
+}
+
+/** Picks the editor to open: explicit → SELDOES_EDITOR → user settings → known CLIs. */
 export async function resolveEditor(preferred) {
-  const requested = String(preferred ?? "").trim() || process.env.SELDOES_EDITOR || process.env.VISUAL || process.env.EDITOR || ""
+  const requested = String(preferred ?? "").trim() || process.env.SELDOES_EDITOR || process.env.VISUAL || process.env.EDITOR || savedEditor() || ""
   if (requested) {
     const known = CANDIDATES.find((candidate) => candidate.command === requested || candidate.id === requested)
     return known ?? { id: "custom", label: requested, command: requested, goto: false }

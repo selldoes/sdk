@@ -1,6 +1,6 @@
 import * as React from "react"
-import { useLocation, useNavigate } from "react-router-dom"
-import { Check, Menu, Moon, SquarePen, Sparkles, Store, Sun } from "lucide-react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import { Check, Menu, Moon, SquarePen, Sparkles, Store, Sun, UserRoundCog } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { dev } from "@/lib/api"
@@ -78,13 +78,22 @@ export function Topbar() {
           Open in editor
         </Button>
         <Button variant="outline" size="sm" asChild className="hidden sm:inline-flex">
-          <a href="/preview/storefront" target="_blank" rel="noreferrer">
+          <Link to="/storefront" target="_blank" rel="noreferrer">
             <Store />
             View store
-          </a>
+          </Link>
         </Button>
         <Button variant="ghost" size="icon" onClick={toggleTheme} title="Toggle light/dark">
           {theme === "dark" ? <Sun /> : <Moon />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          title="User settings — accounts, assistant, preferences (every project)"
+          className={location.pathname.endsWith("/user-settings") ? "bg-muted" : undefined}
+          onClick={() => navigate("/user-settings")}
+        >
+          <UserRoundCog />
         </Button>
         <Button size="sm" onClick={() => setAssistantOpen(true)}>
           <Sparkles />

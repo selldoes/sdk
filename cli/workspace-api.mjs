@@ -114,6 +114,32 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       return json(res, 200, { ok: true, defaultDir })
     }
 
+    // ── User (global) settings — ~/.selldoes/settings.json ──────────────────
+    // Assistant credentials, default project dir, editor preference and the
+    // default release bump — machine-level, never per project.
+    if (action === "user-settings" && method === "GET") {
+      const { userSettingsView } = await import("./user-settings.mjs")
+      return json(res, 200, userSettingsView())
+    }
+
+    if (action === "user-settings" && method === "POST") {
+      const body = await readBody(req)
+      const { applyUserSettingsPatch, userSettingsView } = await import("./user-settings.mjs")
+      applyUserSettingsPatch(body ?? {})
+      return json(res, 200, { ok: true, ...userSettingsView() })
+    }
+
+    if (action === "user-settings-test" && method === "POST") {
+      const { resolveAssistant, pingAssistant } = await import("./plugin/dev/assistant.mjs")
+      const resolved = resolveAssistant({ config: {} })
+      try {
+        const result = await pingAssistant(resolved)
+        return json(res, 200, { ok: true, ...result })
+      } catch (error) {
+        return json(res, error?.code === "not-configured" ? 400 : 502, { error: error.message, code: error.code })
+      }
+    }
+
     // Native OS folder picker for Settings → "Choose folder". Runs on the
     // machine hosting the server, so it's the developer's own dialog.
     if (action === "choose-folder" && method === "POST") {

@@ -25,6 +25,8 @@ import type {
   ScaffoldCodeResult,
   ScaffoldUiResult,
   UiEntriesResponse,
+  UserSettingsPatch,
+  UserSettingsResponse,
   Validation,
   VersionBumpResult,
 } from "./types"
@@ -104,12 +106,15 @@ export const dev = {
 
   // ── Assistant settings + chat history ─────────────────────────────────────
   config: () => request<DevConfigResponse>("/__dev/config"),
-  /** Assistant-only shortcut (the assistant panel's gear dialog). */
+  /** Assistant-only shortcut — saves to the user settings (~/.selldoes/settings.json). */
   saveConfig: (assistant: Record<string, unknown>) =>
     post<{ ok: boolean; restartRequired?: boolean } & DevConfigResponse>("/__dev/config", { assistant }),
-  /** Saves selldoes.config.json sections (assistant/server/ai/email/sampleJobs). */
+  /** Saves selldoes.config.json sections (server/ai/email/sampleJobs/publish). */
   saveFileConfig: (input: SaveFileConfigInput) =>
     post<{ ok: boolean; restartRequired?: boolean } & DevConfigResponse>("/__dev/config", input),
+  /** User (global) settings — ~/.selldoes/settings.json (standalone `selldoes dev`). */
+  userSettings: () => request<UserSettingsResponse>("/__dev/user-settings"),
+  saveUserSettings: (input: UserSettingsPatch) => post<{ ok: boolean } & UserSettingsResponse>("/__dev/user-settings", input),
   undoClear: () => post<{ ok: boolean; cleared: number }>("/__dev/undo/clear", {}),
   testAssistant: () => post<{ ok: boolean; provider?: string; model?: string }>("/__dev/assistant/test", {}),
   chatHistory: () => request<{ items: unknown[] }>("/__dev/assistant/history"),

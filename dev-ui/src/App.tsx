@@ -13,6 +13,7 @@ import { CommandPalette, SearchDialog } from "@/components/command-palette"
 import { TerminalDrawer } from "@/components/terminal-drawer"
 import { AppProvider, Toaster, useApp } from "@/state/app"
 import { PAGE_TITLES } from "@/lib/pages"
+import { urlPage, urlProjectId } from "@/lib/project-url"
 import { OverviewPage } from "@/pages/overview"
 import { CodePage } from "@/pages/code"
 import { PackagesPage } from "@/pages/packages"
@@ -29,6 +30,8 @@ import { EmailPage } from "@/pages/email"
 import { RealtimePage } from "@/pages/realtime"
 import { ShipPage } from "@/pages/ship"
 import { SettingsPage } from "@/pages/settings"
+import { UserSettingsPage } from "@/pages/user-settings"
+import { NotFoundPage } from "@/pages/not-found"
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { bootstrap, loading, error, refresh } = useApp()
@@ -81,6 +84,7 @@ function DocumentTitle() {
 /** Workspace shell, nothing selected yet — the onboarding dialog takes over. */
 function EmptyWorkspace() {
   const { openWorkspaceDialog } = useApp()
+  const navigate = useNavigate()
   return (
     <div className="mx-auto mt-24 max-w-md rounded-xl border border-dashed border-border bg-card p-10 text-center">
       <Puzzle className="mx-auto mb-3 h-9 w-9 text-primary" />
@@ -91,6 +95,13 @@ function EmptyWorkspace() {
       <Button className="mt-4" size="sm" onClick={() => openWorkspaceDialog("new")}>
         Set up workspace
       </Button>
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        Machine-wide preferences live in{" "}
+        <button type="button" className="text-primary hover:underline" onClick={() => navigate("/user-settings")}>
+          User settings
+        </button>
+        .
+      </p>
     </div>
   )
 }
@@ -105,32 +116,43 @@ function Shell() {
         <Topbar />
         <main className="flex-1 p-6 pb-24">
           <DocumentTitle />
-          {noProject ? (
-            /* First run: the locked onboarding dialog floats over a placeholder
-               dashboard so the shell reads as "coming up", not empty. */
-            workspaceDialogOpen ? <DashboardSkeleton /> : <EmptyWorkspace />
-          ) : (
-            <Gate>
-              <Routes>
-                <Route path="/" element={<OverviewPage />} />
-                <Route path="/code" element={<CodePage />} />
-                <Route path="/packages" element={<PackagesPage />} />
-                <Route path="/console" element={<ConsolePage />} />
-                <Route path="/details" element={<DetailsPage />} />
-                <Route path="/listing" element={<ListingPage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/storefront" element={<StorefrontPage />} />
-                <Route path="/api" element={<ApiPage />} />
-                <Route path="/jobs" element={<JobsPage />} />
-                <Route path="/hooks" element={<HooksPage />} />
-                <Route path="/data" element={<DataPage />} />
-                <Route path="/email" element={<EmailPage />} />
-                <Route path="/realtime" element={<RealtimePage />} />
-                <Route path="/ship" element={<ShipPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </Gate>
-          )}
+          <Routes>
+            {/* User settings lives outside the project gate — it works with no
+                project selected (first run, empty workspace). */}
+            <Route path="/user-settings" element={<UserSettingsPage />} />
+            <Route
+              path="*"
+              element={
+                noProject ? (
+                  /* First run: the locked onboarding dialog floats over a placeholder
+                     dashboard so the shell reads as "coming up", not empty. */
+                  workspaceDialogOpen ? <DashboardSkeleton /> : <EmptyWorkspace />
+                ) : (
+                  <Gate>
+                    <Routes>
+                      <Route path="/" element={<OverviewPage />} />
+                      <Route path="/code" element={<CodePage />} />
+                      <Route path="/packages" element={<PackagesPage />} />
+                      <Route path="/console" element={<ConsolePage />} />
+                      <Route path="/details" element={<DetailsPage />} />
+                      <Route path="/listing" element={<ListingPage />} />
+                      <Route path="/dashboard" element={<DashboardPage />} />
+                      <Route path="/storefront" element={<StorefrontPage />} />
+                      <Route path="/api" element={<ApiPage />} />
+                      <Route path="/jobs" element={<JobsPage />} />
+                      <Route path="/hooks" element={<HooksPage />} />
+                      <Route path="/data" element={<DataPage />} />
+                      <Route path="/email" element={<EmailPage />} />
+                      <Route path="/realtime" element={<RealtimePage />} />
+                      <Route path="/ship" element={<ShipPage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                  </Gate>
+                )
+              }
+            />
+          </Routes>
         </main>
       </div>
       <AssistantPanel />
@@ -140,6 +162,7 @@ function Shell() {
       <WorkspaceDialog />
       <GlossaryDialog open={glossaryOpen} onOpenChange={setGlossaryOpen} />
       <Shortcuts />
+      <ProjectUrlSync />
       <LandingMemory />
     </div>
   )
@@ -170,7 +193,33 @@ function Shortcuts() {
   return null
 }
 
-/** Remembers the last page per project (and jumps there on project switch). */
+/**
+ * Keeps the URL's project segment aligned with the shell's current workspace.
+ * The URL is the address bar of the workspace — like a Next.js store id,
+ * `/{id}/settings` names the project. Switching projects (sidebar, settings,
+ * new-workspace wizard) therefore rewrites only the id: /A/settings becomes
+ * /B/settings and the user stays on the page they are on. Also repairs stale
+ * ids after deleting or re-selecting projects.
+ */
+function ProjectUrlSync() {
+  const { workspace, routeBump } = useApp()
+  const currentId = workspace?.current?.project.id ?? null
+  React.useEffect(() => {
+    if (!workspace) return // standalone `selldoes dev` — the dev server owns the id
+    if (urlProjectId() === currentId) return
+    const suffix = `${urlPage() === "/" ? "" : urlPage()}${window.location.search}${window.location.hash}`
+    const target = currentId ? `/${currentId}${suffix}` : suffix || "/"
+    window.history.replaceState(null, "", target)
+    routeBump()
+  }, [workspace, currentId, routeBump])
+  return null
+}
+
+/**
+ * Remembers the last page per project. A project switch keeps the current
+ * page (ProjectUrlSync swaps only the URL's id); the remembered page is used
+ * when a project's bare `/{id}` URL is opened fresh.
+ */
 function LandingMemory() {
   const { workspace, bootstrap } = useApp()
   const location = useLocation()
@@ -181,36 +230,44 @@ function LandingMemory() {
 
   React.useEffect(() => {
     if (!projectKey) return
-    const storageKey = `selldoes-dev-last-page:${projectKey}`
-    const remember = () => {
-      const stored = localStorage.getItem(storageKey)
-      if (stored && validPaths.has(stored) && stored !== location.pathname) {
-        navigate(stored, { replace: true })
-      }
-    }
-    if (previousKey.current === null) {
-      previousKey.current = projectKey
-      remember()
-      return
-    }
-    if (previousKey.current !== projectKey) {
-      previousKey.current = projectKey
-      remember()
-    }
-  }, [projectKey, location.pathname, navigate, validPaths])
+    localStorage.setItem(`selldoes-dev-last-page:${projectKey}`, location.pathname)
+  }, [projectKey, location.pathname])
 
   React.useEffect(() => {
     if (!projectKey) return
-    localStorage.setItem(`selldoes-dev-last-page:${projectKey}`, location.pathname)
-  }, [projectKey, location.pathname])
+    const firstArrival = previousKey.current === null || previousKey.current !== projectKey
+    previousKey.current = projectKey
+    if (!firstArrival) return
+    // Only jump at a bare /{id} URL — a switch keeps the page (the id segment
+    // was rewritten in place), and a deep link wins over the memory.
+    if (location.pathname !== "/") return
+    if (workspace && urlProjectId() !== projectKey) return
+    const stored = localStorage.getItem(`selldoes-dev-last-page:${projectKey}`)
+    if (stored && validPaths.has(stored)) navigate(stored, { replace: true })
+  }, [projectKey, location.pathname, navigate, validPaths, workspace])
 
   return null
 }
 
 export default function App() {
+  // The project id lives in the URL's first path segment and acts as the
+  // router basename, so navigate("/settings") always stays project-relative.
+  // Changing the segment (project switch) remounts the router — the URL is
+  // rewritten in place first, so the user lands on the same page under the
+  // new project.
+  const [routeKey, setRouteKey] = React.useState(0)
+  const projectId = React.useMemo(() => urlProjectId(), [routeKey])
+  const routeBump = React.useCallback(() => setRouteKey((key) => key + 1), [])
+
+  React.useEffect(() => {
+    const onPopState = () => setRouteKey((key) => key + 1)
+    window.addEventListener("popstate", onPopState)
+    return () => window.removeEventListener("popstate", onPopState)
+  }, [])
+
   return (
-    <AppProvider>
-      <BrowserRouter basename="/preview">
+    <AppProvider onRouteBump={routeBump}>
+      <BrowserRouter key={`${projectId ?? ""}:${routeKey}`} basename={projectId ? `/${projectId}` : "/"}>
         <Shell />
       </BrowserRouter>
       <Toaster />

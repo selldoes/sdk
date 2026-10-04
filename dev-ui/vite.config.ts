@@ -7,12 +7,14 @@ import tailwindcss from "@tailwindcss/vite"
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
 /**
- * Builds the preview SPA into `cli/plugin/dev/ui-dist/`, which the dev server
- * serves at http://127.0.0.1:4590/preview.
+ * Builds the preview SPA into `cli/plugin/dev/ui-dist/`, which the dev servers
+ * serve at http://127.0.0.1:4590/<projectId> — the project's internal id
+ * (YouTube-style, 11 base64url chars) is the first URL segment, the pages
+ * follow it.
  */
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: "/preview/",
+  base: "/",
   resolve: {
     alias: { "@": path.resolve(rootDir, "src") },
   },

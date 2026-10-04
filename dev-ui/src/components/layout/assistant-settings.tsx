@@ -110,7 +110,7 @@ export function AssistantSettingsDialog({ open, onOpenChange, onSaved }: Assista
               <p className="text-[11px] text-muted-foreground">
                 {envDetected
                   ? `${activeProvider.env} is detected in your environment — no key needed here.`
-                  : `Set ${activeProvider.env} in your environment, or paste a key below (stored in selldoes.config.json).`}
+                  : `Set ${activeProvider.env} in your environment, or paste a key below (saved to ~/.selldoes/settings.json — applies to every project).`}
               </p>
             ) : null}
           </div>
@@ -146,8 +146,9 @@ export function AssistantSettingsDialog({ open, onOpenChange, onSaved }: Assista
           ) : null}
 
           <p className="text-[11px] text-muted-foreground">
-            Keys are read locally by the dev server and only sent to the provider you choose. Keep <code>selldoes.config.json</code> out of
-            git when it holds a key.
+            Keys are read locally by the dev server and only sent to the provider you choose. They live in{" "}
+            <code>~/.selldoes/settings.json</code> (User settings) — never inside a project folder, so nothing leaks into git. A project can
+            pin a different model in Project settings.
           </p>
         </div>
 

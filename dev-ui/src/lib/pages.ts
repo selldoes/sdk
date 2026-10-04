@@ -15,5 +15,6 @@ export const PAGE_TITLES: Record<string, string> = {
   "/email": "Email outbox",
   "/realtime": "Realtime",
   "/ship": "Validate & publish",
-  "/settings": "Settings",
+  "/settings": "Project settings",
+  "/user-settings": "User settings",
 }

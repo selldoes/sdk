@@ -5,6 +5,7 @@ import {
   MAX_FILE_BYTES,
   listProjectFiles,
 } from "./project-files.mjs"
+import { userAssistant } from "../../user-settings.mjs"
 
 /**
  * The AI rightbar brain: talks to the developer's own provider (OpenRouter,
@@ -52,11 +53,26 @@ const PROVIDERS = {
 
 const MAX_CONTEXT_CHARS = 70_000
 
-/** Resolves provider/model/key from selldoes.config.json + the environment. */
+/**
+ * Resolves provider/model/key.
+ *
+ * Precedence (credentials belong to the user, never to the project folder):
+ *   provider / apiKey / baseUrl / maxTokens — user settings (~/.selldoes/settings.json)
+ *     → legacy project value in selldoes.config.json → environment → defaults
+ *   model — project override (`assistant.model` in selldoes.config.json)
+ *     → user settings → provider default
+ */
 export function resolveAssistant({ config = {}, env = process.env } = {}) {
-  const explicit = config.assistant ?? {}
+  const project = config.assistant ?? {}
+  let user = {}
+  try {
+    user = userAssistant()
+  } catch {
+    user = {}
+  }
   const provider =
-    explicit.provider ||
+    user.provider ||
+    project.provider ||
     (env.OPENROUTER_API_KEY
       ? "openrouter"
       : env.ANTHROPIC_API_KEY
@@ -69,9 +85,10 @@ export function resolveAssistant({ config = {}, env = process.env } = {}) {
               ? "deepinfra"
               : "openrouter")
   const spec = PROVIDERS[provider] ?? PROVIDERS.openrouter
-  const apiKey = String(explicit.apiKey ?? env[spec.envKey] ?? "")
-  const baseUrl = explicit.baseUrl
-    ? String(explicit.baseUrl).replace(/\/$/, "")
+  const apiKey = String(user.apiKey ?? project.apiKey ?? env[spec.envKey] ?? "")
+  const explicitBaseUrl = user.baseUrl || project.baseUrl
+  const baseUrl = explicitBaseUrl
+    ? String(explicitBaseUrl).replace(/\/$/, "")
     : typeof spec.baseUrl === "function"
       ? spec.baseUrl(env)
       : spec.baseUrl
@@ -79,12 +96,34 @@ export function resolveAssistant({ config = {}, env = process.env } = {}) {
     // keyless providers (ollama) are "configured" the moment they're selected
     configured: spec.keyless ? true : Boolean(apiKey),
     provider,
-    model: String(explicit.model ?? spec.defaultModel),
-    maxTokens: Math.max(256, Math.min(Number(explicit.maxTokens) || 4000, 16000)),
+    // A project may pin a model (`assistant.model` in selldoes.config.json);
+    // everything else comes from the user settings.
+    model: String(project.model || user.model || spec.defaultModel),
+    maxTokens: Math.max(256, Math.min(Number(user.maxTokens ?? project.maxTokens ?? 4000) || 4000, 16000)),
     baseUrl,
     apiKey,
     api: spec.api ?? "openai",
   }
+}
+
+/** Pings the provider's /models endpoint — powers "Test connection". */
+export async function pingAssistant(resolved) {
+  if (!resolved.configured) {
+    const error = new Error("No provider key configured")
+    error.code = "not-configured"
+    throw error
+  }
+  const headers = { "Content-Type": "application/json" }
+  if (resolved.api === "anthropic") {
+    headers["x-api-key"] = resolved.apiKey
+    headers["anthropic-version"] = "2023-06-01"
+  } else if (resolved.apiKey) {
+    headers.Authorization = `Bearer ${resolved.apiKey}`
+  }
+  const response = await fetch(`${resolved.baseUrl}/models`, { headers, signal: AbortSignal.timeout(10_000) })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? `HTTP ${response.status}`)
+  return { provider: resolved.provider, model: resolved.model }
 }
 
 export function assistantSummary(resolved) {
@@ -352,7 +391,7 @@ export async function assistantChat({ pluginDir, manifest, validation, activity,
   const resolved = resolveAssistant({ config })
   if (!resolved.configured) {
     const error = new Error(
-      "No AI provider key found. Add OPENROUTER_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, use Ollama (provider: \"ollama\", no key needed), or set assistant.apiKey in selldoes.config.json.",
+      "No AI provider key found. Add OPENROUTER_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, use Ollama (local, no key needed), or save an assistant key in User settings (~/.selldoes/settings.json).",
     )
     error.code = "not-configured"
     throw error

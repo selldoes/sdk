@@ -3,6 +3,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { contentTypeFor, readJson } from "../../util.mjs"
+import { sendNotFound } from "../../not-found-page.mjs"
 import { openInEditor, openTerminal } from "../../open-editor.mjs"
 import { buildPlugin } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
@@ -22,6 +23,8 @@ import { addDependency, detectPackageManager, installedVersion, removeDependency
 import { describeSchedules } from "../schedule.mjs"
 import { probeNodePackage, probePackage } from "../sandbox.mjs"
 import { BUMP_MODES, bumpVersion, isValidVersion } from "../version.mjs"
+import { projectIdFor } from "../../workspace.mjs"
+import { applyUserSettingsPatch, userSettingsView } from "../../user-settings.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const UI_DIR = path.join(HERE, "ui-dist")
@@ -79,7 +82,10 @@ function servePreview(res, pathname) {
       </body></html>`,
     )
   }
-  let relative = decodeURIComponent(pathname.replace(/^\/preview\/?/, ""))
+  // URLs are /<projectId>/<page> — the project's internal id. Assets
+  // (/assets/…) resolve against ui-dist by full pathname; anything else
+  // falls back to the SPA shell.
+  let relative = decodeURIComponent(pathname.replace(/^\//, ""))
   if (!relative || !path.extname(relative)) relative = "index.html"
   let file = path.resolve(UI_DIR, relative)
   if (!file.startsWith(UI_DIR + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
@@ -92,7 +98,9 @@ function servePreview(res, pathname) {
 /**
  * Starts the local plugin preview server:
  *
- *   /preview/**                React preview UI (marketplace, details editor, AI rightbar)
+ *   /<projectId>/**           React preview UI (marketplace, details editor,
+ *                             AI rightbar) — the project's internal id is the
+ *                             first URL segment, like a Next.js store id
  *   /api/plugin-api/<slug>/**  the plugin's authenticated `apiRoutes` (handlers run locally)
  *   /api/plugin-public/<slug>/** the plugin's `publicRoutes` + storefront widget/pages
  *   /api/plugins/<slug>/ui/**  the built dashboard UI (sandboxed iframe)
@@ -340,18 +348,24 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     }
   }
 
+  // The project's internal id — the first URL segment (/{id}/settings),
+  // YouTube-style: 11 random base64url chars, stable per registered folder.
+  const projectId = projectIdFor(pluginDir)
+
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`)
       const pathname = url.pathname
 
       // ── Preview SPA ─────────────────────────────────────────────────────────
-      if (req.method === "GET" && pathname === "/") {
-        res.writeHead(302, { Location: "/preview" })
-        res.end()
-        return
-      }
-      if (req.method === "GET" && (pathname === "/preview" || pathname.startsWith("/preview/"))) {
+      // URLs are /<projectId>/<page> — anything that isn't a dev endpoint
+      // serves the SPA (assets fall through to ui-dist).
+      if (req.method === "GET" && !pathname.startsWith("/__dev") && !pathname.startsWith("/api")) {
+        if (pathname === "/") {
+          res.writeHead(302, { Location: `/${projectId}` })
+          res.end()
+          return
+        }
         return servePreview(res, pathname)
       }
 
@@ -864,14 +878,23 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       }
       const configPayload = () => {
         const fileConfig = readConfig()
-        const assistant = fileConfig.assistant ?? {}
+        // Effective assistant config: user settings (~/.selldoes/settings.json)
+        // merged with the project's optional `assistant.model` override.
+        const resolved = resolveAssistant({ config: fileConfig })
+        let userSettings = null
+        try {
+          userSettings = userSettingsView()
+        } catch {
+          // user-settings module unavailable
+        }
         return {
           assistant: {
-            provider: assistant.provider ?? null,
-            model: assistant.model ?? null,
-            baseUrl: assistant.baseUrl ?? null,
-            apiKey: maskKey(assistant.apiKey),
-            apiKeySet: Boolean(assistant.apiKey),
+            provider: resolved.provider,
+            model: resolved.model,
+            baseUrl: resolved.baseUrl,
+            apiKey: maskKey(resolved.apiKey),
+            apiKeySet: Boolean(resolved.apiKey),
+            projectModel: fileConfig.assistant?.model ?? null,
           },
           env: {
             OPENROUTER_API_KEY: Boolean(process.env.OPENROUTER_API_KEY),
@@ -892,18 +915,25 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             sampleJobs: fileConfig.sampleJobs ?? null,
           },
           publish: {
-            bump: BUMP_MODES.includes(String(fileConfig.publish?.bump)) ? String(fileConfig.publish.bump) : "patch",
+            // Per-project override wins; otherwise the user-level default
+            // (~/.selldoes/settings.json) — never a bare "patch" surprise.
+            bump: BUMP_MODES.includes(String(fileConfig.publish?.bump))
+              ? String(fileConfig.publish.bump)
+              : userSettings?.publish?.bump ?? "patch",
           },
         }
       }
       if (pathname === "/__dev/config") {
         if (req.method === "GET") return json(res, 200, configPayload())
         if (req.method === "POST") {
-          // Sections map to selldoes.config.json keys: `assistant`, `server`
+          // Sections map to selldoes.config.json keys: `server`
           // (storeId/storeSlug/storeName/port/host), `ai` (mockReply),
-          // `email` (disabled) and `sampleJobs`. Assistant settings apply
-          // immediately (resolved per request); everything else is baked in at
-          // startup, so the response flags `restartRequired`.
+          // `email` (disabled), `sampleJobs` and `publish` — plus the
+          // assistant. `assistant` writes to the user settings
+          // (~/.selldoes/settings.json) unless `scope: "project"` pins a
+          // per-project `model` override. Assistant settings apply
+          // immediately (resolved per request); everything else is baked in
+          // at startup, so the response flags `restartRequired`.
           const body = await readBody(req)
           const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value)
           if (
@@ -922,11 +952,30 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
 
           if (body.assistant !== undefined) {
             if (!isObject(body.assistant)) return json(res, 400, { error: "assistant must be an object" })
-            const merged = { ...(fileConfig.assistant ?? {}), ...body.assistant }
-            for (const [key, value] of Object.entries(merged)) {
-              if (value === undefined || value === null || value === "") delete merged[key]
+            if (body.scope === "project") {
+              // Per-project override: only `model` lives in the project folder —
+              // credentials and provider selection are user-level, never committed.
+              for (const key of Object.keys(body.assistant)) {
+                if (key !== "model") {
+                  return json(res, 400, { error: `Project assistant override only supports \`model\` — \`${key}\` lives in User settings` })
+                }
+              }
+              const merged = { ...(fileConfig.assistant ?? {}) }
+              if (body.assistant.model === undefined || body.assistant.model === null || body.assistant.model === "") delete merged.model
+              else merged.model = String(body.assistant.model).trim()
+              if (Object.keys(merged).length > 0) next.assistant = merged
+              else delete next.assistant
+            } else {
+              // The assistant belongs to the developer, not to this project:
+              // save to ~/.selldoes/settings.json (applies to every project).
+              try {
+                applyUserSettingsPatch({ assistant: body.assistant })
+              } catch (error) {
+                return json(res, 400, { error: error.message })
+              }
+              log("assistant settings saved to ~/.selldoes/settings.json — applied immediately")
+              return json(res, 200, { ok: true, restartRequired: false, ...configPayload() })
             }
-            next.assistant = merged
           }
 
           if (body.server !== undefined) {
@@ -1014,6 +1063,24 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           return json(res, 200, { ok: true, restartRequired, ...configPayload() })
         }
       }
+
+      // ── User (global) settings — ~/.selldoes/settings.json ──────────────────
+      // Standalone `selldoes dev` twin of the workspace's /__ws/user-settings:
+      // assistant credentials, default project dir, editor preference and the
+      // default release bump.
+      if (pathname === "/__dev/user-settings") {
+        if (req.method === "GET") return json(res, 200, userSettingsView())
+        if (req.method === "POST") {
+          const body = await readBody(req)
+          try {
+            applyUserSettingsPatch(body ?? {})
+            return json(res, 200, { ok: true, ...userSettingsView() })
+          } catch (error) {
+            return json(res, 400, { error: error.message })
+          }
+        }
+      }
+
       if (req.method === "POST" && pathname === "/__dev/assistant/test") {
         const resolved = resolveAssistant({ config: readConfig() })
         if (!resolved.configured) return json(res, 400, { error: "No provider key configured", code: "not-configured" })
@@ -1435,7 +1502,20 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
       }
 
-      return json(res, 404, { error: `Not found: ${pathname}` })
+      // Unknown path: styled page for browser navigations, JSON for API clients.
+      return sendNotFound(req, res, {
+        pathname,
+        homeUrl: `/${projectId}`,
+        homeLabel: "Back to the preview",
+        hint:
+          "Preview pages live under this project's id — pick one from the sidebar, or press Ctrl+K for the command palette.",
+        links: [
+          { to: `/${projectId}`, label: "Overview" },
+          { to: `/${projectId}/code`, label: "Code" },
+          { to: `/${projectId}/console`, label: "Console" },
+          { to: `/${projectId}/settings`, label: "Settings" },
+        ],
+      })
     } catch (error) {
       return json(res, 500, { error: error.message })
     }
@@ -1456,7 +1536,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     server.listen(listenPort, listenHost, resolve)
   })
 
-  const url = `http://${listenHost === "0.0.0.0" ? "localhost" : listenHost}:${listenPort}/preview`
+  const url = `http://${listenHost === "0.0.0.0" ? "localhost" : listenHost}:${listenPort}/${projectId}`
 
   const shutdown = async () => {
     await runner.stopWatching()

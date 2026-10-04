@@ -10,11 +10,18 @@
     "disabled": false
   },
   "assistant": {
-    "provider": "openrouter",
     "model": "anthropic/claude-sonnet-4"
   },
   "sampleJobs": {
-    "import-products": { "input": {}, "maxTicks": 10 },
-    "generate-blurbs": { "input": { "productId": 1 }, "maxTicks": 1 }
+    "import-products": {
+      "input": {},
+      "maxTicks": 10
+    },
+    "generate-blurbs": {
+      "input": {
+        "productId": 1
+      },
+      "maxTicks": 1
+    }
   }
 }
