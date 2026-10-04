@@ -73,6 +73,7 @@ npx selldoes dev
 my-plugin/
   plugin.json          manifest — permissions, API routes, UI, storefront widget/pages
   index.js             runtime entry (sandboxed); exports apiRoutes / jobs / hooks / deliveryProvider
+  server/              Node job entries, optional (full Node — npm, fs, native addons)
   ui/                  dashboard UI (sandboxed iframe), optional
     index.html         page 1 — wired via ui.entry + dashboardPages[0].entry
     app.js             plain-JS pages share this script (React: ui/src/*.tsx → ui/assets/*.js)
@@ -293,13 +294,21 @@ code in Node, while production uses a QuickJS sandbox — avoid Node globals
 | `files:read` / `files:write` | `ctx.files` (S3 media) |
 | `products:read` / `products:write` | `ctx.products` |
 | `realtime:publish` | `ctx.realtime.publish/poll` |
+| `secrets:read` | `ctx.secrets.get(name)` — per-install secrets, never bundled or logged |
+| `storage:read` / `storage:write` | `ctx.storage` — plugin- and store-scoped JSON values |
 | `webhooks:register`, `sections:register`, `dashboard:pages` | Platform integrations |
+
+`ctx.secrets.get(name)` reads a value configured for the installation (for
+example a `configSchema` field of type `secret`); values are never bundled with
+the plugin or written to logs. `ctx.storage` is a small JSON store scoped to
+the plugin **and** the store — use it for cursors, tokens and sync state
+instead of assuming a persistent filesystem (jobs run in disposable sandboxes).
 
 Manifest extras: `ui` (dashboard iframe; `ui.entry` + per-page
 `dashboardPages[].entry`), `storefrontWidget` (bubble on every
 storefront page), `storefrontPages` (public pages such as `/kb`),
 `publicRoutes` (visitor-callable API, no session), `delivery` (order-detail
-sections), `jobs`, `hooks`, `configSchema`, `allowedTables`, plus listing
+sections), `jobs`, `schedules`, `hooks`, `configSchema`, `allowedTables`, plus listing
 metadata: `icon` (a built-in icon name), `iconUrl` (a custom image inside the
 plugin, e.g. `assets/icon.png`), `screenshots`, `tags` and `category`. The
 Details editor in `selldoes dev` writes these for you.
@@ -339,6 +348,75 @@ server's **Jobs** tab runs handlers against the mock context and renders
 progress, items and logs. A legacy `async (input, ctx) => …` function is still
 supported.
 
+### Node jobs
+
+A job with `"runtime": "node"` runs **once** in a full Node environment instead
+of the QuickJS sandbox: any npm package works there, including native addons,
+`sharp`, `playwright` and `fs`. Keep the handler in its own entry file so
+Node-only imports never reach the QuickJS bundle:
+
+```json
+"jobs": [
+  { "type": "sync", "name": "Sync" },
+  {
+    "type": "scrape", "name": "Deep scrape", "runtime": "node",
+    "entry": "./server/scrape.js", "timeoutMs": 600000, "memoryMb": 1024
+  }
+]
+```
+
+```js
+// server/scrape.js
+const { chromium } = require("playwright")
+
+module.exports = async (input, ctx) => {
+  const browser = await chromium.launch()
+  // … your code, any npm package …
+  await browser.close()
+  await ctx.storage.set("last-scrape", Date.now())
+  return { ok: true }
+}
+```
+
+- The module's default export (or `module.exports =`) is the handler; it runs
+  once and returns a JSON-serializable result.
+- `ctx` is the same capability surface as QuickJS jobs — `ctx.db`, `ctx.http`,
+  `ctx.products`, `ctx.files`, `ctx.ai`, `ctx.storage`, `ctx.secrets`,
+  `ctx.jobs` — enforced by the host. The job never receives store credentials
+  or direct database access.
+- Limits: `timeoutMs` 1s–30min (default 5min), `memoryMb` 128–4096 (default
+  512). Jobs are queued, and concurrent runs per store are capped by the
+  platform.
+- `selldoes build`/`publish` ship `dist/node/<type>.cjs` plus your
+  `package.json` and lockfile; the platform installs dependencies once into an
+  immutable image per release, so native addons work. Commit the lockfile and
+  declare every imported package in `plugin.json` `dependencies`.
+- The preview's **Jobs** tab runs Node jobs in your local Node process — a
+  normal `npm install` in the plugin directory is enough to test them.
+
+### Schedules
+
+Declare cron schedules that enqueue declared jobs:
+
+```json
+"schedules": [
+  {
+    "name": "nightly-sync", "job": "sync", "cron": "0 3 * * *",
+    "timezone": "America/New_York", "input": { "full": true }
+  }
+]
+```
+
+- Five fields: minute, hour, day-of-month, month, day-of-week. Supports `*`,
+  ranges (`9-17`), lists (`1,15`), steps (`*/15`, `0-30/10`) and three-letter
+  names (`MON-FRI`, `JAN`). Day-of-week `0` and `7` are Sunday.
+- `timezone` is an IANA name (default UTC); `enabled: false` keeps a schedule
+  declared but paused.
+- At most 10 schedules per plugin; every `job` must be declared in `jobs`.
+- The preview's **Jobs** tab lists schedules with their next fire time and a
+  **Run now** button. The host owns the real scheduler (enqueue, retries,
+  overlap policy, per-store enable/disable in the dashboard).
+
 ## npm dependencies
 
 Plugins can use npm packages. Add one from the dev shell's **Packages** page
@@ -359,17 +437,38 @@ bundles with the local `node_modules`.
 
 | Badge | Meaning |
 |---|---|
-| ✅ Works | Pure-JS or browser-compatible package: bundles cleanly, loads in the sandbox |
+| ✅ Works | Pure-JS or browser-compatible package: bundles cleanly and its top level loads in the sandbox |
 | ⚠️ Works with care | Bundles, but large (close to the 4 MB limit) or has warnings |
-| ❌ Not allowed | Needs Node-only powers (`fs`, `net`, `http`, `child_process`, native addons) — use `ctx.db` / `ctx.http` / `ctx.files`, or a browser-friendly alternative |
+| ❌ Not allowed | Needs something the sandbox does not provide — a blocked Node builtin (`fs`, `net`, `http`, `child_process`, native addons) or a runtime global the shim set lacks (`navigator`, `crypto`, `async_hooks`, …). The message names the capability |
 
 The build resolves packages with **browser-style resolution**, so packages that
 ship a browser build (cheerio, for example) work without their Node-only
 dependencies (cheerio's `undici` is skipped; `fromURL` is unavailable — use
 `ctx.http.get`). Common Node builtins (`buffer`, `crypto`, `events`, `stream`,
-`path`, `url`, `util`, …) are polyfilled into the bundle, and a tiny `atob` /
-`TextEncoder` / `TextDecoder` shim is injected, so bundles are self-contained:
-the production sandbox (QuickJS) has **no `require()`** and no Node globals.
+`path`, `url`, `util`, …) are polyfilled into the bundle, and these globals are
+injected into every bundle (feature-detected, so a real implementation always
+wins):
+
+- `atob` / `btoa`, `TextEncoder` / `TextDecoder`, `queueMicrotask`, `performance`
+- `Buffer`, `process`
+
+Nothing else exists at runtime: the production sandbox (QuickJS) has **no
+`require()`**, no `navigator`, no WebCrypto, no `AsyncLocalStorage` and no DOM.
+When a package needs one of those, the build fails and the message says which
+one, so a missing global never looks like a mysterious refusal:
+
+| Message | What it means | Do instead |
+|---|---|---|
+| `"fs" is not available in the Selldoes sandbox` | The package needs filesystem, process or raw network access | Use `ctx.files` / `ctx.db` / `ctx.http` |
+| `needs the "navigator" global` | The package expects a browser global the sandbox does not carry | Use a browser-friendly alternative (for example cheerio 1.x instead of html-json) |
+| `needs the "crypto" global` | The package expects WebCrypto | Use `ctx.http` for signed requests, or a pure-JS package that ships its own crypto |
+| `needs the "async_hooks" Node module` | The package needs `AsyncLocalStorage` | Not supported — pick a different package |
+| `ships a native addon (.node)` | Native code cannot be bundled | Use a pure-JS alternative |
+| `is left as an external require` | A dynamic `require()` cannot be bundled | Avoid packages that require at runtime |
+
+`Works` is a load-time guarantee, not a promise that every feature works: the
+checker executes the bundle's top level, so a function that only fails when
+called (cheerio's `fromURL`) still passes.
 
 Everything else fails at build time with the offending import, instead of
 failing in a store. Bundles are capped at **4 MB**; `selldoes build` and

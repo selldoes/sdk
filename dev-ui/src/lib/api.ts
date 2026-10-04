@@ -82,7 +82,8 @@ export const dev = {
   scaffoldUi: (input: { entry?: string; label?: string; path?: string; icon?: string } = {}) =>
     post<ScaffoldUiResult>("/__dev/ui/scaffold", input),
   // ── Code scaffolds (New job / New hook / New route) ───────────────────────
-  scaffoldJob: (input: { type: string; name?: string; description?: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/job", input),
+  scaffoldJob: (input: { type: string; name?: string; description?: string; runtime?: "quickjs" | "node" }) =>
+    post<ScaffoldCodeResult>("/__dev/scaffold/job", input),
   scaffoldHook: (input: { name: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/hook", input),
   scaffoldRoute: (input: { path: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/route", input),
 

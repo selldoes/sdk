@@ -71,6 +71,21 @@ module.exports = {
 `
 }
 
+function nodeJobModule(type) {
+  return `/**
+ * ${type} — Node job. Runs once in a full Node environment: any npm package
+ * listed in package.json works, including native addons, fs and playwright.
+ * Return a JSON-serializable result.
+ * @param {unknown} input
+ * @param {import("selldoes").JobContext} ctx
+ */
+module.exports = async (input, ctx) => {
+  // TODO: do the work here.
+  return { ok: true }
+}
+`
+}
+
 function hookModule(name) {
   return `/**
  * ${name} — hook handler. Return value is delivered back to the host.
@@ -108,20 +123,31 @@ module.exports = {
  * Returns { kind, file, manifest, targets, wiring } — the server snapshots
  * `files` before applying.
  */
-export function planCodeScaffold({ pluginDir, manifest, kind, name, description }) {
+export function planCodeScaffold({ pluginDir, manifest, kind, name, description, runtime }) {
   const current = JSON.parse(JSON.stringify(manifest ?? {}))
   const label = String(name ?? "").trim()
   if (!label) throw new Error("A name is required")
 
+  const nodeJob = kind === "job" && runtime === "node"
   let file
   let content
   if (kind === "job") {
     const type = label.replace(/^\//, "").replace(/\s+/g, "-").toLowerCase()
     if (!/^[a-z0-9][a-z0-9_-]*$/.test(type)) throw new Error(`Job types use lowercase letters, digits and dashes (got "${label}")`)
     if ((current.jobs ?? []).some((job) => job?.type === type)) throw new Error(`Job "${type}" is already declared in plugin.json`)
-    file = `jobs/${type}.js`
-    content = jobModule(type)
-    current.jobs = [...(current.jobs ?? []), { type, name: titleFrom(type), description: String(description ?? "").trim() || `The ${titleFrom(type)} job.` }]
+    const jobDescription = String(description ?? "").trim() || `The ${titleFrom(type)} job.`
+    if (nodeJob) {
+      file = `server/${type}.js`
+      content = nodeJobModule(type)
+      current.jobs = [
+        ...(current.jobs ?? []),
+        { type, name: titleFrom(type), description: jobDescription, runtime: "node", entry: `./${file}` },
+      ]
+    } else {
+      file = `jobs/${type}.js`
+      content = jobModule(type)
+      current.jobs = [...(current.jobs ?? []), { type, name: titleFrom(type), description: jobDescription }]
+    }
   } else if (kind === "hook") {
     const name2 = label
     if ((current.hooks ?? {})[name2]) throw new Error(`Hook "${name2}" is already declared in plugin.json`)
@@ -140,17 +166,20 @@ export function planCodeScaffold({ pluginDir, manifest, kind, name, description 
   }
 
   const entry = String(current.entry ?? "./index.js").replace(/^\.\//, "")
-  const blockName = BLOCK_FOR[kind]
-  const marker = `// <selldoes-scaffold:${blockName}>`
   let wiring = null
-  let entryContent = null
-  try {
-    entryContent = fs.readFileSync(path.join(pluginDir, entry), "utf8")
-  } catch {
-    throw new Error(`Entry file "${entry}" is missing — fix plugin.json before scaffolding`)
-  }
-  if (!entryContent.includes(marker)) {
-    wiring = [marker, WIRING[blockName](file), `// </selldoes-scaffold:${blockName}>`, ""].join("\n")
+  // Node jobs are standalone entry files — nothing to wire into index.js.
+  if (!nodeJob) {
+    const blockName = BLOCK_FOR[kind]
+    const marker = `// <selldoes-scaffold:${blockName}>`
+    let entryContent = null
+    try {
+      entryContent = fs.readFileSync(path.join(pluginDir, entry), "utf8")
+    } catch {
+      throw new Error(`Entry file "${entry}" is missing — fix plugin.json before scaffolding`)
+    }
+    if (!entryContent.includes(marker)) {
+      wiring = [marker, WIRING[blockName](file), `// </selldoes-scaffold:${blockName}>`, ""].join("\n")
+    }
   }
 
   return { kind, file, entry, manifest: current, targets: [{ path: file, content }], wiring, files: [file] }

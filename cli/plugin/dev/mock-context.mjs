@@ -58,6 +58,26 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
 
   const filesUrl = (key) => `/__dev/files/${encodeURIComponent(key)}`
 
+  // ctx.storage is plugin- and store-scoped in production; the mock keeps the
+  // same scoping in one JSON file so switching stores cannot leak values.
+  const storagePath = path.join(devDir, "storage.json")
+  const storageScope = `${storeId}:${tablePrefix}`
+  const readStorageFile = () => {
+    try {
+      return JSON.parse(fs.readFileSync(storagePath, "utf8"))
+    } catch {
+      return {}
+    }
+  }
+  const storageEntries = () => readStorageFile()[storageScope] ?? {}
+  const writeStorageEntries = (entries) => {
+    const all = readStorageFile()
+    if (Object.keys(entries).length > 0) all[storageScope] = entries
+    else delete all[storageScope]
+    fs.mkdirSync(devDir, { recursive: true })
+    fs.writeFileSync(storagePath, `${JSON.stringify(all, null, 2)}\n`)
+  }
+
   const ctx = {
     storeId,
     permissions: [...permissions],
@@ -289,6 +309,46 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
         if (outbox.length > 100) outbox.shift()
         log(`[email] → ${entry.to}: ${entry.subject}`)
         return { sent: config.email?.disabled !== true }
+      },
+    },
+
+    secrets: {
+      async get(name) {
+        requirePermission("secrets:read", "ctx.secrets.get")
+        const value = config.secrets?.[String(name)]
+        return value === undefined || value === null ? null : String(value)
+      },
+    },
+
+    storage: {
+      async get(key) {
+        requirePermission("storage:read", "ctx.storage.get")
+        const entry = storageEntries()[String(key)]
+        return entry === undefined ? null : entry.value
+      },
+      async set(key, value) {
+        requirePermission("storage:write", "ctx.storage.set")
+        const entries = storageEntries()
+        entries[String(key)] = { value, updatedAt: new Date().toISOString() }
+        writeStorageEntries(entries)
+        log(`[storage] set ${key}`)
+        return { key: String(key) }
+      },
+      async delete(key) {
+        requirePermission("storage:write", "ctx.storage.delete")
+        const entries = storageEntries()
+        const existed = Object.prototype.hasOwnProperty.call(entries, String(key))
+        delete entries[String(key)]
+        writeStorageEntries(entries)
+        return { deleted: existed }
+      },
+      async list(prefix = "") {
+        requirePermission("storage:read", "ctx.storage.list")
+        const wanted = String(prefix ?? "")
+        return Object.entries(storageEntries())
+          .filter(([key]) => !wanted || key.startsWith(wanted))
+          .map(([key, entry]) => ({ key, updatedAt: entry?.updatedAt }))
+          .sort((a, b) => a.key.localeCompare(b.key))
       },
     },
   }

@@ -32,6 +32,23 @@ export interface PluginJobDefinition {
   name: string
   description?: string
   tickBudgetMs?: number
+  runtime?: "quickjs" | "node"
+  timeoutMs?: number
+  memoryMb?: number
+}
+
+export interface PluginScheduleDefinition {
+  job: string
+  cron: string
+  name?: string
+  description?: string
+  timezone?: string
+  input?: unknown
+  enabled?: boolean
+  /** Computed by the dev server; ISO timestamp or null. */
+  nextRunAt?: string | null
+  /** Set when the expression cannot fire (shown in the preview). */
+  error?: string | null
 }
 
 export interface PluginApiRoute {
@@ -69,6 +86,7 @@ export interface PluginManifest {
   storefrontWidget?: { entry: string; width?: number; height?: number }
   storefrontPages?: { path: string; title: string; entry: string }[]
   jobs?: PluginJobDefinition[]
+  schedules?: PluginScheduleDefinition[]
   configSchema?: PluginConfigField[]
   sections?: { type: string; name: string; description?: string }[]
   tags?: string[]
@@ -116,6 +134,7 @@ export interface Bootstrap {
   status: DevStatus
   activity: DevActivity
   assistant: AssistantConfig
+  schedules: PluginScheduleDefinition[]
   snapshots: number
 }
 

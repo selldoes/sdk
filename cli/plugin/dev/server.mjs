@@ -19,6 +19,7 @@ import { createGit } from "./git.mjs"
 import { createStream, watchProject } from "./stream.mjs"
 import { attachTerminalServer } from "../../terminal.mjs"
 import { addDependency, detectPackageManager, installedVersion, removeDependency } from "../dependencies.mjs"
+import { describeSchedules } from "../schedule.mjs"
 import { probePackage } from "../sandbox.mjs"
 import { BUMP_MODES, bumpVersion, isValidVersion } from "../version.mjs"
 
@@ -267,6 +268,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     status: buildStatus,
     activity: { ...state.data, sampleJobs: config.sampleJobs ?? {} },
     assistant: assistantSummary(resolveAssistant({ config: readConfig() })),
+    schedules: describeSchedules(manifestStore.read()),
     snapshots: manifestStore.snapshotCount(),
   })
 
@@ -673,9 +675,13 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             kind,
             name: body?.type ?? body?.name ?? body?.path,
             description: body?.description,
+            runtime: body?.runtime,
           })
           // One snapshot covers module + wiring + manifest — one undo reverts it.
-          manifestStore.snapshots.create({ reason: `scaffold ${kind}`, files: [...plan.files, plan.entry, "plugin.json"] })
+          manifestStore.snapshots.create({
+            reason: `scaffold ${kind}`,
+            files: [...plan.files, ...(plan.wiring ? [plan.entry] : []), "plugin.json"],
+          })
           const written = applyCodePlan(pluginDir, plan)
           manifestStore.write(plan.manifest)
           let rebuildError = null
@@ -1304,7 +1310,8 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           const maxTicks = Math.max(1, Math.min(Number(body?.maxTicks) || 50, 500))
           const run = await runner.runJob(body?.type, body?.input ?? {}, ctx, maxTicks)
           state.record("jobs", { type: body?.type })
-          log(`job ${body?.type} ran ${run.ticks.length} tick(s)${run.done ? " — done" : " — tick limit reached"}`)
+          const summary = run.kind === "node" ? "on the Node runtime" : `${run.ticks.length} tick(s)`
+          log(`job ${body?.type} ran ${summary}${run.done ? " — done" : " — tick limit reached"}`)
           const stateJson = run.state === undefined || run.state === null ? "" : JSON.stringify(run.state)
           return json(res, 200, {
             ok: true,

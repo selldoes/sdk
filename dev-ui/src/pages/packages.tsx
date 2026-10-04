@@ -144,9 +144,10 @@ export function PackagesPage() {
 
       <Callout kind="info">
         Plugins run in a sandbox without filesystem or raw network access. The checker bundles each package the same way
-        <code>selldoes build</code> does, so the badge you see is what happens in production. Packages that need
-        <code>fs</code>, <code>net</code> or native addons are refused at build time — use <code>ctx.db</code>,{" "}
-        <code>ctx.http</code> and <code>ctx.files</code> instead.
+        <code>selldoes build</code> does, so the badge you see is what happens in production. Packages that need{" "}
+        <code>fs</code>, <code>net</code>, native addons, or a runtime global the sandbox does not carry (
+        <code>navigator</code>, <code>crypto</code>, <code>async_hooks</code>) are refused at build time with the reason
+        — use <code>ctx.db</code>, <code>ctx.http</code> and <code>ctx.files</code>, or a browser-friendly alternative.
       </Callout>
 
       <Card>

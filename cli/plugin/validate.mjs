@@ -2,11 +2,14 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileExists, readJson } from "../util.mjs"
 import { validateDependencies } from "./dependencies.mjs"
+import { NODE_JOB_LIMITS } from "./sandbox.mjs"
+import { validateSchedules } from "./schedule.mjs"
 
 const SLUG = /^[a-z0-9-]+$/
 const VERSION = /^\d+\.\d+\.\d+$/
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 const UI_PATH = /^[a-zA-Z0-9_\-./]+$/
+const JOB_RUNTIMES = new Set(["quickjs", "node"])
 
 /**
  * Validates one plugin directory the way the host will validate it on upload.
@@ -96,6 +99,43 @@ export function validatePluginDir(pluginDir, { expectedSlug } = {}) {
     const dependencyCheck = validateDependencies(manifest.dependencies)
     for (const error of dependencyCheck.errors) errors.push(error)
   }
+
+  const seenJobs = new Set()
+  for (const job of manifest.jobs ?? []) {
+    const label = String(job?.type ?? "(unnamed)")
+    if (!job?.type) errors.push("each job needs a type")
+    else if (seenJobs.has(job.type)) errors.push(`duplicate job type "${job.type}"`)
+    seenJobs.add(job?.type)
+    if (!job?.name) errors.push(`job "${label}" needs a name`)
+    if (job?.runtime !== undefined && !JOB_RUNTIMES.has(job.runtime)) {
+      errors.push(`job "${label}": unknown runtime "${job.runtime}" (use "quickjs" or "node")`)
+    }
+    if (job?.runtime === "node") {
+      if (job.tickBudgetMs !== undefined) errors.push(`job "${label}": tickBudgetMs only applies to quickjs jobs`)
+      if (!job.entry) {
+        errors.push(`job "${label}": node jobs need an "entry" file (for example "./server/${job.type || "job"}.js")`)
+      } else {
+        const normalized = String(job.entry).replace(/^\.\//, "").replace(/\\/g, "/")
+        if (normalized.startsWith("..") || path.isAbsolute(normalized)) errors.push(`job "${label}": entry must be inside the plugin`)
+        else if (!fileExists(path.join(pluginDir, normalized))) errors.push(`job "${label}": entry "${job.entry}" does not exist`)
+      }
+      const timeout = job.timeoutMs === undefined ? null : Number(job.timeoutMs)
+      if (timeout !== null && (!Number.isFinite(timeout) || timeout < NODE_JOB_LIMITS.minTimeoutMs || timeout > NODE_JOB_LIMITS.maxTimeoutMs)) {
+        errors.push(`job "${label}": timeoutMs must be between ${NODE_JOB_LIMITS.minTimeoutMs} and ${NODE_JOB_LIMITS.maxTimeoutMs}`)
+      }
+      const memory = job.memoryMb === undefined ? null : Number(job.memoryMb)
+      if (memory !== null && (!Number.isFinite(memory) || memory < NODE_JOB_LIMITS.minMemoryMb || memory > NODE_JOB_LIMITS.maxMemoryMb)) {
+        errors.push(`job "${label}": memoryMb must be between ${NODE_JOB_LIMITS.minMemoryMb} and ${NODE_JOB_LIMITS.maxMemoryMb}`)
+      }
+    }
+  }
+  if ((manifest.jobs ?? []).some((job) => job?.runtime === "node") && !fileExists(path.join(pluginDir, "package.json"))) {
+    errors.push("Node jobs require a package.json — the execution image installs its dependencies")
+  }
+
+  const scheduleCheck = validateSchedules(manifest.schedules, manifest.jobs)
+  for (const error of scheduleCheck.errors) errors.push(error)
+  for (const warning of scheduleCheck.warnings) warnings.push(warning)
 
   return { slug, manifest, errors, warnings }
 }

@@ -48,6 +48,30 @@ test("job scaffold: module + manifest entry + entry wiring", () => {
   assert.equal(entryAfter.split("<selldoes-scaffold:jobs>").length, 2, "wiring block appended once")
 })
 
+test("job scaffold (node): standalone server/ entry, no wiring, runtime declared", () => {
+  const root = tempPlugin(BASE)
+  const plan = planCodeScaffold({
+    pluginDir: root,
+    manifest: JSON.parse(fs.readFileSync(path.join(root, "plugin.json"), "utf8")),
+    kind: "job",
+    name: "Deep Sync",
+    runtime: "node",
+  })
+  assert.equal(plan.file, "server/deep-sync.js")
+  assert.equal(plan.wiring, null, "node entries are standalone — index.js stays untouched")
+  assert.deepEqual(plan.manifest.jobs[0], {
+    type: "deep-sync",
+    name: "Deep Sync",
+    description: "The Deep Sync job.",
+    runtime: "node",
+    entry: "./server/deep-sync.js",
+  })
+  const written = applyCodePlan(root, plan)
+  assert.deepEqual(written, ["server/deep-sync.js"])
+  const module = fs.readFileSync(path.join(root, "server", "deep-sync.js"), "utf8")
+  assert.match(module, /module\.exports = async \(input, ctx\) =>/)
+})
+
 test("hook scaffold: colon names get safe files, manifest maps handler", () => {
   const root = tempPlugin(BASE)
   const plan = planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "hook", name: "order:delivered" })

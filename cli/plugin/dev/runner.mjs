@@ -3,7 +3,7 @@ import path from "node:path"
 import { createRequire } from "node:module"
 import { build, context } from "esbuild"
 import { readJson } from "../../util.mjs"
-import { checkSandboxBundle, sandboxBuildOptions } from "../sandbox.mjs"
+import { checkSandboxBundle, nodeBuildOptions, nodeJobLimits, sandboxBuildOptions } from "../sandbox.mjs"
 
 const nodeRequire = createRequire(import.meta.url)
 
@@ -28,12 +28,41 @@ export class PluginRunner {
     this.log = log
     this.bundlePath = path.join(devDir, "bundle.cjs")
     this.exports = null
+    this.nodeHandlers = new Map()
     this.watchContext = null
+    this.nodeWatchContexts = []
     this.rebuilds = 0
     /** Result of the last sandbox check (errors, warnings, packages…). */
     this.sandbox = null
     /** Set when the bundle failed to evaluate in the sandbox (exports are null). */
     this.loadError = null
+    /** Set when a Node job bundle failed to load (its handler is absent). */
+    this.nodeLoadError = null
+  }
+
+  /** True when any declared job runs on the Node tier. */
+  hasNodeJobs() {
+    return (this.manifest.jobs ?? []).some((job) => job?.runtime === "node")
+  }
+
+  jobDefinition(type) {
+    return (this.manifest.jobs ?? []).find((job) => job?.type === type) ?? null
+  }
+
+  /** One build unit per Node job: its entry file and output bundle. */
+  nodeJobEntries() {
+    return (this.manifest.jobs ?? [])
+      .filter((job) => job?.runtime === "node")
+      .map((job) => {
+        const type = String(job.type)
+        const relative = String(job.entry ?? this.manifest.entry ?? "./index.js").replace(/^\.\//, "")
+        return {
+          type,
+          definition: job,
+          source: path.join(this.pluginDir, relative),
+          outfile: path.join(this.devDir, `node-${type.replace(/[^a-z0-9_-]/gi, "_")}.cjs`),
+        }
+      })
   }
 
   entryPoint() {
@@ -51,6 +80,46 @@ export class PluginRunner {
       metafile: true,
       extraPlugins,
     })
+  }
+
+  nodeBuildOptions(job, extraPlugins = []) {
+    // Node-tier jobs build like a real Node app: plugin files bundled, npm
+    // packages left external so node_modules (native addons included) works.
+    return nodeBuildOptions({
+      pluginDir: this.pluginDir,
+      entryPoints: [job.source],
+      outfile: job.outfile,
+      extraPlugins,
+    })
+  }
+
+  /** Builds + loads every Node job bundle. Load failures are logged, not thrown. */
+  async buildNode() {
+    for (const job of this.nodeJobEntries()) {
+      const result = await build(this.nodeBuildOptions(job))
+      this.finishNodeBuild(job, result)
+    }
+    return this.nodeHandlers
+  }
+
+  finishNodeBuild(job, result) {
+    for (const warning of result.warnings) this.log(`[esbuild:node] ${warning.text}`)
+    try {
+      const resolved = nodeRequire.resolve(job.outfile)
+      delete nodeRequire.cache[resolved]
+      const mod = nodeRequire(job.outfile)
+      const handler = typeof mod === "function" ? mod : typeof mod?.default === "function" ? mod.default : mod?.jobs?.[job.type]
+      if (typeof handler !== "function") {
+        throw new Error("does not export a handler (module.exports = async (input, ctx) => …)")
+      }
+      this.nodeHandlers.set(job.type, handler)
+      this.nodeLoadError = null
+    } catch (error) {
+      this.nodeLoadError = error instanceof Error ? error.message : String(error)
+      this.nodeHandlers.delete(job.type)
+      this.log(`[node] ✗ ${job.type}: ${this.nodeLoadError}`)
+    }
+    return this.nodeHandlers.get(job.type) ?? null
   }
 
   /** Logs esbuild/sandbox output and loads the bundle, never throwing. */
@@ -78,6 +147,7 @@ export class PluginRunner {
     fs.mkdirSync(this.devDir, { recursive: true })
     const result = await build(this.buildOptions())
     this.finishBuild(result)
+    if (this.hasNodeJobs()) await this.buildNode()
     return this.exports
   }
 
@@ -110,6 +180,26 @@ export class PluginRunner {
       ]),
     )
     await this.watchContext.watch()
+    for (const job of this.nodeJobEntries()) {
+      const nodeContext = await context(
+        this.nodeBuildOptions(job, [
+          {
+            name: "selldoes-node-reload",
+            setup: (buildContext) => {
+              buildContext.onEnd((result) => {
+                if (result.errors.length > 0) {
+                  for (const error of result.errors) this.log(`[esbuild:node] ${error.text}`)
+                  return
+                }
+                this.finishNodeBuild(job, result)
+              })
+            },
+          },
+        ]),
+      )
+      await nodeContext.watch()
+      this.nodeWatchContexts.push(nodeContext)
+    }
   }
 
   async stopWatching() {
@@ -117,6 +207,8 @@ export class PluginRunner {
       await this.watchContext.dispose()
       this.watchContext = null
     }
+    for (const nodeContext of this.nodeWatchContexts) await nodeContext.dispose()
+    this.nodeWatchContexts = []
   }
 
   load() {
@@ -169,6 +261,9 @@ export class PluginRunner {
    * `{ kind, ticks, state, result, done }`.
    */
   async runJob(type, input, ctx, maxTicks = 50) {
+    const definition = this.jobDefinition(type)
+    if (definition?.runtime === "node") return this.runNodeJob(type, input, ctx, definition)
+
     const job = this.bundle().jobs?.[type]
     if (!job) throw new Error(`Job "${type}" is not exported from the bundle`)
 
@@ -221,6 +316,34 @@ export class PluginRunner {
     }
 
     return { kind: "chunked", ticks, state, result, done }
+  }
+
+  /**
+   * Runs a `runtime: "node"` job once in the local Node process — the same
+   * environment the production Node sandbox provides, bounded by the job's
+   * declared timeout. Returns the same transcript shape as chunked jobs.
+   */
+  async runNodeJob(type, input, ctx, definition) {
+    if (!this.nodeHandlers.has(type)) await this.buildNode()
+    const handler = this.nodeHandlers.get(type)
+    if (typeof handler !== "function") {
+      throw new Error(
+        `Node job "${type}" has no loaded handler${this.nodeLoadError ? `: ${this.nodeLoadError}` : " — check its entry file"}`,
+      )
+    }
+    const { timeoutMs } = nodeJobLimits(definition)
+    let timer
+    try {
+      const result = await Promise.race([
+        Promise.resolve(handler(input, ctx)),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Node job "${type}" exceeded its ${timeoutMs}ms timeout`)), timeoutMs)
+        }),
+      ])
+      return { kind: "node", ticks: [result], state: null, result: result ?? null, done: true }
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   async runHook(name, payload, ctx) {

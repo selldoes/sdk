@@ -29,6 +29,31 @@ export const SANDBOX_LIMITS = {
   evalTimeoutMs: 5_000,
 }
 
+/** Node job defaults and bounds, mirrored by validation, build and the runner. */
+export const NODE_JOB_DEFAULTS = { timeoutMs: 300_000, memoryMb: 512 }
+export const NODE_JOB_LIMITS = {
+  minTimeoutMs: 1_000,
+  maxTimeoutMs: 30 * 60_000,
+  minMemoryMb: 128,
+  maxMemoryMb: 4096,
+}
+
+/** Clamps a Node job definition to the supported timeout/memory envelope. */
+export function nodeJobLimits(job) {
+  const timeoutMs = Number(job?.timeoutMs)
+  const memoryMb = Number(job?.memoryMb)
+  return {
+    timeoutMs: Math.min(
+      Math.max(Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : NODE_JOB_DEFAULTS.timeoutMs, NODE_JOB_LIMITS.minTimeoutMs),
+      NODE_JOB_LIMITS.maxTimeoutMs,
+    ),
+    memoryMb: Math.min(
+      Math.max(Number.isFinite(memoryMb) && memoryMb > 0 ? memoryMb : NODE_JOB_DEFAULTS.memoryMb, NODE_JOB_LIMITS.minMemoryMb),
+      NODE_JOB_LIMITS.maxMemoryMb,
+    ),
+  }
+}
+
 /**
  * Builtins the sandbox will never provide. Returning an esbuild error beats an
  * "empty" shim: the build fails with the import site instead of shipping a
@@ -146,6 +171,28 @@ export function sandboxBuildOptions({
   }
 }
 
+/**
+ * esbuild options for the Node job artifact. Unlike the QuickJS bundle this is
+ * a real Node build: `packages: "external"` keeps every npm dependency out of
+ * the bundle so the execution image installs it from the plugin's lockfile
+ * (native addons included), while the plugin's own files are still bundled.
+ */
+export function nodeBuildOptions({ pluginDir, entryPoints, outfile, metafile = false, logLevel = "silent", extraPlugins = [] }) {
+  return {
+    entryPoints,
+    outfile,
+    absWorkingDir: pluginDir,
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node20",
+    packages: "external",
+    logLevel,
+    metafile,
+    plugins: [...extraPlugins],
+  }
+}
+
 // ─── Bundle analysis ─────────────────────────────────────────────────────────
 
 const NODE_MODULES = /(?:^|[/\\])node_modules[/\\]((?:@[^/\\]+[/\\])?[^/\\]+)(?=[/\\]|$)/
@@ -228,6 +275,49 @@ export function evaluateBundle(bundlePath) {
 }
 
 /**
+ * Turns a raw bundle-load error into an actionable explanation. The QuickJS
+ * realm only carries the injected shims, so the common failures are a missing
+ * browser global or a Node module the browser shims cannot emulate. The
+ * Packages page and `selldoes build` both show this text, so authors can tell
+ * a genuinely Node-only package from one that just needs a global the sandbox
+ * does not carry. Unknown errors are returned unchanged.
+ */
+export function describeLoadError(error) {
+  const message = String(error ?? "").trim()
+  if (!message) return "the bundle failed to load in the sandbox"
+
+  const missingGlobal = /^ReferenceError:\s*([A-Za-z_$][\w$]*)\s+is not defined/.exec(message)
+  if (missingGlobal) {
+    return `needs the "${missingGlobal[1]}" global, which the sandbox does not provide — use a browser-friendly alternative or a ctx capability`
+  }
+
+  const unsupportedModule = /Node\.js\s+([\w/-]+)\s+module is not supported by JSPM core/.exec(message)
+  if (unsupportedModule) {
+    return `needs the "${unsupportedModule[1]}" Node module, which the sandbox cannot emulate — use a ctx capability or a different package`
+  }
+
+  if (/crypto\.subtle|SubtleCrypto/.test(message)) {
+    return "needs WebCrypto (crypto.subtle), which the sandbox does not provide — use a ctx capability or a different package"
+  }
+
+  if (/timed out/i.test(message)) {
+    return `took longer than ${SANDBOX_LIMITS.evalTimeoutMs / 1000}s to load — the sandbox evaluates each bundle with a ${SANDBOX_LIMITS.evalTimeoutMs / 1000}s budget`
+  }
+
+  return message
+}
+
+/** Turns an esbuild failure into a short, actionable message. */
+function describeBuildError(message) {
+  const first = String(message ?? "").split("\n").find((line) => line.includes("ERROR:")) ?? String(message ?? "").split("\n")[0]
+  const text = first.replace(/^.*?ERROR:\s*/, "").trim()
+  if (/No loader is configured for "\.node"/.test(text)) {
+    return "ships a native addon (.node), which the sandbox cannot run — use a pure-JS alternative"
+  }
+  return text
+}
+
+/**
  * Checks a built bundle against the sandbox contract.
  * Returns `{ ok, errors, warnings, bytes, sizeKb, externals, packages, imported,
  * missingDependencies, unusedDependencies, load }` — never throws.
@@ -270,7 +360,7 @@ export function checkSandboxBundle({ bundlePath, metafile, manifest } = {}) {
 
   const load = bytes > 0 && externals.length === 0 ? evaluateBundle(bundlePath) : { ok: false, error: "skipped (bundle did not build cleanly)" }
   if (!load.ok) {
-    errors.push(`bundle failed to load in a require-less sandbox: ${load.error}`)
+    errors.push(`bundle failed to load in the sandbox: ${describeLoadError(load.error)}`)
   }
 
   return {
@@ -336,7 +426,7 @@ export async function probePackage({ pluginDir, name }) {
       }
     }
     if (!load.ok) {
-      return { status: "blocked", message: load.error, sizeKb: Number((size / 1024).toFixed(1)) }
+      return { status: "blocked", message: describeLoadError(load.error), sizeKb: Number((size / 1024).toFixed(1)) }
     }
     if (size > SANDBOX_LIMITS.warnBundleBytes) {
       return {
@@ -348,8 +438,7 @@ export async function probePackage({ pluginDir, name }) {
     return { status: "ok", message: "bundles and loads in the sandbox", sizeKb: Number((size / 1024).toFixed(1)) }
   } catch (error) {
     const message = String(error?.message ?? error)
-    const line = message.split("\n").find((entry) => entry.includes("ERROR:")) ?? message.split("\n")[0]
-    return { status: "blocked", message: line.replace(/^.*?ERROR:\s*/, "").trim() }
+    return { status: "blocked", message: describeBuildError(message), sizeKb: null }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
   }

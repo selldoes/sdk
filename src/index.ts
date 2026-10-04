@@ -47,6 +47,41 @@ export interface PluginJobDefinition {
   name: string
   description?: string
   tickBudgetMs?: number
+  /**
+   * Execution tier. `quickjs` (default) runs the chunked `{ init, step, finalize }`
+   * contract in the sandbox; `node` runs a plain `async (input, ctx)` handler in
+   * a full Node environment where any npm package (including native addons)
+   * works. Node jobs are queued and time-limited, not chunked.
+   */
+  runtime?: PluginJobRuntime
+  /**
+   * Node jobs only (required): plugin-relative module exporting the handler
+   * (`module.exports = async (input, ctx) => …` or an ESM default export).
+   * Keeping it in its own file keeps Node-only imports out of the QuickJS bundle.
+   */
+  entry?: string
+  /** Node jobs only: wall-clock limit per run (default 5 minutes). */
+  timeoutMs?: number
+  /** Node jobs only: memory limit in MB (default 512). */
+  memoryMb?: number
+}
+
+export type PluginJobRuntime = "quickjs" | "node"
+
+export interface PluginScheduleDefinition {
+  /** Job type to enqueue — must match a declared job. */
+  job: string
+  /** Five-field cron: minute hour day-of-month month day-of-week. */
+  cron: string
+  /** Display name; defaults to the job type. */
+  name?: string
+  description?: string
+  /** IANA timezone, e.g. "America/New_York". Defaults to UTC. */
+  timezone?: string
+  /** Input passed to the job when the schedule fires. */
+  input?: unknown
+  /** A disabled schedule stays declared but is not enqueued. */
+  enabled?: boolean
 }
 
 export interface PluginApiRoute {
@@ -81,6 +116,8 @@ export interface PluginManifest {
   /** Public storefront pages owned by the plugin (e.g. a help center at `/kb`). */
   storefrontPages?: { path: string; title: string; entry: string }[]
   jobs?: PluginJobDefinition[]
+  /** Cron schedules that enqueue declared jobs. */
+  schedules?: PluginScheduleDefinition[]
   configSchema?: PluginConfigField[]
   sections?: { type: string; name: string; description?: string }[]
   tags?: string[]
@@ -103,6 +140,9 @@ export type PluginPermission =
   | "webhooks:register"
   | "sections:register"
   | "dashboard:pages"
+  | "secrets:read"
+  | "storage:read"
+  | "storage:write"
 
 // ─── Capabilities ────────────────────────────────────────────────────────────
 
@@ -235,6 +275,25 @@ export interface PluginEmail {
   send(input: { to: string; subject: string; html?: string; text?: string }): Promise<{ sent: boolean }>
 }
 
+export interface PluginSecrets {
+  /**
+   * Reads a secret configured for this store (permission `secrets:read`).
+   * Returns null when the secret is unset. Values are never logged or bundled.
+   */
+  get(name: string): Promise<string | null>
+}
+
+export interface PluginStorage {
+  /** Plugin- and store-scoped JSON value (permission `storage:read`); null when unset. */
+  get(key: string): Promise<unknown | null>
+  /** Writes a JSON-serializable value (permission `storage:write`). */
+  set(key: string, value: unknown): Promise<{ key: string }>
+  /** Removes a key (permission `storage:write`). */
+  delete(key: string): Promise<{ deleted: boolean }>
+  /** Lists keys under a prefix (permission `storage:read`). */
+  list(prefix?: string): Promise<{ key: string; updatedAt?: string }[]>
+}
+
 // ─── Runtime context ─────────────────────────────────────────────────────────
 
 export interface PluginContext {
@@ -249,6 +308,8 @@ export interface PluginContext {
   products: PluginProducts
   realtime: PluginRealtime
   email: PluginEmail
+  secrets: PluginSecrets
+  storage: PluginStorage
 }
 
 export interface PluginApiRequest {
@@ -308,6 +369,8 @@ export interface JobContext {
   products: PluginProducts
   realtime: PluginRealtime
   email: PluginEmail
+  secrets: PluginSecrets
+  storage: PluginStorage
   jobs: PluginJobReporter
 }
 
@@ -321,7 +384,13 @@ export interface PluginJobHandlers {
   finalize?(state: unknown, ctx: JobContext): Promise<unknown> | unknown
 }
 
-export type PluginJob = PluginJobHandlers | ((input: unknown, ctx: JobContext) => Promise<unknown>)
+/**
+ * Plain handler for a `runtime: "node"` job. Runs once in a full Node sandbox
+ * (any npm package, native addons, filesystem), bounded by the job's timeout.
+ */
+export type PluginNodeJob = (input: unknown, ctx: JobContext) => Promise<unknown> | unknown
+
+export type PluginJob = PluginJobHandlers | PluginNodeJob
 
 // ─── Plugin exports ──────────────────────────────────────────────────────────
 

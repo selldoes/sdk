@@ -458,6 +458,7 @@ function CreateDialog({
   const [type, setType] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [pageMode, setPageMode] = React.useState<PageMode>("components")
+  const [jobRuntime, setJobRuntime] = React.useState<"quickjs" | "node">("quickjs")
   const [busy, setBusy] = React.useState(false)
 
   React.useEffect(() => {
@@ -468,6 +469,7 @@ function CreateDialog({
       setType("")
       setDescription("")
       setPageMode("components")
+      setJobRuntime("quickjs")
     }
   }, [kind])
 
@@ -477,7 +479,7 @@ function CreateDialog({
       blurb:
         "A components page adds a dashboardPages entry (no iframe) and opens the visual builder; an HTML page scaffolds the notes example under ui/.",
     },
-    job: { title: "New job", blurb: "Creates jobs/<type>.js (init/step/finalize skeleton), declares it in plugin.json and wires it into the entry." },
+    job: { title: "New job", blurb: "QuickJS jobs create jobs/<type>.js (chunked init/step/finalize); Node jobs create server/<type>.js and run once with full npm access." },
     hook: { title: "New hook", blurb: "Creates hooks/<name>.js, declares it in plugin.json and wires it into the entry." },
     route: { title: "New API route", blurb: "Creates routes/<path>.js, declares it in apiRoutes and wires it into the entry." },
   }
@@ -514,6 +516,7 @@ function CreateDialog({
           type: type.trim(),
           ...(label.trim() ? { name: label.trim() } : {}),
           ...(description.trim() ? { description: description.trim() } : {}),
+          ...(jobRuntime === "node" ? { runtime: "node" as const } : {}),
         })
         onScaffolded(result.manifest, result.validation, `Job scaffolded: ${result.file}`)
       } else if (kind === "hook") {
@@ -581,6 +584,27 @@ function CreateDialog({
           ) : null}
           {kind === "job" ? (
             <>
+              <div className="space-y-1.5">
+                <Label>Runtime</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["quickjs", "node"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setJobRuntime(mode)}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-left transition-colors",
+                        jobRuntime === mode ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
+                      )}
+                    >
+                      <span className="block text-[12.5px] font-semibold">{mode === "quickjs" ? "QuickJS (chunked)" : "Node (full npm)"}</span>
+                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                        {mode === "quickjs" ? "jobs/<type>.js — ticks, checkpoints, sandboxed" : "server/<type>.js — runs once, any npm package"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="create-type">Job type</Label>
                 <Input id="create-type" value={type} onChange={(event) => setType(event.target.value)} placeholder="import-products" autoFocus />

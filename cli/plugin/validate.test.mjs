@@ -65,3 +65,46 @@ test("ui.entry still must exist (dashboard UI without its file is an error)", ()
   const { errors } = validatePluginDir(root)
   assert.ok(errors.some((error) => error.includes('ui.entry "ui/index.html" does not exist')))
 })
+
+test("jobs: runtimes, limits and duplicates are validated", () => {
+  const root = tempPlugin(
+    {
+      ...BASE,
+      jobs: [
+        { type: "sync", name: "Sync" },
+        { type: "sync", name: "Again" },
+        { type: "heavy", name: "Heavy", runtime: "deno" },
+        { type: "scrape", name: "Scrape", runtime: "node", tickBudgetMs: 4000, timeoutMs: 10, memoryMb: 64 },
+      ],
+    },
+    { "package.json": `${JSON.stringify({ name: "demo-plugin", private: true }, null, 2)}\n` },
+  )
+  const { errors } = validatePluginDir(root)
+  assert.ok(errors.some((error) => error.includes('duplicate job type "sync"')), errors.join("\n"))
+  assert.ok(errors.some((error) => error.includes('unknown runtime "deno"')))
+  assert.ok(errors.some((error) => error.includes("tickBudgetMs only applies to quickjs jobs")))
+  assert.ok(errors.some((error) => error.includes("timeoutMs must be between")))
+  assert.ok(errors.some((error) => error.includes("memoryMb must be between")))
+})
+
+test("jobs: Node runtime requires a package.json", () => {
+  const root = tempPlugin({ ...BASE, jobs: [{ type: "scrape", name: "Scrape", runtime: "node" }] })
+  const { errors } = validatePluginDir(root)
+  assert.ok(errors.some((error) => error.includes("Node jobs require a package.json")))
+})
+
+test("schedules: validated against declared jobs", () => {
+  const root = tempPlugin({
+    ...BASE,
+    jobs: [{ type: "sync", name: "Sync" }],
+    schedules: [
+      { job: "sync", cron: "0 * * * *" },
+      { job: "missing", cron: "0 * * * *" },
+      { name: "sync", job: "sync", cron: "nope" },
+    ],
+  })
+  const { errors } = validatePluginDir(root)
+  assert.ok(errors.some((error) => error.includes('undeclared job "missing"')))
+  assert.ok(errors.some((error) => error.includes("5 fields")))
+  assert.ok(errors.some((error) => error.includes('duplicate schedule name "sync"')))
+})

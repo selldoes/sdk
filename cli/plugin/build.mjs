@@ -1,9 +1,12 @@
 import fs from "node:fs"
 import path from "node:path"
+import { builtinModules } from "node:module"
 import { build } from "esbuild"
 import { zipSync } from "fflate"
 import { fileExists, readJson } from "../util.mjs"
-import { checkSandboxBundle, formatSandboxIssues, sandboxBuildOptions } from "./sandbox.mjs"
+import { checkSandboxBundle, formatSandboxIssues, nodeBuildOptions, nodeJobLimits, sandboxBuildOptions } from "./sandbox.mjs"
+
+const NODE_BUILTINS = new Set(builtinModules.map((name) => name.replace(/^node:/, "")))
 
 const UI_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"]
 
@@ -107,7 +110,7 @@ function writeUiShell(outUi, relHtml, { title, bundleName }) {
  * `dist/bundle.js`: the platform runs that file directly instead of installing
  * dependencies and rebuilding on the server.
  */
-export async function packPluginSource(pluginDir, { zipPath, bundlePath } = {}) {
+export async function packPluginSource(pluginDir, { zipPath, bundlePath, nodeDir } = {}) {
   const manifest = readJson(path.join(pluginDir, "plugin.json"))
   const entries = {}
 
@@ -131,6 +134,15 @@ export async function packPluginSource(pluginDir, { zipPath, bundlePath } = {}) 
   // dist/bundle.js in the zip so a stale local dist/ is never picked up.
   if (bundlePath && fileExists(bundlePath)) {
     entries["dist/bundle.js"] = new Uint8Array(fs.readFileSync(bundlePath))
+  }
+
+  // Node job artifact: bundled entry + package.json + lockfile, installed into
+  // the execution image. Kept out of the source walk (dist/ is excluded).
+  if (nodeDir && fs.existsSync(nodeDir)) {
+    for (const entry of fs.readdirSync(nodeDir, { withFileTypes: true })) {
+      if (!entry.isFile() || entry.name.startsWith(".")) continue
+      entries[`dist/node/${entry.name}`] = new Uint8Array(fs.readFileSync(path.join(nodeDir, entry.name)))
+    }
   }
 
   const target = zipPath ?? path.join(pluginDir, "dist", `${manifest.slug}.zip`)
@@ -176,6 +188,68 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
   for (const warning of sandbox.warnings) log(`  [sandbox] ${warning}`)
   if (!sandbox.ok) {
     throw new Error(`The plugin bundle does not match the sandbox contract:\n${formatSandboxIssues(sandbox)}`)
+  }
+
+  // ── Node job artifact (optional) ────────────────────────────────────────────
+  const nodeJobs = (manifest.jobs ?? []).filter((job) => job?.runtime === "node")
+  let nodeDir = null
+  let nodeArtifact = null
+  if (nodeJobs.length > 0) {
+    nodeDir = path.join(resolvedOut, "node")
+    fs.mkdirSync(nodeDir, { recursive: true })
+
+    const declared = manifest.dependencies ?? {}
+    const imported = new Set()
+    const jobArtifacts = []
+    for (const job of nodeJobs) {
+      const type = String(job.type)
+      const relative = String(job.entry ?? manifest.entry ?? "./index.js").replace(/^\.\//, "")
+      const file = `${type.replace(/[^a-z0-9_-]/gi, "_")}.cjs`
+      const nodeResult = await build(
+        nodeBuildOptions({
+          pluginDir,
+          entryPoints: [path.join(pluginDir, relative)],
+          outfile: path.join(nodeDir, file),
+          metafile: true,
+        }),
+      )
+      for (const warning of nodeResult.warnings) log(`  [esbuild:node] ${warning.text}`)
+      for (const info of Object.values(nodeResult.metafile?.inputs ?? {})) {
+        for (const record of info.imports ?? []) {
+          if (!record.external) continue
+          const target = String(record.path ?? "")
+          if (target.startsWith(".") || path.isAbsolute(target)) continue
+          const bare = target.replace(/^node:/, "")
+          const name = bare.startsWith("@") ? bare.split("/").slice(0, 2).join("/") : bare.split("/")[0]
+          if (!NODE_BUILTINS.has(name) && name) imported.add(name)
+        }
+      }
+      jobArtifacts.push({ type, file, ...nodeJobLimits(job) })
+    }
+
+    // The execution image installs dependencies from the plugin's package.json
+    // and lockfile, so both must travel with the artifact.
+    const pkgPath = path.join(pluginDir, "package.json")
+    if (fileExists(pkgPath)) fs.copyFileSync(pkgPath, path.join(nodeDir, "package.json"))
+    const lockfile = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock"].find((name) =>
+      fileExists(path.join(pluginDir, name)),
+    )
+    if (lockfile) fs.copyFileSync(path.join(pluginDir, lockfile), path.join(nodeDir, lockfile))
+    else log("  ! Node jobs declared but no lockfile found — the execution image will resolve dependencies fresh")
+
+    const undeclared = [...imported].filter((name) => !(name in declared)).sort()
+    if (undeclared.length > 0) {
+      log(`  ! Node jobs import ${undeclared.join(", ")} but plugin.json does not declare them — add them so the image installs them`)
+    }
+
+    nodeArtifact = {
+      runtime: "node",
+      node: ">=20",
+      jobs: jobArtifacts,
+      dependencies: declared,
+    }
+    fs.writeFileSync(path.join(nodeDir, "artifact.json"), `${JSON.stringify(nodeArtifact, null, 2)}\n`)
+    log(`  node jobs: ${nodeJobs.map((job) => job.type).join(", ")} → dist/node/`)
   }
 
   // ── Dashboard UI (optional) ─────────────────────────────────────────────────
@@ -231,9 +305,10 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
     const packed = await packPluginSource(pluginDir, {
       zipPath: path.join(path.dirname(resolvedOut), `${manifest.slug}.zip`),
       bundlePath,
+      nodeDir,
     })
     zipPath = packed.zipPath
   }
 
-  return { manifest, outDir: resolvedOut, zipPath, sizeKb, sandbox, bundlePath }
+  return { manifest, outDir: resolvedOut, zipPath, sizeKb, sandbox, bundlePath, nodeDir, nodeArtifact }
 }

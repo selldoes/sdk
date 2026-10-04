@@ -158,10 +158,14 @@ Only these capabilities exist, gated by manifest permissions:
 - ctx.files.upload/importFromUrl/list/delete (files:read/files:write)
 - ctx.products.list/get/create/update/findBySku/upsertBySku (products:read/products:write)
 - ctx.realtime.publish/poll (realtime:publish)
+- ctx.secrets.get(name) (secrets:read) — per-install secrets, never bundled or logged
+- ctx.storage.get/set/delete/list (storage:read/storage:write) — plugin+store-scoped JSON
 - ctx.storeId, ctx.config (declared configSchema values), ctx.permissions, ctx.tablePrefix
 No require() of Node builtins, no process/Buffer/fs/fetch at runtime; npm packages are allowed — the bundler inlines anything listed in manifest "dependencies" (registry ranges, max 25). Tables: own tables are plugin_<slug>_* via ensureTable; store tables must be in allowedTables.
 API routes: exports.apiRoutes = { "<path>": { GET(ctx, request) {...}, POST(ctx, request) {...} } } — declared in manifest apiRoutes.
 Jobs are chunked: exports.jobs = { "<type>": { init(input, ctx), step(state, ctx), finalize(state, ctx) } } — step returns { state, progress, done, result }; use ctx.jobs.progress/item/log.
+Node jobs: manifest job { "runtime": "node", "entry": "./server/<name>.js" } runs once in full Node (any npm package, fs, native addons); the entry exports a plain async (input, ctx) => result. Keep Node-only imports out of index.js.
+Schedules: manifest "schedules": [{ name, job, cron, timezone?, input?, enabled? }] enqueues a declared job on a five-field cron (max 10).
 Hooks: exports.hooks = { "<name>": async (payload, ctx) => result }.
 Dashboard UI: manifest ui.entry points at an HTML file under ui/ (plugin-root-relative, e.g. "ui/index.html"); plain JS or a bundled ui/src/index.tsx; it calls /api/plugin-api/<slug>/<route> with storeId/storeSlug query params. Multiple pages: each dashboardPages[] item may declare its own entry ("ui/settings.html" ← ui/src/settings.tsx); pages without an entry fall back to ui.entry. Every plugin should ship a working example UI (the notes app) — never declare ui.entry without the file.
 Dashboard page components (no-code): dashboardPages[].sections renders in the dashboard WITHOUT an iframe. Each item is { "type": "...", "settings": {...} }. Kit types: text {title, body (markdown: **bold**, \`code\`, - lists)}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?} (route is your apiRoutes path; handler returns an array or {rows:[…]}/{items:[…]}), job {job (declared job type), title?, input?, maxTicks?}, settings (renders the configSchema form), logs {lines?}, links {items:[{label,href}]}. Edit sections through manifest edits — keep the page's "entry" as a fallback. Developers often ask to "add a stats row", "show /stats as a table", or "add a job runner button".
