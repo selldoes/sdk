@@ -81,7 +81,7 @@ export function buildChecklist(manifest: PluginManifest, activity: DevActivity, 
       title: "Validate & publish",
       note: validation.errors.length
         ? `${validation.errors.length} error(s) to fix before publishing.`
-        : "Check the commands, bump the version and submit for review.",
+        : "Bump the version and publish for review in one click.",
       to: "/ship",
       done: visits.ship === true && validation.errors.length === 0,
     },

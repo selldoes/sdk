@@ -341,9 +341,16 @@ export async function packagesCommand(args, flags) {
     console.log("  Upload one in the developer portal, or publish from a local project: `selldoes publish`.")
     return
   }
+  const { listProjects } = await import("./workspace.mjs")
+  const localProjects = listProjects()
   console.log(`Packages on ${appUrl}:`)
   for (const plugin of plugins) {
-    console.log(`  • ${plugin.slug} v${plugin.latestVersion}  ${plugin.name}  (${plugin.status}, updated ${String(plugin.updatedAt).slice(0, 10)})`)
+    const local = localProjects.find((project) => project.slug === plugin.slug && !project.missing) ?? null
+    const update = Boolean(local?.version && plugin.latestVersion && local.version !== plugin.latestVersion)
+    const localHint = local
+      ? `  ·  local v${local.version ?? "?"}${update ? ` (update available — selldoes pull ${plugin.slug} --update)` : ""}`
+      : ""
+    console.log(`  • ${plugin.slug} v${plugin.latestVersion}  ${plugin.name}  (${plugin.status}, updated ${String(plugin.updatedAt).slice(0, 10)})${localHint}`)
   }
   console.log("\nKeep developing one: `selldoes pull <slug>`")
 }
@@ -353,6 +360,10 @@ const UNSAFE_SEGMENT = (segment) => segment === ".." || segment === "." || (segm
 /**
  * Downloads a package's stored source into a local project folder and
  * registers it in the workspace. Shared by `selldoes pull` and the launcher.
+ *
+ * `flags.update` refreshes an existing (non-empty) folder in place, keeping
+ * extra local files. A dirty git repo is refused unless `flags.force` — the
+ * same guard the workspace uses for file deletion.
  */
 export async function pullPackage(slug, flags = {}) {
   const cleanSlug = String(slug ?? "").trim()
@@ -365,9 +376,40 @@ export async function pullPackage(slug, flags = {}) {
   const snapshot = await devFetch(appUrl, `/api/developers/plugins/${cleanSlug}/source`, token)
 
   const target = path.resolve(String(flags.dir ?? path.join(defaultProjectsDir(), cleanSlug)))
-  if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
-    throw new Error(`${target} is not empty — pass --dir <path> to pull somewhere else.`)
+  const update = flags.update === true
+  const existing = fs.existsSync(target) && fs.readdirSync(target).length > 0
+
+  if (existing && !update) {
+    throw new Error(
+      `${target} is not empty — pass --update to refresh it from your account, or --dir <path> to pull somewhere else.`,
+    )
   }
+
+  let previousVersion = ""
+  if (existing && update) {
+    const manifestPath = path.join(target, "plugin.json")
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error(`${target} has no plugin.json — not a plugin project; pull somewhere else with --dir.`)
+    }
+    let current
+    try {
+      current = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+    } catch (error) {
+      throw new Error(`Could not read ${manifestPath}: ${error.message}`)
+    }
+    if (String(current.slug ?? "") !== cleanSlug) {
+      throw new Error(`${target} contains "${current.slug ?? "another project"}", not "${cleanSlug}" — pull somewhere else with --dir.`)
+    }
+    previousVersion = String(current.version ?? "")
+    const { gitProbe } = await import("./workspace.mjs")
+    const git = await gitProbe(target)
+    if (git.repo && git.dirty && flags.force !== true) {
+      const error = new Error(`${target} is a git repository with uncommitted changes — commit or stash them, or pass --force.`)
+      error.code = "dirty"
+      throw error
+    }
+  }
+
   fs.mkdirSync(target, { recursive: true })
 
   let written = 0
@@ -385,15 +427,23 @@ export async function pullPackage(slug, flags = {}) {
   const { importProject } = await import("./home.mjs")
   const project = importProject(target, { source: "account" })
   const version = snapshot.plugin?.version ?? pluginMeta.latestVersion ?? ""
-  console.log(`✓ Pulled ${project.name}${version ? ` v${version}` : ""} → ${target}`)
-  console.log(`  ${written} file(s) · registered in your workspace`)
+  const summary = { updated: existing && update, written, version: version || null, previousVersion: previousVersion || null }
+
+  if (existing && update) {
+    const transition = previousVersion && version ? `${previousVersion} → ${version}` : version ? `→ v${version}` : ""
+    console.log(`✓ Updated ${project.name}${transition ? ` ${transition}` : ""} → ${target}`)
+    console.log(`  ${written} file(s) refreshed · extra local files were kept`)
+  } else {
+    console.log(`✓ Pulled ${project.name}${version ? ` v${version}` : ""} → ${target}`)
+    console.log(`  ${written} file(s) · registered in your workspace`)
+  }
   console.log("  Next: `selldoes dev` from anywhere, or `selldoes home`.")
-  return project
+  return { project, summary }
 }
 
 export async function pullCommand(args, flags) {
   const slug = args.find((arg) => !arg.startsWith("-"))
-  if (!slug) die("Usage: selldoes pull <slug> [--dir <path>]")
+  if (!slug) die("Usage: selldoes pull <slug> [--update] [--force] [--dir <path>]")
   await pullPackage(slug, flags)
 }
 

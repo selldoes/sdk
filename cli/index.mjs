@@ -40,6 +40,7 @@ Plugin projects (a directory with plugin.json)
   build                     Bundle the plugin into dist/ (--zip to also write <slug>.zip)
   pack                      Bundle + zip without publishing
   validate                  Validate plugin.json, entries and route declarations
+  bump [patch|minor|major]  Increase plugin.json version (default patch) before a release
   publish                   Build, zip and publish to a SellDesk instance
 
   (dev/build/… run outside a project folder open the workspace: \`dev\`
@@ -58,7 +59,8 @@ Account
                              (a plain sk_… key logs the theme lane in instead)
   packages                   List the packages your developer account owns
   pull <slug>                Download one of your packages and keep developing it
-                             (--dir <path> to choose where it lands)
+                             (--dir <path>; --update refreshes an existing project,
+                             --force allows a dirty git repo)
   delete <slug>              Delete a package's developer workspace copy on the
                              platform (--yes to skip the confirm). Published
                              marketplace artifacts stay — admins manage those
@@ -239,6 +241,7 @@ export async function main() {
       case "build":
       case "pack":
       case "validate":
+      case "bump":
       case "publish":
       case "upload":
       case "apply":
@@ -305,6 +308,32 @@ async function runProjectCommand(command, args, flags) {
     touchProject({ dir: projectDir, kind })
   } catch {
     // workspace state is best-effort — never block a command on it
+  }
+
+  // ── `selldoes bump [patch|minor|major]` — release version helper ─────────
+  if (command === "bump") {
+    const { BUMP_MODES, bumpVersion } = await import("./plugin/version.mjs")
+    const manifestFile = kind === "theme" ? "manifest.json" : "plugin.json"
+    const manifestPath = path.join(projectDir, manifestFile)
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+    const requested = String(args.find((arg) => !arg.startsWith("-")) ?? "patch").toLowerCase()
+    if (!BUMP_MODES.includes(requested)) {
+      die(`Unknown bump "${requested}" — use patch, minor or major`)
+    }
+    const previous = String(manifest.version ?? "")
+    const next = bumpVersion(previous, requested)
+    manifest.version = next
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    // Keep the workspace registry's version fresh for update checks.
+    try {
+      const { touchProject } = await import("./workspace.mjs")
+      touchProject({ dir: projectDir, kind })
+    } catch {
+      // registry is best-effort
+    }
+    console.log(`✓ ${manifest.slug ?? path.basename(projectDir)} ${previous} → ${next} (${manifestFile})`)
+    console.log("  Publish with `selldoes publish`, or use the Ship page in the workspace.")
+    return
   }
 
   if (kind === "theme") {

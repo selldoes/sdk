@@ -39,6 +39,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { dev } from "@/lib/api"
+import { useBusySet } from "@/lib/use-busy"
 import { cn } from "@/lib/utils"
 import type { PluginConfigField, PluginDashboardSection, PluginManifest, SettingsResponse, UiEntriesResponse, Validation } from "@/lib/types"
 import { useDevStream } from "@/lib/use-dev-stream"
@@ -66,7 +67,8 @@ export function DashboardPage() {
 
   // ── UI entry status (which declared pages exist in source + dist) ─────────
   const [entries, setEntries] = React.useState<UiEntriesResponse | null>(null)
-  const [scaffolding, setScaffolding] = React.useState(false)
+  const busy = useBusySet()
+  const { run: runBusy } = busy
   const [frameNonce, setFrameNonce] = React.useState(0)
 
   const loadEntries = React.useCallback(async () => {
@@ -121,28 +123,29 @@ export function DashboardPage() {
   // ── Scaffold the default notes UI (button + in-iframe fallback postMessage) ─
   const scaffold = React.useCallback(
     async (entry?: string) => {
-      setScaffolding(true)
-      try {
-        const result = await dev.scaffoldUi(entry ? { entry } : {})
-        applyManifest(result.manifest, result.validation)
-        if (result.written.length) toast(`Created ${result.written.join(", ")}`, "success")
-        else toast("Notes UI already present — rebuilt", "success")
-        if (result.rebuildError) toast(result.rebuildError, "error")
-        await refresh()
-        await loadEntries()
-        setFrameNonce((nonce) => nonce + 1)
-        const defaultEntry = String(result.manifest.ui?.entry ?? "").replace(/^\.\//, "")
-        const landed = (result.manifest.dashboardPages ?? []).find(
-          (page) => (page.entry ? String(page.entry).replace(/^\.\//, "") : defaultEntry) === result.entry,
-        )
-        if (landed?.path && landed.path !== params.get("page")) setParams({ page: landed.path }, { replace: true })
-      } catch (error) {
-        toast(error instanceof Error ? error.message : String(error), "error")
-      } finally {
-        setScaffolding(false)
-      }
+      // Each scaffold target gets its own busy key so concurrent scaffolds
+      // each keep their own spinner instead of clearing each other.
+      await runBusy(`scaffold:${entry ?? "*"}`, async () => {
+        try {
+          const result = await dev.scaffoldUi(entry ? { entry } : {})
+          applyManifest(result.manifest, result.validation)
+          if (result.written.length) toast(`Created ${result.written.join(", ")}`, "success")
+          else toast("Notes UI already present — rebuilt", "success")
+          if (result.rebuildError) toast(result.rebuildError, "error")
+          await refresh()
+          await loadEntries()
+          setFrameNonce((nonce) => nonce + 1)
+          const defaultEntry = String(result.manifest.ui?.entry ?? "").replace(/^\.\//, "")
+          const landed = (result.manifest.dashboardPages ?? []).find(
+            (page) => (page.entry ? String(page.entry).replace(/^\.\//, "") : defaultEntry) === result.entry,
+          )
+          if (landed?.path && landed.path !== params.get("page")) setParams({ page: landed.path }, { replace: true })
+        } catch (error) {
+          toast(error instanceof Error ? error.message : String(error), "error")
+        }
+      })
     },
-    [applyManifest, loadEntries, params, refresh, setParams, toast],
+    [applyManifest, loadEntries, params, refresh, runBusy, setParams, toast],
   )
 
   // The fallback page inside the iframe posts back to its parent (same-origin).
@@ -159,15 +162,17 @@ export function DashboardPage() {
   }, [manifest.slug, scaffold])
 
   const rebuild = React.useCallback(async () => {
-    try {
-      await dev.rebuild()
-      setFrameNonce((nonce) => nonce + 1)
-      await loadEntries()
-      toast("UI rebuilt", "success")
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    }
-  }, [loadEntries, toast])
+    await runBusy("rebuild", async () => {
+      try {
+        await dev.rebuild()
+        setFrameNonce((nonce) => nonce + 1)
+        await loadEntries()
+        toast("UI rebuilt", "success")
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error), "error")
+      }
+    })
+  }, [loadEntries, runBusy, toast])
 
   // ── Components builder (dashboardPages[].sections) ────────────────────────
   const [builderOpen, setBuilderOpen] = React.useState(false)
@@ -218,8 +223,8 @@ export function DashboardPage() {
           <Callout kind="info">
             Want your own UI instead? Scaffold the default notes example — it wires <code>ui.entry</code>,{" "}
             <code>dashboardPages</code> and a working notes app you can build on.{" "}
-            <Button size="sm" variant="outline" className="ml-1" disabled={scaffolding} onClick={() => void scaffold()}>
-              {scaffolding ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            <Button size="sm" variant="outline" className="ml-1" disabled={busy.isBusy("scaffold:*")} onClick={() => void scaffold()}>
+              {busy.isBusy("scaffold:*") ? <Loader2 className="animate-spin" /> : <Sparkles />}
               Scaffold the notes dashboard UI
             </Button>
           </Callout>
@@ -268,9 +273,9 @@ export function DashboardPage() {
             <p className="mt-0.5 text-[12px]">
               Create the file under <code>ui/</code>, fix <code>plugin.json</code>, or scaffold the default notes example for this page.
             </p>
-            <Button size="sm" className="mt-2" disabled={scaffolding} onClick={() => void scaffold(activePage!.entry!)}>
-              {scaffolding ? <Loader2 className="animate-spin" /> : <Sparkles />}
-              {scaffolding ? "Creating…" : `Create ${activePage!.entry}`}
+            <Button size="sm" className="mt-2" disabled={busy.isBusy(`scaffold:${activePage!.entry!}`)} onClick={() => void scaffold(activePage!.entry!)}>
+              {busy.isBusy(`scaffold:${activePage!.entry!}`) ? <Loader2 className="animate-spin" /> : <Sparkles />}
+              {busy.isBusy(`scaffold:${activePage!.entry!}`) ? "Creating…" : `Create ${activePage!.entry}`}
             </Button>
           </Callout>
         ) : activePage!.entry && activeStatus && activeStatus.sourceExists && !activeStatus.builtExists ? (
@@ -279,8 +284,8 @@ export function DashboardPage() {
               <code>{activePage!.entry}</code> exists in source but is not in the built UI output yet — it should appear after the next
               rebuild.
             </span>
-            <Button size="sm" variant="outline" className="ml-2" disabled={scaffolding} onClick={() => void rebuild()}>
-              <Play />
+            <Button size="sm" variant="outline" className="ml-2" disabled={busy.isBusy("rebuild")} onClick={() => void rebuild()}>
+              {busy.isBusy("rebuild") ? <Loader2 className="animate-spin" /> : <Play />}
               Rebuild
             </Button>
           </Callout>
@@ -380,8 +385,8 @@ export function DashboardPage() {
                       <Sparkles />
                       Add components
                     </Button>
-                    <Button size="sm" variant="outline" disabled={scaffolding} onClick={() => void scaffold()}>
-                      {scaffolding ? <Loader2 className="animate-spin" /> : <Play />}
+                    <Button size="sm" variant="outline" disabled={busy.isBusy("scaffold:*")} onClick={() => void scaffold()}>
+                      {busy.isBusy("scaffold:*") ? <Loader2 className="animate-spin" /> : <Play />}
                       Scaffold the notes UI
                     </Button>
                   </div>

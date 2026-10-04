@@ -251,8 +251,17 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       const slug = String(body.slug ?? "").trim()
       if (!slug) return json(res, 400, { error: "Missing slug" })
       const account = await import("./account.mjs")
-      const project = await account.pullPackage(slug, body.dir ? { dir: String(body.dir) } : {})
-      return json(res, 200, { project })
+      try {
+        const { project, summary } = await account.pullPackage(slug, {
+          ...(body.dir ? { dir: String(body.dir) } : {}),
+          ...(body.update === true ? { update: true } : {}),
+          ...(body.force === true ? { force: true } : {}),
+        })
+        return json(res, 200, { project, summary })
+      } catch (error) {
+        const code = error?.code === "dirty" ? "dirty" : undefined
+        return json(res, code === "dirty" ? 409 : 400, { error: error.message, ...(code ? { code } : {}) })
+      }
     }
 
     if (action === "delete-remote" && method === "POST") {

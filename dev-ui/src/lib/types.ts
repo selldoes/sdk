@@ -307,9 +307,18 @@ export interface DevServerConfig {
   sampleJobs: Record<string, unknown> | null
 }
 
-/** Full /__dev/config payload — assistant + env + dev-server settings. */
+/** How `bump before publish` increases the version. */
+export type BumpMode = "patch" | "minor" | "major"
+
+/** The `publish` section of selldoes.config.json (Ship page defaults). */
+export interface PublishConfig {
+  bump: BumpMode
+}
+
+/** Full /__dev/config payload — assistant + env + dev-server + publish settings. */
 export interface DevConfigResponse extends AssistantConfigResponse {
   server: DevServerConfig
+  publish: PublishConfig
 }
 
 /** Sections accepted by POST /__dev/config (all optional). */
@@ -319,6 +328,51 @@ export interface SaveFileConfigInput {
   ai?: { mockReply?: string | null }
   email?: { disabled?: boolean }
   sampleJobs?: Record<string, unknown> | null
+  publish?: { bump?: BumpMode }
+}
+
+// ─── Ship (version + publish) ────────────────────────────────────────────────
+
+/** Developer-account state for the Ship page (never contains the token). */
+export interface DevAccount {
+  connected: boolean
+  appUrl?: string
+  email?: string
+  name?: string
+  status?: string
+  unreachable?: boolean
+}
+
+export interface VersionBumpResult {
+  ok: boolean
+  unchanged?: boolean
+  previous: string
+  version: string
+  manifest: PluginManifest
+  validation: Validation
+  rebuildError?: string
+}
+
+export interface PublishInput {
+  notes?: string
+  bump?: { enabled: boolean; mode: BumpMode }
+  price?: number
+  currency?: string
+  billingPeriod?: string
+  trialDays?: number
+}
+
+export interface PublishResult {
+  ok: boolean
+  code?: string
+  error?: string
+  violations?: { message?: string }[]
+  errors?: string[]
+  version?: string
+  release?: { slug?: string; version?: string; hash?: string } | null
+  listing?: { slug?: string; status?: string; version?: string; price?: number; currency?: string } | null
+  log?: string[]
+  bumped?: { from: string; to: string } | null
 }
 
 export interface GitFile {

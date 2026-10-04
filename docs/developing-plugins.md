@@ -6,7 +6,7 @@ Everything needed lives in one package — [`selldoes`](https://www.npmjs.com/pa
 |---|---|
 | `selldoes` | Types for `plugin.json`, `PluginContext`, `PluginExports` + `definePlugin()` |
 | `selldoes/theme` | The theme runtime (hooks + components) — see [developing-themes.md](developing-themes.md) |
-| `selldoes` CLI | `create`, `dev`, `build`, `pack`, `validate`, `publish` |
+| `selldoes` CLI | `create`, `dev`, `build`, `pack`, `validate`, `bump`, `publish` |
 
 ## The workspace-first flow
 
@@ -30,9 +30,9 @@ selldoes remove my-plugin          # unregister it (files stay on disk; --delete
 selldoes delete my-plugin          # delete its developer workspace copy on the platform
 ```
 
-`dev`, `build`, `validate` and `publish` work from inside a project exactly as
-before; run them outside one and you land in the workspace instead of an
-error.
+`dev`, `build`, `validate`, `bump` and `publish` work from inside a project
+exactly as before; run them outside one and you land in the workspace instead
+of an error.
 
 ### Create with AI
 
@@ -188,8 +188,8 @@ dashboard:
 | **Hooks** | Fire `hooks[name]` with a payload |
 | **Store data** | Inspect/reset the mock database (`.selldoes-dev/db.json`) |
 | **Email / Realtime** | Calls made through `ctx.email.send` / `ctx.realtime.publish` |
-| **Validate & publish** | Validation errors/warnings and the exact CLI commands per release step |
-| **Settings** | Project identity + accent color, local danger zone (remove from workspace / delete files from disk), the developer account's packages (pull / delete workspace copy), the theme-lane API key, assistant + dev-server config (`selldoes.config.json`), the workspace registry and local danger zone (reset mock data / clear undo snapshots) |
+| **Validate & publish** | One-click release: current version with the predicted bump, a bump-before-publish checkbox (patch/minor/major), release notes and a Publish button that builds, uploads and sends the listing to review through your connected developer account. Validation errors/warnings and the equivalent CLI commands are right there |
+| **Settings** | Project identity + accent color, local danger zone (remove from workspace / delete files from disk), default release bump (patch/minor/major, saved per project), the developer account's packages (pull / update in place / delete workspace copy), the theme-lane API key, assistant + dev-server config (`selldoes.config.json`), the workspace registry and local danger zone (reset mock data / clear undo snapshots) |
 
 Everything the Details editor writes goes through `plugin.json` (backed up to
 `.selldoes-dev/undo/`, restorable from the same page). Screenshots and custom
@@ -384,6 +384,7 @@ production.
 
 ```bash
 selldoes validate
+selldoes bump patch       # patch | minor | major — or skip and bump from the Ship page
 selldoes build            # dist/<slug>/ + bundle.js
 selldoes pack             # dist/<slug>.zip for manual upload
 
@@ -392,11 +393,21 @@ selldoes login --token sk_dev_…
 selldoes publish --price 9.99 --billing monthly   # optional marketplace listing fields
 ```
 
+In the dev shell, **Validate & publish → Publish** does all of it in one click:
+it optionally bumps the version (default patch/minor/major from Settings →
+Releases), builds and zips the plugin, uploads it through the connected
+developer account and sends the listing to `pending` review. The page shows the
+predicted version (`0.4.0 → 0.4.1`) and the platform rejects re-publishing a
+version that already exists, unless the bundle is byte-identical.
+
 Publishing stores the source + bundle in your developer workspace, writes an
 **immutable release** (`releases/<slug>/<version>/`) and upserts the marketplace
-listing as `pending`. Once an admin approves, installed stores see
-**Update available → Update now**. Bump `version` in `plugin.json` for every
-release. To keep developing a published package later: `selldoes pull <slug>`.
+listing as `pending`. Once an admin approves (Admin → Plugins), installed
+stores see **Update available → Update now**. To refresh a local project from
+your account later: `selldoes pull <slug> --update` (asks before touching a
+dirty git repo; `--force` overrides). `selldoes packages` shows which local
+projects are behind, and the Settings page offers the same with an Update
+button.
 
 ## Keeping the CLI up to date
 

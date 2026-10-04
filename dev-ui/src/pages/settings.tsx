@@ -33,8 +33,9 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { dev } from "@/lib/api"
+import { useBusySet } from "@/lib/use-busy"
 import { ACCENTS, ACCENT_NAMES, accentFor, type AccentName } from "@/lib/project-colors"
-import type { DevConfigResponse } from "@/lib/types"
+import type { BumpMode, DevConfigResponse } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
 import { cn, timeAgo } from "@/lib/utils"
 import { ws, projectIconUrl } from "@/lib/ws-api"
@@ -319,15 +320,14 @@ export function SettingsPage() {
     })
   }, [setAssistantPage])
 
-  const run = async (key: string, action: () => Promise<void>, setBusy: (value: string | null) => void) => {
-    setBusy(key)
-    try {
-      await action()
-    } catch (cause) {
-      toast(cause instanceof Error ? cause.message : String(cause), "error")
-    } finally {
-      setBusy(null)
-    }
+  const run = async (key: string, action: () => Promise<void>, busySet: ReturnType<typeof useBusySet>) => {
+    await busySet.run(key, async () => {
+      try {
+        await action()
+      } catch (cause) {
+        toast(cause instanceof Error ? cause.message : String(cause), "error")
+      }
+    })
   }
 
   // ── Dialog state ──────────────────────────────────────────────────────────
@@ -340,16 +340,16 @@ export function SettingsPage() {
     danger?: boolean
     onConfirm: () => Promise<void>
   } | null>(null)
-  const [confirmBusy, setConfirmBusy] = React.useState<string | null>(null)
+  const confirmBusy = useBusySet()
 
   const doConfirm = async () => {
     if (!confirmAction) return
-    await run("confirm", confirmAction.onConfirm, setConfirmBusy)
+    await run("confirm", confirmAction.onConfirm, confirmBusy)
     setConfirmAction(null)
   }
 
   // ── Project card state ────────────────────────────────────────────────────
-  const [projectBusy, setProjectBusy] = React.useState<string | null>(null)
+  const projectBusy = useBusySet()
 
   const setColor = (name: AccentName) => {
     if (!current) return
@@ -360,16 +360,16 @@ export function SettingsPage() {
         await refreshWorkspace()
         toast("Accent color updated", "success")
       },
-      setProjectBusy,
+      projectBusy,
     )
   }
 
-  const quickAction = (key: string, action: () => Promise<void>) => void run(key, action, setProjectBusy)
+  const quickAction = (key: string, action: () => Promise<void>) => void run(key, action, projectBusy)
 
   // ── Dev-server + assistant config ─────────────────────────────────────────
   const [config, setConfig] = React.useState<DevConfigResponse | null>(null)
   const [configError, setConfigError] = React.useState<string | null>(null)
-  const [configBusy, setConfigBusy] = React.useState<string | null>(null)
+  const configBusy = useBusySet()
   const [storeId, setStoreId] = React.useState("")
   const [storeSlug, setStoreSlug] = React.useState("")
   const [storeName, setStoreName] = React.useState("")
@@ -378,6 +378,7 @@ export function SettingsPage() {
   const [mockReply, setMockReply] = React.useState("")
   const [emailDisabled, setEmailDisabled] = React.useState(false)
   const [sampleJobs, setSampleJobs] = React.useState("")
+  const [releaseBump, setReleaseBump] = React.useState<BumpMode>("patch")
   const [provider, setProvider] = React.useState("openrouter")
   const [model, setModel] = React.useState("")
   const [apiKey, setApiKey] = React.useState("")
@@ -401,6 +402,7 @@ export function SettingsPage() {
         setMockReply(server.ai.mockReply ?? "")
         setEmailDisabled(server.email.disabled)
         setSampleJobs(server.sampleJobs ? JSON.stringify(server.sampleJobs, null, 2) : "")
+        setReleaseBump(data.publish?.bump ?? "patch")
         setProvider(data.assistant.provider ?? "openrouter")
         setModel(data.assistant.model ?? "")
         setBaseUrl(data.assistant.baseUrl ?? "")
@@ -451,7 +453,19 @@ export function SettingsPage() {
           toast("Dev-server settings saved", "success")
         }
       },
-      setConfigBusy,
+      configBusy,
+    )
+  }
+
+  const saveRelease = async () => {
+    await run(
+      "release",
+      async () => {
+        const result = await dev.saveFileConfig({ publish: { bump: releaseBump } })
+        setConfig(result)
+        toast("Release settings saved", "success")
+      },
+      configBusy,
     )
   }
 
@@ -470,7 +484,7 @@ export function SettingsPage() {
         setTestResult(null)
         toast("Assistant settings saved — applied immediately", "success")
       },
-      setConfigBusy,
+      configBusy,
     )
   }
 
@@ -489,14 +503,17 @@ export function SettingsPage() {
         const result = await dev.testAssistant()
         setTestResult({ ok: true, message: `Connected — ${result.provider ?? "provider"} · ${result.model ?? "model"}` })
       },
-      setConfigBusy,
+      configBusy,
     )
   }
 
   // ── Remote: developer account + packages ──────────────────────────────────
   const [packages, setPackages] = React.useState<WsPackage[] | null>(null)
   const [packagesError, setPackagesError] = React.useState<string | null>(null)
-  const [packagesBusy, setPackagesBusy] = React.useState<string | null>(null)
+  const packagesBusy = useBusySet()
+  // `run` is a stable reference — depending on the whole busy object would
+  // re-trigger effects (e.g. loadPackages) on every spinner change.
+  const runPackages = packagesBusy.run
   const [packageDetail, setPackageDetail] = React.useState<{ slug: string; detail: WsPackageDetail } | null>(null)
   const [token, setToken] = React.useState("")
   const [appUrl, setAppUrl] = React.useState(workspace?.account?.appUrl ?? "")
@@ -512,18 +529,17 @@ export function SettingsPage() {
   }, [connected, account?.appUrl])
 
   const loadPackages = React.useCallback(async () => {
-    setPackagesBusy("load")
-    setPackagesError(null)
-    try {
-      const result = await ws.packages()
-      setPackages(result.plugins)
-      setAppUrl((previous) => previous || result.appUrl)
-    } catch (cause) {
-      setPackagesError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setPackagesBusy(null)
-    }
-  }, [])
+    await runPackages("load", async () => {
+      setPackagesError(null)
+      try {
+        const result = await ws.packages()
+        setPackages(result.plugins)
+        setAppUrl((previous) => previous || result.appUrl)
+      } catch (cause) {
+        setPackagesError(cause instanceof Error ? cause.message : String(cause))
+      }
+    })
+  }, [runPackages])
 
   React.useEffect(() => {
     if (workspaceMode && connected) void loadPackages()
@@ -538,7 +554,7 @@ export function SettingsPage() {
         await refreshWorkspace()
         toast("Developer account connected", "success")
       },
-      setPackagesBusy,
+      packagesBusy,
     )
 
   const disconnect = () =>
@@ -550,7 +566,7 @@ export function SettingsPage() {
         await refreshWorkspace()
         toast("Developer account disconnected", "success")
       },
-      setPackagesBusy,
+      packagesBusy,
     )
 
   const toggleDetail = (slug: string) => {
@@ -573,12 +589,45 @@ export function SettingsPage() {
         await Promise.all([refreshWorkspace(), refresh()])
         toast(`Pulled ${pkg.name} — now developing it`, "success")
       },
-      setPackagesBusy,
+      packagesBusy,
     )
+
+  /** The registry project that corresponds to an account package, if any. */
+  const projectFor = (pkg: WsPackage): WsProject | null =>
+    workspace?.projects.find((project) => project.kind === "plugin" && project.slug === pkg.slug && !project.missing) ?? null
+
+  const hasUpdate = (pkg: WsPackage): boolean => {
+    const project = projectFor(pkg)
+    return Boolean(project?.version && pkg.latestVersion && project.version !== pkg.latestVersion)
+  }
+
+  /** Pulls the account copy over the local project (dirty git repos ask first). */
+  const updateFromAccount = (pkg: WsPackage) => {
+    const target = projectFor(pkg)
+    void run(
+      `update:${pkg.slug}`,
+      async () => {
+        const runPull = (force: boolean) =>
+          ws.pull(pkg.slug, { update: true, ...(force ? { force: true } : {}), ...(target ? { dir: target.path } : {}) })
+        let response
+        try {
+          response = await runPull(false)
+        } catch (cause) {
+          const error = cause as Error & { code?: string }
+          if (error.code !== "dirty") throw error
+          if (!window.confirm(`${error.message}\n\nUpdate anyway? Files from your account will overwrite local ones.`)) return
+          response = await runPull(true)
+        }
+        await Promise.all([refreshWorkspace(), refresh()])
+        toast(`Updated ${response.project.name}${response.summary?.version ? ` to v${response.summary.version}` : ""}`, "success")
+      },
+      packagesBusy,
+    )
+  }
 
   // ── Theme lane (merchant API key) ─────────────────────────────────────────
   const [theme, setTheme] = React.useState<WsThemeStatus | null>(null)
-  const [themeBusy, setThemeBusy] = React.useState<string | null>(null)
+  const themeBusy = useBusySet()
   const [themeKey, setThemeKey] = React.useState("")
   const [themeBase, setThemeBase] = React.useState("")
   const [themeStore, setThemeStore] = React.useState("")
@@ -608,7 +657,7 @@ export function SettingsPage() {
         setThemeKey("")
         toast("Theme lane connected", "success")
       },
-      setThemeBusy,
+      themeBusy,
     )
 
   const themeDisconnect = () =>
@@ -619,12 +668,12 @@ export function SettingsPage() {
         setTheme({ connected: false, baseUrl: null, defaultStoreSlug: null, apiKeyMasked: null })
         toast("Theme lane disconnected", "success")
       },
-      setThemeBusy,
+      themeBusy,
     )
 
   // ── Workspace registry ────────────────────────────────────────────────────
   const [defaultDir, setDefaultDir] = React.useState(workspace?.defaultDir ?? "")
-  const [registryBusy, setRegistryBusy] = React.useState<string | null>(null)
+  const registryBusy = useBusySet()
 
   React.useEffect(() => {
     if (workspace?.defaultDir) setDefaultDir(workspace.defaultDir)
@@ -638,7 +687,7 @@ export function SettingsPage() {
         await refreshWorkspace()
         toast("Default project directory saved", "success")
       },
-      setRegistryBusy,
+      registryBusy,
     )
 
   const chooseDefaultDir = () =>
@@ -652,7 +701,7 @@ export function SettingsPage() {
         await refreshWorkspace()
         toast("Default project directory saved", "success")
       },
-      setRegistryBusy,
+      registryBusy,
     )
 
   const removeProject = (project: WsProject) =>
@@ -763,7 +812,7 @@ export function SettingsPage() {
                     key={name}
                     type="button"
                     title={name}
-                    disabled={projectBusy !== null}
+                    disabled={projectBusy.anyBusy}
                     onClick={() => setColor(name)}
                     className={cn(
                       "h-5 w-5 rounded-full ring-offset-2 ring-offset-background transition-all hover:scale-110",
@@ -777,7 +826,7 @@ export function SettingsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={projectBusy !== null || current.missing}
+                  disabled={projectBusy.anyBusy || current.missing}
                   onClick={() =>
                     quickAction("open-editor", async () => {
                       const result = await ws.openEditor()
@@ -785,13 +834,13 @@ export function SettingsPage() {
                     })
                   }
                 >
-                  {projectBusy === "open-editor" ? <Loader2 className="animate-spin" /> : <SquarePen />}
+                  {projectBusy.isBusy("open-editor") ? <Loader2 className="animate-spin" /> : <SquarePen />}
                   Open in editor
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={projectBusy !== null || current.missing}
+                  disabled={projectBusy.anyBusy || current.missing}
                   onClick={() =>
                     quickAction("open-terminal", async () => {
                       await ws.openEditor({ terminal: true })
@@ -799,13 +848,13 @@ export function SettingsPage() {
                     })
                   }
                 >
-                  {projectBusy === "open-terminal" ? <Loader2 className="animate-spin" /> : <SquareTerminal />}
+                  {projectBusy.isBusy("open-terminal") ? <Loader2 className="animate-spin" /> : <SquareTerminal />}
                   Terminal
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={projectBusy !== null || current.missing}
+                  disabled={projectBusy.anyBusy || current.missing}
                   onClick={() =>
                     quickAction("restart", async () => {
                       await ws.restart()
@@ -813,7 +862,7 @@ export function SettingsPage() {
                     })
                   }
                 >
-                  {projectBusy === "restart" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                  {projectBusy.isBusy("restart") ? <Loader2 className="animate-spin" /> : <RefreshCw />}
                   Restart preview
                 </Button>
               </div>
@@ -843,6 +892,64 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* ── Releases ────────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Rocket className="h-4 w-4" />
+            Releases
+          </CardTitle>
+          <CardDescription>
+            Default version bump the Ship page proposes when you publish. Saved per project in{" "}
+            <code className="font-mono">selldoes.config.json</code>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {config === null && !configError ? (
+            <SkeletonCard rows={2} className="border-0 bg-transparent p-0" />
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Default bump</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { value: "patch", label: "Patch", hint: "0.4.1 → 0.4.2" },
+                      { value: "minor", label: "Minor", hint: "0.4.1 → 0.5.0" },
+                      { value: "major", label: "Major", hint: "0.4.1 → 1.0.0" },
+                    ] as const
+                  ).map((entry) => (
+                    <button
+                      key={entry.value}
+                      type="button"
+                      disabled={configBusy.anyBusy}
+                      onClick={() => setReleaseBump(entry.value)}
+                      title={entry.hint}
+                      className={cn(
+                        "rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                        releaseBump === entry.value
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      {entry.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10.5px] leading-snug text-muted-foreground">
+                  The Ship page pre-checks “Bump version before publish” with this mode; you can still change it per release. The platform
+                  rejects re-publishing a version that already exists.
+                </p>
+              </div>
+              <Button size="sm" disabled={configBusy.anyBusy} onClick={() => void saveRelease()}>
+                {configBusy.isBusy("release") ? <Loader2 className="animate-spin" /> : <Check />}
+                Save
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* ── Remote: developer account ───────────────────────────────────── */}
       {workspaceMode ? (
         <Card>
@@ -867,8 +974,8 @@ export function SettingsPage() {
                 </p>
               </div>
               {connected ? (
-                <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-[11px]" disabled={packagesBusy !== null} onClick={disconnect}>
-                  {packagesBusy === "disconnect" ? <Loader2 className="animate-spin" /> : <LogOut />}
+                <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-[11px]" disabled={packagesBusy.anyBusy} onClick={disconnect}>
+                  {packagesBusy.isBusy("disconnect") ? <Loader2 className="animate-spin" /> : <LogOut />}
                   Disconnect
                 </Button>
               ) : null}
@@ -904,8 +1011,8 @@ export function SettingsPage() {
                     placeholder="https://selldoes.com"
                     className="h-9 sm:w-56"
                   />
-                  <Button size="sm" className="h-9 shrink-0" disabled={packagesBusy !== null || !token.trim()} onClick={connect}>
-                    {packagesBusy === "connect" ? <Loader2 className="animate-spin" /> : <KeyRound />}
+                  <Button size="sm" className="h-9 shrink-0" disabled={packagesBusy.anyBusy || !token.trim()} onClick={connect}>
+                    {packagesBusy.isBusy("connect") ? <Loader2 className="animate-spin" /> : <KeyRound />}
                     Connect
                   </Button>
                 </div>
@@ -916,7 +1023,7 @@ export function SettingsPage() {
               </div>
             ) : null}
 
-            {connected && packagesBusy === "load" && packages === null ? (
+            {connected && packagesBusy.isBusy("load") && packages === null ? (
               <SkeletonList rows={3} />
             ) : connected && packagesError ? (
               <Callout kind="danger">
@@ -938,20 +1045,39 @@ export function SettingsPage() {
                       <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleDetail(pkg.slug)}>
                         <p className="truncate text-xs font-semibold hover:underline">{pkg.name}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
-                          {pkg.slug} · v{pkg.latestVersion} · {pkg.status}
+                          {pkg.slug} · account v{pkg.latestVersion}
+                          {projectFor(pkg)?.version ? ` · local v${projectFor(pkg)!.version}` : ""} · {pkg.status}
                           {pkg.updatedAt ? ` · updated ${timeAgo(pkg.updatedAt)}` : ""}
                         </p>
                       </button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 shrink-0 px-2 text-xs"
-                        disabled={packagesBusy === `pull:${pkg.slug}`}
-                        onClick={() => pull(pkg)}
-                      >
-                        {packagesBusy === `pull:${pkg.slug}` ? <Loader2 className="animate-spin" /> : <CloudDownload />}
-                        Pull
-                      </Button>
+                      {projectFor(pkg) ? (
+                        <>
+                          {hasUpdate(pkg) ? (
+                            <Badge className="h-7 shrink-0 border-0 bg-amber-100 px-2 text-[10px] text-amber-800">Update available</Badge>
+                          ) : null}
+                          <Button
+                            size="sm"
+                            variant={hasUpdate(pkg) ? "default" : "outline"}
+                            className="h-7 shrink-0 px-2 text-xs"
+                            disabled={packagesBusy.isBusy(`update:${pkg.slug}`)}
+                            onClick={() => updateFromAccount(pkg)}
+                          >
+                            {packagesBusy.isBusy(`update:${pkg.slug}`) ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                            {hasUpdate(pkg) ? "Update" : "Re-pull"}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 shrink-0 px-2 text-xs"
+                          disabled={packagesBusy.isBusy(`pull:${pkg.slug}`)}
+                          onClick={() => pull(pkg)}
+                        >
+                          {packagesBusy.isBusy(`pull:${pkg.slug}`) ? <Loader2 className="animate-spin" /> : <CloudDownload />}
+                          Pull
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -1034,8 +1160,8 @@ export function SettingsPage() {
                       {theme.defaultStoreSlug ? ` · store /${theme.defaultStoreSlug}` : ""}
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" className="h-7 shrink-0 px-2 text-xs" disabled={themeBusy !== null} onClick={themeDisconnect}>
-                    {themeBusy === "theme-disconnect" ? <Loader2 className="animate-spin" /> : <LogOut />}
+                  <Button variant="outline" size="sm" className="h-7 shrink-0 px-2 text-xs" disabled={themeBusy.anyBusy} onClick={themeDisconnect}>
+                    {themeBusy.isBusy("theme-disconnect") ? <Loader2 className="animate-spin" /> : <LogOut />}
                     Disconnect
                   </Button>
                 </div>
@@ -1063,8 +1189,8 @@ export function SettingsPage() {
                     placeholder="store slug"
                     className="h-9 sm:w-36"
                   />
-                  <Button size="sm" className="h-9 shrink-0" disabled={themeBusy !== null || !themeKey.trim()} onClick={themeConnect}>
-                    {themeBusy === "theme-connect" ? <Loader2 className="animate-spin" /> : <KeyRound />}
+                  <Button size="sm" className="h-9 shrink-0" disabled={themeBusy.anyBusy || !themeKey.trim()} onClick={themeConnect}>
+                    {themeBusy.isBusy("theme-connect") ? <Loader2 className="animate-spin" /> : <KeyRound />}
                     Connect
                   </Button>
                 </div>
@@ -1106,7 +1232,7 @@ export function SettingsPage() {
                   <button
                     key={entry.id}
                     type="button"
-                    disabled={configBusy !== null}
+                    disabled={configBusy.anyBusy}
                     onClick={() => setProvider(entry.id)}
                     className={cn(
                       "rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors",
@@ -1128,7 +1254,7 @@ export function SettingsPage() {
                 onChange={(event) => setModel(event.target.value)}
                 placeholder={ASSISTANT_PROVIDERS.find((entry) => entry.id === provider)?.placeholder ?? "model id"}
                 className="h-9 font-mono text-xs"
-                disabled={configBusy !== null}
+                disabled={configBusy.anyBusy}
               />
             </div>
             <div className="space-y-1.5">
@@ -1142,7 +1268,7 @@ export function SettingsPage() {
                 onChange={(event) => setApiKey(event.target.value)}
                 placeholder={config?.assistant.apiKey ? String(config.assistant.apiKey) : "sk-… (leave blank to keep)"}
                 className="h-9 font-mono text-xs"
-                disabled={configBusy !== null || provider === "ollama"}
+                disabled={configBusy.anyBusy || provider === "ollama"}
               />
             </div>
             <div className="space-y-1.5">
@@ -1155,7 +1281,7 @@ export function SettingsPage() {
                 onChange={(event) => setBaseUrl(event.target.value)}
                 placeholder="https://… (proxies, gateways)"
                 className="h-9 font-mono text-xs"
-                disabled={configBusy !== null}
+                disabled={configBusy.anyBusy}
               />
             </div>
           </div>
@@ -1165,12 +1291,12 @@ export function SettingsPage() {
             </Callout>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={configBusy !== null} onClick={() => void saveAssistant()}>
-              {configBusy === "assistant" ? <Loader2 className="animate-spin" /> : <Check />}
+            <Button size="sm" disabled={configBusy.anyBusy} onClick={() => void saveAssistant()}>
+              {configBusy.isBusy("assistant") ? <Loader2 className="animate-spin" /> : <Check />}
               Save
             </Button>
-            <Button size="sm" variant="outline" disabled={configBusy !== null} onClick={() => void testAssistant()}>
-              {configBusy === "assistant-test" ? <Loader2 className="animate-spin" /> : null}
+            <Button size="sm" variant="outline" disabled={configBusy.anyBusy} onClick={() => void testAssistant()}>
+              {configBusy.isBusy("assistant-test") ? <Loader2 className="animate-spin" /> : null}
               Test connection
             </Button>
             {config?.env ? (
@@ -1262,8 +1388,8 @@ export function SettingsPage() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={configBusy !== null} onClick={() => void saveServerConfig()}>
-              {configBusy === "server" ? <Loader2 className="animate-spin" /> : <Check />}
+            <Button size="sm" disabled={configBusy.anyBusy} onClick={() => void saveServerConfig()}>
+              {configBusy.isBusy("server") ? <Loader2 className="animate-spin" /> : <Check />}
               Save dev-server config
             </Button>
             <span className="text-[10.5px] text-muted-foreground">
@@ -1300,18 +1426,18 @@ export function SettingsPage() {
                   placeholder="~/Documents/Selldoes"
                   className="h-9 min-w-[240px] flex-1 font-mono text-xs"
                 />
-                <Button size="sm" className="h-9 shrink-0" disabled={registryBusy !== null} onClick={chooseDefaultDir}>
-                  {registryBusy === "choose-dir" ? <Loader2 className="animate-spin" /> : <FolderOpen />}
+                <Button size="sm" className="h-9 shrink-0" disabled={registryBusy.anyBusy} onClick={chooseDefaultDir}>
+                  {registryBusy.isBusy("choose-dir") ? <Loader2 className="animate-spin" /> : <FolderOpen />}
                   Choose folder
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-9 shrink-0"
-                  disabled={registryBusy !== null || !defaultDir.trim()}
+                  disabled={registryBusy.anyBusy || !defaultDir.trim()}
                   onClick={saveDefaultDir}
                 >
-                  {registryBusy === "default-dir" ? <Loader2 className="animate-spin" /> : null}
+                  {registryBusy.isBusy("default-dir") ? <Loader2 className="animate-spin" /> : null}
                   Save path
                 </Button>
               </div>
@@ -1357,7 +1483,7 @@ export function SettingsPage() {
                           size="sm"
                           variant="ghost"
                           className="h-7 px-2 text-[11px]"
-                          disabled={registryBusy !== null}
+                          disabled={registryBusy.anyBusy}
                           title={project.kind === "theme" ? "Themes preview against a real store" : undefined}
                           onClick={() => {
                             if (project.kind === "theme") {
@@ -1371,21 +1497,21 @@ export function SettingsPage() {
                                 await Promise.all([refreshWorkspace(), refresh()])
                                 toast(`Switched to ${project.name}`, "success")
                               },
-                              setRegistryBusy,
+                              registryBusy,
                             )
                           }}
                         >
                           Open
                         </Button>
                       ) : null}
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-muted-foreground" disabled={registryBusy !== null} onClick={() => removeProject(project)}>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-muted-foreground" disabled={registryBusy.anyBusy} onClick={() => removeProject(project)}>
                         Remove
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-[11px] text-destructive"
-                        disabled={registryBusy !== null || project.missing}
+                        disabled={registryBusy.anyBusy || project.missing}
                         onClick={() => setDeleteFilesFor(project)}
                       >
                         <Trash2 className="h-3 w-3" />
@@ -1402,7 +1528,7 @@ export function SettingsPage() {
                 <p className="text-xs font-semibold text-destructive">Clear the whole registry</p>
                 <p className="text-[11px] text-muted-foreground">Unregisters every project — folders stay on disk. Running previews stop.</p>
               </div>
-              <Button size="sm" variant="outline" className="shrink-0 text-destructive" disabled={registryBusy !== null || (workspace?.projects.length ?? 0) === 0} onClick={clearRegistry}>
+              <Button size="sm" variant="outline" className="shrink-0 text-destructive" disabled={registryBusy.anyBusy || (workspace?.projects.length ?? 0) === 0} onClick={clearRegistry}>
                 Clear registry
               </Button>
             </div>
@@ -1461,7 +1587,7 @@ export function SettingsPage() {
       />
       <ConfirmDialog
         open={confirmAction !== null}
-        busy={confirmBusy !== null}
+        busy={confirmBusy.anyBusy}
         title={confirmAction?.title ?? ""}
         description={confirmAction?.description ?? ""}
         confirmLabel={confirmAction?.confirmLabel ?? "Confirm"}

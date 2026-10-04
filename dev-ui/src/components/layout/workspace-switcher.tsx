@@ -12,6 +12,7 @@ import { resolveIcon } from "@/components/app-icon"
 import { ACCENTS, accentFor } from "@/lib/project-colors"
 import { cn, timeAgo } from "@/lib/utils"
 import { confirmDiscardChanges } from "@/lib/dirty-guard"
+import { useBusySet } from "@/lib/use-busy"
 import { ws, projectIconUrl } from "@/lib/ws-api"
 import type { WsProject } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
@@ -46,19 +47,18 @@ function ProjectGlyph({
  */
 export function WorkspaceSwitcher() {
   const { workspace, refreshWorkspace, refresh, toast, openWorkspaceDialog, noProject } = useApp()
-  const [busy, setBusy] = React.useState<string | null>(null)
+  const busy = useBusySet()
   const current = workspace?.current ?? null
   const projects = workspace?.projects ?? []
 
   const run = async (key: string, action: () => Promise<void>) => {
-    setBusy(key)
-    try {
-      await action()
-    } catch (cause) {
-      toast(cause instanceof Error ? cause.message : String(cause), "error")
-    } finally {
-      setBusy(null)
-    }
+    await busy.run(key, async () => {
+      try {
+        await action()
+      } catch (cause) {
+        toast(cause instanceof Error ? cause.message : String(cause), "error")
+      }
+    })
   }
 
   const select = (project: WsProject) => {
@@ -81,7 +81,7 @@ export function WorkspaceSwitcher() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={busy !== null}
+          disabled={busy.anyBusy}
           title={
             current
               ? `${current.project.path}${workspace?.sdk.dev ? " · SDK-dev mode" : ""}`
@@ -115,7 +115,7 @@ export function WorkspaceSwitcher() {
             return (
               <DropdownMenuItem
                 key={project.id}
-                disabled={busy !== null || project.missing}
+                disabled={busy.anyBusy || project.missing}
                 onSelect={() => void select(project)}
                 className="gap-2.5 px-2 py-2"
               >

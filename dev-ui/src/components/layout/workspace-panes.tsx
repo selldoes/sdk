@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ws } from "@/lib/ws-api"
-import type { WsBootstrap, WsPackage } from "@/lib/ws-api"
+import type { WsBootstrap, WsPackage, WsProject } from "@/lib/ws-api"
 
 /**
  * Import pane of the New-workspace dialog: point the workspace at a folder
@@ -58,14 +58,17 @@ export function ImportPane({
  * as `selldoes login`, saved to ~/.selldoes.json after verification.
  */
 export function PullPane({
-  busyKey,
+  busyKeys,
   onPull,
   account,
+  projects,
   onAccountChange,
 }: {
-  busyKey: string | null
-  onPull: (pkg: WsPackage) => void
+  busyKeys: ReadonlySet<string>
+  onPull: (pkg: WsPackage, options?: { update?: boolean }) => void
   account?: WsBootstrap["account"]
+  /** Registry projects, used to offer "Update" for packages already in the workspace. */
+  projects?: WsProject[]
   /** Re-fetch workspace bootstrap after connect/disconnect (refreshes the account card). */
   onAccountChange?: () => Promise<void>
 }) {
@@ -211,29 +214,51 @@ export function PullPane({
         </div>
       ) : connected && packages && packages.length > 0 ? (
         <div className="space-y-1.5">
-          {packages.map((pkg) => (
-            <div key={pkg.slug} className="flex items-center gap-2.5 rounded-lg border border-border px-2.5 py-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                <Package className="h-3.5 w-3.5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold">{pkg.name}</p>
-                <p className="truncate text-[10.5px] text-muted-foreground">
-                  {pkg.slug} · v{pkg.latestVersion} · {pkg.status}
-                </p>
+          {packages.map((pkg) => {
+            const local =
+              projects?.find((project) => project.kind === "plugin" && project.slug === pkg.slug && !project.missing) ?? null
+            const update = Boolean(local?.version && pkg.latestVersion && local.version !== pkg.latestVersion)
+            return (
+              <div key={pkg.slug} className="flex items-center gap-2.5 rounded-lg border border-border px-2.5 py-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                  <Package className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold">{pkg.name}</p>
+                  <p className="truncate text-[10.5px] text-muted-foreground">
+                    {pkg.slug} · account v{pkg.latestVersion}
+                    {local?.version ? ` · local v${local.version}` : ""} · {pkg.status}
+                  </p>
+                </div>
+                {update ? (
+                  <Badge className="shrink-0 border-0 bg-amber-100 text-[9px] text-amber-800">update</Badge>
+                ) : null}
+                {local ? (
+                  <Button
+                    size="sm"
+                    variant={update ? "default" : "outline"}
+                    className="h-7 shrink-0 px-2 text-xs"
+                    disabled={busyKeys.has(`update:${pkg.slug}`)}
+                    onClick={() => onPull(pkg, { update: true })}
+                  >
+                    {busyKeys.has(`update:${pkg.slug}`) ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                    {update ? "Update" : "Re-pull"}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 px-2 text-xs"
+                    disabled={busyKeys.has(`pull:${pkg.slug}`)}
+                    onClick={() => onPull(pkg)}
+                  >
+                    {busyKeys.has(`pull:${pkg.slug}`) ? <Loader2 className="animate-spin" /> : null}
+                    Pull
+                  </Button>
+                )}
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 shrink-0 px-2 text-xs"
-                disabled={busyKey === `pull:${pkg.slug}`}
-                onClick={() => onPull(pkg)}
-              >
-                {busyKey === `pull:${pkg.slug}` ? <Loader2 className="animate-spin" /> : null}
-                Pull
-              </Button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       ) : connected ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">

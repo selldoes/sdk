@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Callout, EmptyState, PageHead } from "@/components/shared"
 import { dev } from "@/lib/api"
+import { useBusySet } from "@/lib/use-busy"
 import { useVisit } from "@/lib/use-visit"
 import { useApp } from "@/state/app"
 import type { NpmSearchResult, PackageInfo, PackageStatus, PackagesResponse } from "@/lib/types"
@@ -33,7 +34,9 @@ export function PackagesPage() {
   useVisit("packages")
   const [data, setData] = React.useState<PackagesResponse | null>(null)
   const [loading, setLoading] = React.useState(true)
-  const [busy, setBusy] = React.useState<string | null>(null)
+  // Per-key busy set: each Add/Remove/Recheck keeps its own spinner while
+  // other operations are still in flight.
+  const busy = useBusySet()
   const [query, setQuery] = React.useState("")
   const [results, setResults] = React.useState<NpmSearchResult[]>([])
   const [searching, setSearching] = React.useState(false)
@@ -82,45 +85,39 @@ export function PackagesPage() {
     return () => clearTimeout(timer)
   }, [query])
 
-  const add = async (name: string, range?: string) => {
-    setBusy(name)
-    try {
-      const response = await dev.addPackage(name, range)
-      setData(response)
-      toast(`${name} added`, "success")
-      if (response.rebuildError) toast(response.rebuildError, "error")
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    } finally {
-      setBusy(null)
-    }
-  }
+  const add = (name: string, range?: string) =>
+    busy.run(name, async () => {
+      try {
+        const response = await dev.addPackage(name, range)
+        setData(response)
+        toast(`${name} added`, "success")
+        if (response.rebuildError) toast(response.rebuildError, "error")
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error), "error")
+      }
+    })
 
-  const remove = async (name: string) => {
-    setBusy(name)
-    try {
-      const response = await dev.removePackage(name)
-      setData(response)
-      toast(`${name} removed`, "success")
-      if (response.rebuildError) toast(response.rebuildError, "error")
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    } finally {
-      setBusy(null)
-    }
-  }
+  const remove = (name: string) =>
+    busy.run(name, async () => {
+      try {
+        const response = await dev.removePackage(name)
+        setData(response)
+        toast(`${name} removed`, "success")
+        if (response.rebuildError) toast(response.rebuildError, "error")
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error), "error")
+      }
+    })
 
-  const recheck = async () => {
-    setBusy("*")
-    try {
-      setData(await dev.checkPackages())
-      toast("Package checks refreshed", "success")
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    } finally {
-      setBusy(null)
-    }
-  }
+  const recheck = () =>
+    busy.run("*", async () => {
+      try {
+        setData(await dev.checkPackages())
+        toast("Package checks refreshed", "success")
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error), "error")
+      }
+    })
 
   const rows: PackageInfo[] = React.useMemo(() => {
     const missing: PackageInfo[] = (data?.missing ?? []).map((name) => ({
@@ -183,8 +180,8 @@ export function PackagesPage() {
                       </div>
                       {result.description ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{result.description}</p> : null}
                     </div>
-                    <Button size="sm" variant={added ? "outline" : "default"} disabled={added || busy === result.name} onClick={() => void add(result.name)}>
-                      {busy === result.name ? <Loader2 className="animate-spin" /> : null}
+                    <Button size="sm" variant={added ? "outline" : "default"} disabled={added || busy.isBusy(result.name)} onClick={() => void add(result.name)}>
+                      {busy.isBusy(result.name) ? <Loader2 className="animate-spin" /> : null}
                       {added ? "Added" : "Add"}
                     </Button>
                   </div>
@@ -204,8 +201,8 @@ export function PackagesPage() {
               {sandbox && !sandbox.ok ? ` · ${sandbox.errors.length} build problem(s)` : ""}
             </CardDescription>
           </div>
-          <Button size="sm" variant="outline" disabled={busy === "*"} onClick={() => void recheck()}>
-            {busy === "*" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          <Button size="sm" variant="outline" disabled={busy.isBusy("*")} onClick={() => void recheck()}>
+            {busy.isBusy("*") ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Recheck
           </Button>
         </CardHeader>
@@ -235,13 +232,13 @@ export function PackagesPage() {
                     <p className="mt-0.5 text-xs text-muted-foreground">{row.message}</p>
                   </div>
                   {row.declared ? (
-                    <Button size="sm" variant="outline" disabled={busy === row.name} onClick={() => void remove(row.name)}>
-                      {busy === row.name ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                    <Button size="sm" variant="outline" disabled={busy.isBusy(row.name)} onClick={() => void remove(row.name)}>
+                      {busy.isBusy(row.name) ? <Loader2 className="animate-spin" /> : <Trash2 />}
                       Remove
                     </Button>
                   ) : (
-                    <Button size="sm" disabled={busy === row.name} onClick={() => void add(row.name, row.range)}>
-                      {busy === row.name ? <Loader2 className="animate-spin" /> : <Package />}
+                    <Button size="sm" disabled={busy.isBusy(row.name)} onClick={() => void add(row.name, row.range)}>
+                      {busy.isBusy(row.name) ? <Loader2 className="animate-spin" /> : <Package />}
                       Add
                     </Button>
                   )}

@@ -4,6 +4,8 @@ import type {
   AssistantChatResult,
   AssistantEdits,
   Bootstrap,
+  BumpMode,
+  DevAccount,
   DevConfigResponse,
   DevStatus,
   FileRead,
@@ -12,6 +14,8 @@ import type {
   GitCommit,
   GitStatus,
   PluginManifest,
+  PublishInput,
+  PublishResult,
   PackagesResponse,
   NpmSearchResult,
   SaveFileConfigInput,
@@ -22,6 +26,7 @@ import type {
   ScaffoldUiResult,
   UiEntriesResponse,
   Validation,
+  VersionBumpResult,
 } from "./types"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -29,8 +34,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
     const message = (body as { error?: string }).error || `Request failed (${response.status})`
-    const error = new Error(message) as Error & { code?: string }
+    const error = new Error(message) as Error & { code?: string; body?: unknown }
     error.code = (body as { code?: string }).code
+    error.body = body
     throw error
   }
   return body as T
@@ -51,6 +57,15 @@ export const dev = {
   saveManifest: (manifest: PluginManifest) =>
     post<{ ok: boolean; manifest: PluginManifest; validation: Validation }>("/__dev/manifest", { manifest }),
   undoManifest: () => post<{ ok: boolean; manifest: PluginManifest | null }>("/__dev/manifest/undo", {}),
+  /** Bumps plugin.json version — mode for patch/minor/major, or an explicit version. */
+  version: (input: { mode?: BumpMode; version?: string } = {}) => post<VersionBumpResult>("/__dev/version", input),
+  /** Builds, zips and publishes through the connected developer account. */
+  publish: (input: PublishInput = {}) => post<PublishResult>("/__dev/publish", input),
+  /** Developer-account state from ~/.selldoes.json (standalone dev server). */
+  account: () => request<DevAccount>("/__dev/account"),
+  connectAccount: (token: string, appUrl?: string) =>
+    post<DevAccount>("/__dev/account/connect", { token, ...(appUrl ? { appUrl } : {}) }),
+  disconnectAccount: () => post<{ connected: false; had: boolean }>("/__dev/account/disconnect", {}),
   uploadAsset: (input: { folder: "assets" | "screenshots"; name: string; data: string }) =>
     post<{ path: string; url: string }>("/__dev/assets", input),
   deleteAsset: (path: string) => post<{ ok: boolean }>("/__dev/assets/delete", { path }),

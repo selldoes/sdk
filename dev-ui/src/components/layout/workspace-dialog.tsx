@@ -32,6 +32,7 @@ import { ACCENTS, ACCENT_NAMES, type AccentName } from "@/lib/project-colors"
 import { ICON_ACCEPT, ICON_GUIDE, prepareIconFile, type PreparedIcon } from "@/lib/icon-upload"
 import { cn } from "@/lib/utils"
 import { confirmDiscardChanges } from "@/lib/dirty-guard"
+import { useBusySet } from "@/lib/use-busy"
 import { ws } from "@/lib/ws-api"
 import type { WsPackage } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
@@ -146,7 +147,7 @@ export function WorkspaceDialog() {
 
   const [pane, setPane] = React.useState(workspaceDialogPane)
   const [step, setStep] = React.useState(0)
-  const [busy, setBusy] = React.useState<string | null>(null)
+  const busy = useBusySet()
 
   // Create draft
   const [approach, setApproach] = React.useState<"template" | "ai">("template")
@@ -175,7 +176,7 @@ export function WorkspaceDialog() {
     if (!workspaceDialogOpen) return
     setPane(workspaceDialogPane)
     setStep(0)
-    setBusy(null)
+    busy.clear()
     setApproach("template")
     setTemplateId("starter")
     setWithUi(true)
@@ -197,14 +198,13 @@ export function WorkspaceDialog() {
   }, [workspaceDialogOpen, workspaceDialogPane])
 
   const run = async (key: string, action: () => Promise<void>) => {
-    setBusy(key)
-    try {
-      await action()
-    } catch (cause) {
-      toast(cause instanceof Error ? cause.message : String(cause), "error")
-    } finally {
-      setBusy(null)
-    }
+    await busy.run(key, async () => {
+      try {
+        await action()
+      } catch (cause) {
+        toast(cause instanceof Error ? cause.message : String(cause), "error")
+      }
+    })
   }
 
   const chooseTemplate = (entry: StarterTemplate) => {
@@ -317,14 +317,37 @@ export function WorkspaceDialog() {
     })
   }
 
-  const doPull = (pkg: WsPackage) => {
+  const doPull = (pkg: WsPackage, options: { update?: boolean } = {}) => {
     if (!confirmDiscardChanges()) return
-    return run(`pull:${pkg.slug}`, async () => {
-      const { project } = await ws.pull(pkg.slug)
-      await ws.select(project.id)
+    const key = options.update ? `update:${pkg.slug}` : `pull:${pkg.slug}`
+    return run(key, async () => {
+      const local =
+        workspace?.projects.find((project) => project.kind === "plugin" && project.slug === pkg.slug && !project.missing) ?? null
+      const runPull = (force: boolean) =>
+        ws.pull(pkg.slug, {
+          ...(options.update ? { update: true } : {}),
+          ...(force ? { force: true } : {}),
+          ...(local ? { dir: local.path } : {}),
+        })
+      let response
+      try {
+        response = await runPull(false)
+      } catch (cause) {
+        const error = cause as Error & { code?: string }
+        if (error.code !== "dirty" || !options.update) throw error
+        if (!window.confirm(`${error.message}\n\nUpdate anyway? Files from your account will overwrite local ones.`)) return
+        response = await runPull(true)
+      }
+      const { project, summary } = response
+      if (!options.update) await ws.select(project.id)
       await Promise.all([refreshWorkspace(), refresh()])
       setWorkspaceDialogOpen(false)
-      toast(`Pulled ${project.name} → ${project.path}`, "success")
+      toast(
+        options.update
+          ? `Updated ${project.name}${summary?.version ? ` → v${summary.version}` : ""}`
+          : `Pulled ${project.name} → ${project.path}`,
+        "success",
+      )
     })
   }
 
@@ -447,9 +470,15 @@ export function WorkspaceDialog() {
 
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
             {pane === "import" ? (
-              <ImportPane busy={busy === "import"} onImport={doImport} />
+              <ImportPane busy={busy.isBusy("import")} onImport={doImport} />
             ) : pane === "pull" ? (
-              <PullPane busyKey={busy} onPull={doPull} account={workspace?.account} onAccountChange={refreshWorkspace} />
+              <PullPane
+                busyKeys={busy.busy}
+                onPull={doPull}
+                account={workspace?.account}
+                projects={workspace?.projects}
+                onAccountChange={refreshWorkspace}
+              />
             ) : step === 0 ? (
               <StepStart
                 approach={approach}
@@ -517,7 +546,7 @@ export function WorkspaceDialog() {
           <p className="min-w-0 truncate text-[10.5px] text-muted-foreground">{footerHint}</p>
           <div className="flex shrink-0 items-center gap-2">
             {pane === "new" && step > 0 ? (
-              <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => setStep(step - 1)}>
+              <Button variant="outline" size="sm" disabled={busy.anyBusy} onClick={() => setStep(step - 1)}>
                 <ArrowLeft />
                 Back
               </Button>
@@ -529,8 +558,8 @@ export function WorkspaceDialog() {
                   <ArrowRight />
                 </Button>
               ) : (
-                <Button size="sm" disabled={!stepValid || busy !== null} onClick={() => void doCreate()}>
-                  {busy === "create" || busy === "create-ai" ? <Loader2 className="animate-spin" /> : <Rocket />}
+                <Button size="sm" disabled={!stepValid || busy.anyBusy} onClick={() => void doCreate()}>
+                  {busy.isBusy("create") || busy.isBusy("create-ai") ? <Loader2 className="animate-spin" /> : <Rocket />}
                   Create workspace
                 </Button>
               )

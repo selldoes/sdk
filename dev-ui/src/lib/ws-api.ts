@@ -7,6 +7,8 @@ export interface WsProject {
   slug: string
   path: string
   source?: string
+  /** Plugin/theme version from the manifest, when present. */
+  version?: string
   /** Built-in icon name from the project manifest, when present. */
   icon?: string
   /** Uploaded custom icon path from the manifest (e.g. "assets/icon.png"). */
@@ -58,6 +60,14 @@ export interface WsPackage {
   updatedAt?: string
 }
 
+/** Result of a pull/update from the developer account (`/__ws/pull`). */
+export interface PullSummary {
+  updated: boolean
+  written: number
+  version: string | null
+  previousVersion: string | null
+}
+
 /** Per-package detail from GET /__ws/package/<slug> (plugin + releases + listing). */
 export interface WsPackageDetail {
   plugin: {
@@ -87,7 +97,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
     const message = (body as { error?: string }).error || `Request failed (${response.status})`
-    throw new Error(message)
+    const error = new Error(message) as Error & { code?: string }
+    error.code = (body as { code?: string }).code
+    throw error
   }
   return body as T
 }
@@ -147,7 +159,8 @@ export const ws = {
       ...(appUrl ? { appUrl } : {}),
     }),
   disconnect: () => post<{ connected: false }>("/__ws/disconnect"),
-  pull: (slug: string, dir?: string) => post<{ project: WsProject }>("/__ws/pull", { slug, dir }),
+  pull: (slug: string, options: { dir?: string; update?: boolean; force?: boolean } = {}) =>
+    post<{ project: WsProject; summary?: PullSummary }>("/__ws/pull", { slug, ...options }),
   deleteRemote: (slug: string) =>
     post<{ ok: boolean; slug: string; appUrl: string }>("/__ws/delete-remote", { slug, confirm: true }),
   package: (slug: string) => request<WsPackageDetail>(`/__ws/package/${encodeURIComponent(slug)}`),

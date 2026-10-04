@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@atlaskit/platform-feature-flags": "^2.2.1",
     "cheerio": "^1.2.0",
-    "flags": "^4.3.1",
-    "html-json": "^1.0.2"
+    "json-schema-traverse": "^1.0.0",
+    "strip-json-comments": "^5.0.3"
   }
 }

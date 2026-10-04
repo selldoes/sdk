@@ -295,20 +295,38 @@ export async function homeCommand(args, flags = {}, opts = {}) {
           prompts.log.info(`No packages on ${appUrl} yet — publish one with \`selldoes publish\`.`)
           continue
         }
+        const localProjects = listProjects()
         const pick = await prompts.select({
           message: `Your packages on ${appUrl} — pull one to keep developing`,
           options: [
-            ...plugins.map((plugin) => ({
-              value: plugin.slug,
-              label: `${plugin.name}`,
-              hint: `${plugin.slug} · v${plugin.latestVersion} · ${plugin.status}`,
-            })),
+            ...plugins.map((plugin) => {
+              const local = localProjects.find((project) => project.slug === plugin.slug && !project.missing) ?? null
+              const update = Boolean(local?.version && plugin.latestVersion && local.version !== plugin.latestVersion)
+              const localHint = local?.version ? ` · local v${local.version}${update ? " — update available" : ""}` : ""
+              return {
+                value: plugin.slug,
+                label: `${plugin.name}${update ? " ⬆" : ""}`,
+                hint: `${plugin.slug} · account v${plugin.latestVersion}${localHint} · ${plugin.status}`,
+              }
+            }),
             { value: "__back", label: "Back to workspace" },
           ],
         })
         if (prompts.isCancel(pick)) cancel()
         if (String(pick) === "__back") continue
-        const project = await account.pullPackage(String(pick), {})
+        const local = localProjects.find((project) => project.slug === String(pick) && !project.missing) ?? null
+        let pulled
+        try {
+          pulled = local
+            ? await account.pullPackage(String(pick), { dir: local.path, update: true })
+            : await account.pullPackage(String(pick), {})
+        } catch (error) {
+          if (!local || error?.code !== "dirty") throw error
+          const proceed = await prompts.confirm({ message: `${error.message} Update anyway?`, initialValue: false })
+          if (prompts.isCancel(proceed) || !proceed) continue
+          pulled = await account.pullPackage(String(pick), { dir: local.path, update: true, force: true })
+        }
+        const { project } = pulled
         const openNow = await prompts.confirm({ message: "Open it now?", initialValue: true })
         if (prompts.isCancel(openNow)) cancel()
         if (openNow) {

@@ -20,6 +20,7 @@ import { createStream, watchProject } from "./stream.mjs"
 import { attachTerminalServer } from "../../terminal.mjs"
 import { addDependency, detectPackageManager, installedVersion, removeDependency } from "../dependencies.mjs"
 import { probePackage } from "../sandbox.mjs"
+import { BUMP_MODES, bumpVersion, isValidVersion } from "../version.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const UI_DIR = path.join(HERE, "ui-dist")
@@ -128,9 +129,38 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   const buildStatus = { rebuilds: 0, builtAt: new Date().toISOString(), lastError: null, errors: [] }
   /** Package compatibility probes, keyed by `name@version`. */
   const packageProbeCache = new Map()
+  /**
+   * Serializes package mutations (add/remove/check). Concurrent clicks used to
+   * interleave npm installs and plugin.json/package.json writes, corrupting
+   * the manifest and double-rebuilding; now each mutation runs to completion
+   * before the next starts.
+   */
+  let packageMutationChain = Promise.resolve()
+  const withPackageMutationLock = (fn) => {
+    const run = packageMutationChain.then(fn, fn)
+    packageMutationChain = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
+  }
 
   const manifestStore = new ManifestStore({ pluginDir, devDir, log })
   const state = new DevState({ file: path.join(devDir, "state.json") })
+
+  /**
+   * Refreshes the workspace registry after a version bump so the shell's
+   * "update available" comparisons use the new local version immediately.
+   * Best-effort — standalone projects may not be registered yet.
+   */
+  const touchWorkspace = async () => {
+    try {
+      const { touchProject } = await import("../../workspace.mjs")
+      touchProject({ dir: pluginDir, kind: "plugin" })
+    } catch {
+      // registry is best-effort
+    }
+  }
 
   const db = new MockDb({ file: path.join(devDir, "db.json") })
   seedDemoTables(db, storeId)
@@ -239,6 +269,26 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     assistant: assistantSummary(resolveAssistant({ config: readConfig() })),
     snapshots: manifestStore.snapshotCount(),
   })
+
+  /**
+   * Developer-account state for the Ship page in standalone `selldoes dev`
+   * (the workspace shell reads the same credentials through `/__ws/*`).
+   * Never throws — an offline platform reports `unreachable` instead.
+   */
+  const accountInfo = async () => {
+    const account = await import("../../account.mjs")
+    const auth = account.developerAuth({}, account.loadConfig())
+    if (!auth.token) return { connected: false, appUrl: auth.appUrl }
+    try {
+      const me = await fetch(auth.appUrl + "/api/developers/me", {
+        headers: { Authorization: `Bearer ${auth.token}` },
+        signal: AbortSignal.timeout(8000),
+      }).then((response) => response.json())
+      return { connected: true, appUrl: auth.appUrl, email: me?.account?.email, name: me?.account?.name, status: me?.account?.status }
+    } catch {
+      return { connected: true, appUrl: auth.appUrl, unreachable: true }
+    }
+  }
 
   /**
    * Packages page payload: declared dependencies, their sandbox rating and the
@@ -353,6 +403,149 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         log(`undo history cleared (${cleared} snapshot(s))`)
         return json(res, 200, { ok: true, cleared })
+      }
+
+      // ── Version bump (Ship page, `selldoes version`) ───────────────────────
+      if (req.method === "POST" && pathname === "/__dev/version") {
+        const body = await readBody(req)
+        const current = manifestStore.read()
+        const explicit = typeof body?.version === "string" && body.version.trim() ? body.version.trim() : null
+        let next
+        try {
+          if (explicit) {
+            if (!isValidVersion(explicit)) throw new Error(`"${explicit}" is not a valid x.y.z version`)
+            next = explicit
+          } else {
+            next = bumpVersion(current.version, String(body?.mode ?? "patch"))
+          }
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+        if (next === current.version) {
+          return json(res, 200, { ok: true, unchanged: true, previous: current.version, version: next, manifest: current, validation: manifestStore.validation() })
+        }
+        const written = manifestStore.write({ ...current, version: next })
+        log(`version bumped ${current.version} → ${next}`)
+        stream.broadcast("snapshots", {})
+        stream.broadcast("files", { paths: ["plugin.json"] })
+        await touchWorkspace()
+        let rebuildError = null
+        try {
+          await rebuildAll()
+        } catch (error) {
+          rebuildError = error.message
+        }
+        return json(res, 200, {
+          ok: true,
+          previous: current.version,
+          version: next,
+          manifest: written.manifest,
+          validation: written.validation,
+          ...(rebuildError ? { rebuildError } : {}),
+        })
+      }
+
+      // ── Publish (one click from the Ship page) ─────────────────────────────
+      if (req.method === "POST" && pathname === "/__dev/publish") {
+        const body = await readBody(req)
+        const account = await import("../../account.mjs")
+        const auth = account.developerAuth({}, account.loadConfig())
+        if (!auth.token) {
+          return json(res, 400, {
+            ok: false,
+            code: "not-connected",
+            error: "Connect a developer account first — Settings → Developer account.",
+          })
+        }
+
+        // Optional version bump: applied before the release zip is built.
+        let bumped = null
+        if (body?.bump && body.bump.enabled === true) {
+          const current = manifestStore.read()
+          try {
+            const next = bumpVersion(current.version, String(body.bump.mode ?? "patch"))
+            manifestStore.write({ ...current, version: next })
+            bumped = { from: current.version, to: next }
+            log(`version bumped ${current.version} → ${next} — publishing`)
+            stream.broadcast("snapshots", {})
+            stream.broadcast("files", { paths: ["plugin.json"] })
+            await touchWorkspace()
+          } catch (error) {
+            return json(res, 400, { ok: false, error: error.message })
+          }
+        }
+
+        const lines = []
+        const collect = (line) => {
+          const text = String(line ?? "")
+          if (!text.trim()) return
+          lines.push(text)
+          log(text)
+        }
+        try {
+          const { publishPlugin } = await import("../publish.mjs")
+          const result = await publishPlugin({
+            pluginDir,
+            appUrl: auth.appUrl,
+            token: auth.token,
+            notes: typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : undefined,
+            price: Number(body?.price ?? 0) || 0,
+            currency: typeof body?.currency === "string" ? body.currency : "USD",
+            billingPeriod: typeof body?.billingPeriod === "string" ? body.billingPeriod : "one_time",
+            trialDays: Number(body?.trialDays ?? 0) || 0,
+            log: collect,
+          })
+          if (!result.ok) {
+            return json(res, 502, {
+              ok: false,
+              error: result.payload?.error ?? `Publish failed (HTTP ${result.status})`,
+              violations: result.payload?.violations ?? [],
+              errors: result.payload?.errors ?? [],
+              log: lines,
+              ...(bumped ? { bumped } : {}),
+            })
+          }
+          const manifest = manifestStore.read()
+          return json(res, 200, {
+            ok: true,
+            version: result.payload?.release?.version ?? manifest.version,
+            release: result.payload?.release ?? null,
+            listing: result.payload?.listing ?? null,
+            log: lines,
+            ...(bumped ? { bumped } : {}),
+          })
+        } catch (error) {
+          return json(res, 500, { ok: false, error: error.message, log: lines, ...(bumped ? { bumped } : {}) })
+        }
+      }
+
+      // ── Developer account (standalone `selldoes dev`; shell uses /__ws/*) ──
+      if (req.method === "GET" && pathname === "/__dev/account") {
+        return json(res, 200, await accountInfo())
+      }
+      if (req.method === "POST" && pathname === "/__dev/account/connect") {
+        const body = await readBody(req)
+        const account = await import("../../account.mjs")
+        try {
+          const result = await account.connectDeveloper(
+            String(body?.token ?? ""),
+            body?.appUrl ? String(body.appUrl) : undefined,
+          )
+          return json(res, 200, {
+            connected: true,
+            appUrl: result.appUrl,
+            email: result.account?.email,
+            name: result.account?.name,
+            status: result.account?.status,
+          })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/account/disconnect") {
+        const account = await import("../../account.mjs")
+        const had = account.disconnectDeveloper()
+        return json(res, 200, { connected: false, had })
       }
 
       // ── Dashboard UI: entry status + one-click notes scaffold ─────────────
@@ -685,6 +878,9 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             email: { disabled: Boolean(fileConfig.email?.disabled) },
             sampleJobs: fileConfig.sampleJobs ?? null,
           },
+          publish: {
+            bump: BUMP_MODES.includes(String(fileConfig.publish?.bump)) ? String(fileConfig.publish.bump) : "patch",
+          },
         }
       }
       if (pathname === "/__dev/config") {
@@ -697,8 +893,15 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           // startup, so the response flags `restartRequired`.
           const body = await readBody(req)
           const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value)
-          if (!isObject(body?.assistant) && !isObject(body?.server) && !isObject(body?.ai) && !isObject(body?.email) && body?.sampleJobs === undefined) {
-            return json(res, 400, { error: "Nothing to save — send assistant, server, ai, email or sampleJobs" })
+          if (
+            !isObject(body?.assistant) &&
+            !isObject(body?.server) &&
+            !isObject(body?.ai) &&
+            !isObject(body?.email) &&
+            !isObject(body?.publish) &&
+            body?.sampleJobs === undefined
+          ) {
+            return json(res, 400, { error: "Nothing to save — send assistant, server, ai, email, publish or sampleJobs" })
           }
           const fileConfig = readConfig()
           const next = { ...fileConfig }
@@ -779,6 +982,18 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             if (JSON.stringify(nextValue ?? null) !== JSON.stringify(fileConfig.sampleJobs ?? null)) restartRequired = true
             if (nextValue) next.sampleJobs = nextValue
             else delete next.sampleJobs
+          }
+
+          if (body.publish !== undefined) {
+            if (!isObject(body.publish)) return json(res, 400, { error: "publish must be an object" })
+            const merged = { ...(fileConfig.publish ?? {}) }
+            if ("bump" in body.publish) {
+              const value = String(body.publish.bump ?? "").trim()
+              if (!BUMP_MODES.includes(value)) return json(res, 400, { error: `publish.bump must be one of ${BUMP_MODES.join(", ")}` })
+              merged.bump = value
+            }
+            if (Object.keys(merged).length > 0) next.publish = merged
+            else delete next.publish
           }
 
           fs.writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`)
@@ -977,8 +1192,10 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
       }
       if (req.method === "POST" && pathname === "/__dev/packages/check") {
-        packageProbeCache.clear()
-        return json(res, 200, await packagesPayload({ refresh: true }))
+        return withPackageMutationLock(async () => {
+          packageProbeCache.clear()
+          return json(res, 200, await packagesPayload({ refresh: true }))
+        })
       }
       if (req.method === "GET" && pathname === "/__dev/packages/search") {
         const query = (url.searchParams.get("q") ?? "").trim()
@@ -1009,45 +1226,49 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         const body = await readBody(req)
         const name = String(body?.name ?? "").trim()
         if (!name) return json(res, 400, { error: "Missing package name" })
-        manifestStore.snapshots.create({ reason: `add package ${name}`, files: ["plugin.json", "package.json"] })
-        try {
-          const result = await addDependency({ pluginDir, name, range: body?.range, log })
-          packageProbeCache.clear()
-          stream.broadcast("files", { paths: ["plugin.json", "package.json"] })
-          stream.broadcast("snapshots", {})
-          log(`package installed: ${result.name}@${result.range} (${result.manager})`)
-          let rebuildError = null
+        return withPackageMutationLock(async () => {
+          manifestStore.snapshots.create({ reason: `add package ${name}`, files: ["plugin.json", "package.json"] })
           try {
-            await rebuildAll()
+            const result = await addDependency({ pluginDir, name, range: body?.range, log })
+            packageProbeCache.clear()
+            stream.broadcast("files", { paths: ["plugin.json", "package.json"] })
+            stream.broadcast("snapshots", {})
+            log(`package installed: ${result.name}@${result.range} (${result.manager})`)
+            let rebuildError = null
+            try {
+              await rebuildAll()
+            } catch (error) {
+              rebuildError = error.message
+            }
+            return json(res, 200, { ok: true, result, ...(rebuildError ? { rebuildError } : {}), ...(await packagesPayload()) })
           } catch (error) {
-            rebuildError = error.message
+            return json(res, 400, { error: error.message })
           }
-          return json(res, 200, { ok: true, result, ...(rebuildError ? { rebuildError } : {}), ...(await packagesPayload()) })
-        } catch (error) {
-          return json(res, 400, { error: error.message })
-        }
+        })
       }
       if (req.method === "POST" && pathname === "/__dev/packages/remove") {
         const body = await readBody(req)
         const name = String(body?.name ?? "").trim()
         if (!name) return json(res, 400, { error: "Missing package name" })
-        manifestStore.snapshots.create({ reason: `remove package ${name}`, files: ["plugin.json", "package.json"] })
-        try {
-          const result = await removeDependency({ pluginDir, name, log })
-          packageProbeCache.clear()
-          stream.broadcast("files", { paths: ["plugin.json", "package.json"] })
-          stream.broadcast("snapshots", {})
-          log(`package removed: ${result.name} (${result.manager})`)
-          let rebuildError = null
+        return withPackageMutationLock(async () => {
+          manifestStore.snapshots.create({ reason: `remove package ${name}`, files: ["plugin.json", "package.json"] })
           try {
-            await rebuildAll()
+            const result = await removeDependency({ pluginDir, name, log })
+            packageProbeCache.clear()
+            stream.broadcast("files", { paths: ["plugin.json", "package.json"] })
+            stream.broadcast("snapshots", {})
+            log(`package removed: ${result.name} (${result.manager})`)
+            let rebuildError = null
+            try {
+              await rebuildAll()
+            } catch (error) {
+              rebuildError = error.message
+            }
+            return json(res, 200, { ok: true, result, ...(rebuildError ? { rebuildError } : {}), ...(await packagesPayload()) })
           } catch (error) {
-            rebuildError = error.message
+            return json(res, 400, { error: error.message })
           }
-          return json(res, 200, { ok: true, result, ...(rebuildError ? { rebuildError } : {}), ...(await packagesPayload()) })
-        } catch (error) {
-          return json(res, 400, { error: error.message })
-        }
+        })
       }
 
       // ── Existing dev tools ─────────────────────────────────────────────────

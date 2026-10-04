@@ -37,7 +37,7 @@ selldoes open index.js:12            # jump to a file/line in VS Code, Cursor or
 
 | Surface | What it's for |
 |---|---|
-| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding. A **Settings** page manages the project, the registry, connected accounts (developer + theme lanes) and the dev server — including deleting a project locally or its workspace copy remotely |
+| **Dev shell** (`selldoes`, bare → `/preview`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding. A **Settings** page manages the project, the registry, connected accounts (developer + theme lanes), the default release bump and the dev server — including deleting a project locally or its workspace copy remotely. **Validate & publish** bumps the version (patch/minor/major), builds and ships the release to review in one click |
 | **Code + Console** (shell pages) | Monaco editor over the project (SDK types, save → rebuild, git diffs/commit, quick open, search, terminal drawer) and a live log console whose build errors jump to the offending line |
 | **Preview** (proxied per project, spawned on `4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply. The shell proxies to whichever project is selected |
 | **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant, `selldoes open` |
@@ -85,8 +85,9 @@ UI and never touch Vite.
 | `selldoes add <pkg>` | Install an npm package and declare it in `plugin.json` |
 | `selldoes dev` | Preview server for a project (`:4590`, or spawned by the workspace) |
 | `selldoes build` / `pack` / `validate` | Bundle / zip / validate |
+| `selldoes bump [patch\|minor\|major]` | Increase `plugin.json` version (the Ship page can do it as part of publish) |
 | `selldoes publish` | Publish through your developer account (`sk_dev_…`) |
-| `selldoes packages` / `pull <slug>` | List + download the packages your account owns |
+| `selldoes packages` / `pull <slug>` | List + download the packages your account owns (`--update` refreshes an existing project) |
 | `selldoes login` / `whoami` / `logout` | Developer token (`sk_dev_…`) — or a merchant `sk_…` key for themes |
 | `selldoes update` | Check npm and update the CLI (asks first) |
 

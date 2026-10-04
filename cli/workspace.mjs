@@ -84,10 +84,11 @@ export function projectMeta(dir, kind) {
   const base = path.basename(normalizePath(dir))
   const icon = typeof manifest.icon === "string" && manifest.icon ? manifest.icon : undefined
   const iconUrl = typeof manifest.iconUrl === "string" && manifest.iconUrl ? manifest.iconUrl : undefined
+  const version = typeof manifest.version === "string" && manifest.version ? manifest.version : undefined
   if (kind === "theme") {
-    return { name: String(manifest.name ?? base), slug: base, icon, iconUrl }
+    return { name: String(manifest.name ?? base), slug: base, icon, iconUrl, version }
   }
-  return { name: String(manifest.name ?? base), slug: String(manifest.slug ?? base), icon, iconUrl }
+  return { name: String(manifest.name ?? base), slug: String(manifest.slug ?? base), icon, iconUrl, version }
 }
 
 export function loadWorkspace() {
@@ -142,6 +143,8 @@ export function touchProject({ dir, kind, source = "folder", name, slug, color }
     else delete existing.icon
     if (meta.iconUrl) existing.iconUrl = meta.iconUrl
     else delete existing.iconUrl
+    if (meta.version) existing.version = meta.version
+    else delete existing.version
     existing.lastOpenedAt = now
     if (source && source !== "folder") existing.source = source
     if (cleanColor) existing.color = cleanColor
@@ -154,6 +157,7 @@ export function touchProject({ dir, kind, source = "folder", name, slug, color }
       slug: slug ?? meta.slug,
       ...(meta.icon ? { icon: meta.icon } : {}),
       ...(meta.iconUrl ? { iconUrl: meta.iconUrl } : {}),
+      ...(meta.version ? { version: meta.version } : {}),
       path: normalized,
       source,
       createdAt: now,
