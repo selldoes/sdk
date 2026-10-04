@@ -136,6 +136,8 @@ test("buildPlugin: Node jobs emit a dist/node artifact with external packages an
   for (const file of ["scrape.cjs", "artifact.json", "package.json", "package-lock.json"]) {
     assert.ok(fs.existsSync(path.join(nodeDir, file)), `${file} exists`)
   }
+  const artifact = JSON.parse(fs.readFileSync(path.join(nodeDir, "artifact.json"), "utf8"))
+  assert.equal(artifact.schemaVersion, 1)
 
   // The Node bundle keeps npm packages external — the image installs them.
   const entry = fs.readFileSync(path.join(nodeDir, "scrape.cjs"), "utf8")

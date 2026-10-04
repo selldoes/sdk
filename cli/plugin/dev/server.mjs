@@ -20,7 +20,7 @@ import { createStream, watchProject } from "./stream.mjs"
 import { attachTerminalServer } from "../../terminal.mjs"
 import { addDependency, detectPackageManager, installedVersion, removeDependency } from "../dependencies.mjs"
 import { describeSchedules } from "../schedule.mjs"
-import { probePackage } from "../sandbox.mjs"
+import { probeNodePackage, probePackage } from "../sandbox.mjs"
 import { BUMP_MODES, bumpVersion, isValidVersion } from "../version.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -293,31 +293,38 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   }
 
   /**
-   * Packages page payload: declared dependencies, their sandbox rating and the
-   * packages the current bundle actually imports. The ratings run the same
-   * probe the build uses, so the page cannot disagree with `selldoes build`.
+   * Packages page payload: declared dependencies, their runtime rating and the
+   * packages the current bundle actually imports. QuickJS-imported packages run
+   * the sandbox probe; everything else in a plugin with Node jobs is rated
+   * against real Node, so `playwright`/`sharp` are not mislabelled.
    */
   const packagesPayload = async ({ refresh = false } = {}) => {
     const manifest = manifestStore.read()
     const dependencies = manifest.dependencies ?? {}
-    const sandbox = runner.sandbox ?? { ok: true, errors: [], warnings: [], packages: [], missingDependencies: [], sizeKb: 0 }
+    const sandbox = runner.sandbox ?? { ok: true, errors: [], warnings: [], packages: [], imported: [], missingDependencies: [], sizeKb: 0 }
     const bundled = new Set(sandbox.packages ?? [])
+    const importedByQuickJs = new Set(sandbox.imported ?? [])
+    const nodePackages = runner.nodePackages ?? new Set()
+    const hasNodeJobs = runner.hasNodeJobs()
     const declaredNames = Object.keys(dependencies)
     const missing = (sandbox.missingDependencies ?? []).filter((name) => !declaredNames.includes(name))
 
     const rate = async (name) => {
       const installed = installedVersion(pluginDir, name)
-      const base = { name, declared: true, range: dependencies[name], installed, bundled: bundled.has(name) }
+      // The QuickJS gate is the stricter one: if the sandboxed bundle imports
+      // the package it must survive the sandbox. Otherwise a plugin with Node
+      // jobs gets the Node rating.
+      const usedByQuickJs = bundled.has(name) || importedByQuickJs.has(name)
+      const runtime = usedByQuickJs ? "quickjs" : hasNodeJobs || nodePackages.has(name) ? "node" : "quickjs"
+      const base = { name, declared: true, range: dependencies[name], installed, bundled: bundled.has(name), runtime }
       if (!installed) {
         return { ...base, status: "blocked", message: "not installed locally — add it again to install it" }
       }
-      const key = `${name}@${installed}`
+      const key = `${runtime}:${name}@${installed}`
       if (refresh) packageProbeCache.delete(key)
       if (!packageProbeCache.has(key)) {
-        packageProbeCache.set(
-          key,
-          probePackage({ pluginDir, name }).catch((error) => ({ status: "blocked", message: error.message, sizeKb: null })),
-        )
+        const probe = runtime === "node" ? probeNodePackage({ pluginDir, name }) : probePackage({ pluginDir, name })
+        packageProbeCache.set(key, probe.catch((error) => ({ status: "blocked", message: error.message, sizeKb: null })))
       }
       const probe = await packageProbeCache.get(key)
       return { ...base, status: probe.status, message: probe.message, sizeKb: probe.sizeKb ?? null }

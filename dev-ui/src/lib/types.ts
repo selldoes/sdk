@@ -226,6 +226,8 @@ export interface PackageInfo {
   message: string
   sizeKb?: number | null
   bundled: boolean
+  /** Runtime the rating targets: the QuickJS sandbox or a Node job. */
+  runtime?: "quickjs" | "node"
 }
 
 export interface SandboxSummary {

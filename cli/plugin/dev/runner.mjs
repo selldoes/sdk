@@ -3,7 +3,7 @@ import path from "node:path"
 import { createRequire } from "node:module"
 import { build, context } from "esbuild"
 import { readJson } from "../../util.mjs"
-import { checkSandboxBundle, nodeBuildOptions, nodeJobLimits, sandboxBuildOptions } from "../sandbox.mjs"
+import { checkSandboxBundle, collectExternalPackages, nodeBuildOptions, nodeJobLimits, sandboxBuildOptions } from "../sandbox.mjs"
 
 const nodeRequire = createRequire(import.meta.url)
 
@@ -29,6 +29,8 @@ export class PluginRunner {
     this.bundlePath = path.join(devDir, "bundle.cjs")
     this.exports = null
     this.nodeHandlers = new Map()
+    /** npm packages imported by Node job entries (the image installs them). */
+    this.nodePackages = new Set()
     this.watchContext = null
     this.nodeWatchContexts = []
     this.rebuilds = 0
@@ -89,6 +91,7 @@ export class PluginRunner {
       pluginDir: this.pluginDir,
       entryPoints: [job.source],
       outfile: job.outfile,
+      metafile: true,
       extraPlugins,
     })
   }
@@ -114,6 +117,7 @@ export class PluginRunner {
       }
       this.nodeHandlers.set(job.type, handler)
       this.nodeLoadError = null
+      for (const pkg of collectExternalPackages(result.metafile)) this.nodePackages.add(pkg)
     } catch (error) {
       this.nodeLoadError = error instanceof Error ? error.message : String(error)
       this.nodeHandlers.delete(job.type)

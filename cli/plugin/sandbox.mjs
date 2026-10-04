@@ -242,6 +242,26 @@ export function collectExternals(metafile) {
   return [...externals].sort()
 }
 
+/**
+ * npm packages left external in a Node artifact (the image installs them from
+ * package.json). Relative paths and Node builtins are skipped.
+ */
+export function collectExternalPackages(metafile) {
+  const packages = new Set()
+  for (const info of Object.values(metafile?.inputs ?? {})) {
+    for (const imported of info.imports ?? []) {
+      if (!imported.external) continue
+      const target = String(imported.path ?? "")
+      if (target.startsWith(".") || path.isAbsolute(target)) continue
+      const bare = target.replace(/^node:/, "")
+      if (BUILTINS.has(bare) || BLOCKED.has(bare)) continue
+      const name = bare.startsWith("@") ? bare.split("/").slice(0, 2).join("/") : bare.split("/")[0]
+      if (name) packages.add(name)
+    }
+  }
+  return [...packages].sort()
+}
+
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -441,5 +461,24 @@ export async function probePackage({ pluginDir, name }) {
     return { status: "blocked", message: describeBuildError(message), sizeKb: null }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Rates a package against the Node job runtime. The production image runs
+ * `npm ci` from the plugin's lockfile and executes the package in real Node,
+ * so the local check is exactly that: resolve it from the plugin's
+ * `node_modules` and load it once. Never throws.
+ */
+export async function probeNodePackage({ pluginDir, name }) {
+  try {
+    const pluginRequire = createRequire(path.join(pluginDir, "package.json"))
+    const resolved = pluginRequire.resolve(String(name))
+    if (pluginRequire.cache) delete pluginRequire.cache[resolved]
+    pluginRequire(resolved)
+    return { status: "ok", message: "installs and loads in the Node runtime", sizeKb: null, runtime: "node" }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { status: "blocked", message: `Node runtime: ${message.split("\n")[0]}`, sizeKb: null, runtime: "node" }
   }
 }

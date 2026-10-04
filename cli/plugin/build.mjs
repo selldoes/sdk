@@ -1,12 +1,16 @@
 import fs from "node:fs"
 import path from "node:path"
-import { builtinModules } from "node:module"
 import { build } from "esbuild"
 import { zipSync } from "fflate"
 import { fileExists, readJson } from "../util.mjs"
-import { checkSandboxBundle, formatSandboxIssues, nodeBuildOptions, nodeJobLimits, sandboxBuildOptions } from "./sandbox.mjs"
-
-const NODE_BUILTINS = new Set(builtinModules.map((name) => name.replace(/^node:/, "")))
+import {
+  checkSandboxBundle,
+  collectExternalPackages,
+  formatSandboxIssues,
+  nodeBuildOptions,
+  nodeJobLimits,
+  sandboxBuildOptions,
+} from "./sandbox.mjs"
 
 const UI_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"]
 
@@ -214,16 +218,7 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
         }),
       )
       for (const warning of nodeResult.warnings) log(`  [esbuild:node] ${warning.text}`)
-      for (const info of Object.values(nodeResult.metafile?.inputs ?? {})) {
-        for (const record of info.imports ?? []) {
-          if (!record.external) continue
-          const target = String(record.path ?? "")
-          if (target.startsWith(".") || path.isAbsolute(target)) continue
-          const bare = target.replace(/^node:/, "")
-          const name = bare.startsWith("@") ? bare.split("/").slice(0, 2).join("/") : bare.split("/")[0]
-          if (!NODE_BUILTINS.has(name) && name) imported.add(name)
-        }
-      }
+      for (const pkg of collectExternalPackages(nodeResult.metafile)) imported.add(pkg)
       jobArtifacts.push({ type, file, ...nodeJobLimits(job) })
     }
 
@@ -243,6 +238,7 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
     }
 
     nodeArtifact = {
+      schemaVersion: 1,
       runtime: "node",
       node: ">=20",
       jobs: jobArtifacts,

@@ -7,9 +7,11 @@ import { buildPlugin, packPluginSource } from "./build.mjs"
 import {
   collectBundledPackages,
   collectExternals,
+  collectExternalPackages,
   collectImportedPackages,
   describeLoadError,
   evaluateBundle,
+  probeNodePackage,
   probePackage,
   SANDBOX_LIMITS,
 } from "./sandbox.mjs"
@@ -131,6 +133,44 @@ test("probePackage: a package that needs AsyncLocalStorage is blocked with the r
   const probe = await probePackage({ pluginDir: root, name: "fake-async" })
   assert.equal(probe.status, "blocked")
   assert.match(probe.message, /needs the "async_hooks" Node module/)
+})
+
+test("collectExternalPackages: keeps npm names, skips builtins and file paths", () => {
+  const metafile = {
+    inputs: {
+      "server/job.js": {
+        imports: [
+          { path: "playwright", external: true },
+          { path: "@scope/pkg/sub", external: true },
+          { path: "node:fs", external: true },
+          { path: "fs", external: true },
+          { path: "./local.js", external: true },
+          { path: "/abs/file.js", external: true },
+          { path: "events", external: false },
+        ],
+      },
+    },
+  }
+  assert.deepEqual(collectExternalPackages(metafile), ["@scope/pkg", "playwright"])
+})
+
+test("probeNodePackage: packages that need Node builtins work in the Node runtime", async () => {
+  const root = tempPlugin({ ...BASE }, {})
+  writeFakePackage(root, "fake-node", 'const fs = require("node:fs")\nmodule.exports = { read: (file) => fs.readFileSync(file, "utf8") }\n')
+  const quickjs = await probePackage({ pluginDir: root, name: "fake-node" })
+  assert.equal(quickjs.status, "blocked", "the QuickJS probe still refuses it")
+  const node = await probeNodePackage({ pluginDir: root, name: "fake-node" })
+  assert.equal(node.status, "ok")
+  assert.equal(node.runtime, "node")
+  assert.match(node.message, /Node runtime/)
+})
+
+test("probeNodePackage: a package that throws on load is blocked with the reason", async () => {
+  const root = tempPlugin({ ...BASE }, {})
+  writeFakePackage(root, "fake-broken", 'throw new Error("boom at load")\n')
+  const node = await probeNodePackage({ pluginDir: root, name: "fake-broken" })
+  assert.equal(node.status, "blocked")
+  assert.match(node.message, /boom at load/)
 })
 
 test("describeLoadError: maps the common sandbox failures to actionable text", () => {

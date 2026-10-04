@@ -143,11 +143,12 @@ export function PackagesPage() {
       />
 
       <Callout kind="info">
-        Plugins run in a sandbox without filesystem or raw network access. The checker bundles each package the same way
-        <code>selldoes build</code> does, so the badge you see is what happens in production. Packages that need{" "}
-        <code>fs</code>, <code>net</code>, native addons, or a runtime global the sandbox does not carry (
-        <code>navigator</code>, <code>crypto</code>, <code>async_hooks</code>) are refused at build time with the reason
-        — use <code>ctx.db</code>, <code>ctx.http</code> and <code>ctx.files</code>, or a browser-friendly alternative.
+        Plugins run in a sandbox without filesystem or raw network access; jobs with <code>runtime: "node"</code> run in
+        a full Node environment instead. The checker rates each package against the runtime your plugin uses, so{" "}
+        <code>playwright</code> or <code>sharp</code> show as Node packages. QuickJS packages that need <code>fs</code>,{" "}
+        <code>net</code>, native addons, or a runtime global the sandbox does not carry (<code>navigator</code>,{" "}
+        <code>crypto</code>, <code>async_hooks</code>) are refused at build time with the reason — use <code>ctx.db</code>,{" "}
+        <code>ctx.http</code> and <code>ctx.files</code>, or a browser-friendly alternative.
       </Callout>
 
       <Card>
@@ -228,6 +229,11 @@ export function PackagesPage() {
                       {row.installed ? <span className="text-[11px] text-muted-foreground">v{row.installed}</span> : null}
                       {row.range ? <span className="text-[11px] text-muted-foreground">declared {row.range}</span> : null}
                       <StatusBadge status={row.status} />
+                      {row.runtime === "node" ? (
+                        <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
+                          Node
+                        </Badge>
+                      ) : null}
                       {row.sizeKb ? <span className="text-[11px] text-muted-foreground">{row.sizeKb} KB</span> : null}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">{row.message}</p>

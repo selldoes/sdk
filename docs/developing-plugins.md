@@ -393,6 +393,8 @@ module.exports = async (input, ctx) => {
   declare every imported package in `plugin.json` `dependencies`.
 - The preview's **Jobs** tab runs Node jobs in your local Node process — a
   normal `npm install` in the plugin directory is enough to test them.
+- Platform implementers: the artifact and execution contract lives in
+  [node-jobs-runtime.md](node-jobs-runtime.md).
 
 ### Schedules
 
@@ -434,6 +436,11 @@ Keep the plugin-local `package.json` in sync with `npm install` — the CLI
 bundles with the local `node_modules`.
 
 **What the checker means**
+
+Packages imported by the QuickJS entry are rated against the sandbox. Packages
+that only Node jobs use are rated against the **real Node runtime** instead and
+show a violet **Node** chip: the image installs them from your lockfile, so
+native addons, `sharp` and `playwright` are fine there.
 
 | Badge | Meaning |
 |---|---|
