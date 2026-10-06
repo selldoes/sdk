@@ -11,6 +11,128 @@ const PACKAGE = JSON.parse(fs.readFileSync(new URL("../package.json", import.met
 /** Strict-enough semver: x.y.z with an optional -prerelease / +build suffix. */
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/
 
+/**
+ * Starting points shown in `selldoes create` and the workspace's New-workspace
+ * dialog. Each entry is a complete template directory; `dir` picks it under
+ * `templates/`. Keep this list in sync with the templates on disk — the
+ * workspace reads it over the API so the UI can never drift.
+ */
+export const EXAMPLES = {
+  plugin: [
+    {
+      id: "notes",
+      name: "Notes dashboard",
+      desc: "Manifest, entry and a plain-JS dashboard UI wired to a notes API route — the canonical starter.",
+      dir: "plugin",
+      withUi: true,
+    },
+    {
+      id: "react",
+      name: "React dashboard",
+      desc: "The same starter with a TypeScript + React UI, bundled by esbuild on every save.",
+      dir: "plugin",
+      withUi: true,
+      reactUi: true,
+      badge: "runs npm install",
+    },
+    {
+      id: "blank",
+      name: "Blank plugin",
+      desc: "Manifest + entry file only. Add hooks, jobs and a dashboard UI whenever you need them.",
+      dir: "plugin",
+      withUi: false,
+    },
+    {
+      id: "importer",
+      name: "Web / product importer",
+      desc: "Scans a listing page, parses product pages and imports them with chunked jobs, artwork and optional AI copy. A complete scraping pipeline.",
+      dir: "plugin-importer",
+      withUi: true,
+      badge: "jobs + scraping",
+    },
+    {
+      id: "ai-copy",
+      name: "AI product copy",
+      desc: "Walks the catalog and rewrites descriptions and bullet points through the store's AI provider — one product per step.",
+      dir: "plugin-ai-copy",
+      withUi: false,
+      badge: "ctx.ai",
+    },
+    {
+      id: "delivery",
+      name: "Digital delivery",
+      desc: "Adds a delivery section to the storefront's order page: download links, license keys and instructions.",
+      dir: "plugin-delivery",
+      withUi: false,
+      badge: "order page",
+    },
+    {
+      id: "widget",
+      name: "Storefront widget",
+      desc: "A chat bubble on every storefront page that collects visitor messages through a public route into the dashboard.",
+      dir: "plugin-widget",
+      withUi: true,
+      badge: "public routes",
+    },
+  ],
+  theme: [
+    {
+      id: "starter",
+      name: "Starter storefront",
+      desc: "A clean home and product page using the theme hooks and components — the starting point for a custom design.",
+      dir: "theme",
+    },
+    {
+      id: "editorial",
+      name: "Editorial",
+      desc: "Magazine-style landing page: serif headline, featured story and a quiet two-column catalogue.",
+      dir: "theme-editorial",
+    },
+    {
+      id: "bold",
+      name: "Bold drop",
+      desc: "Dark, high-contrast storefront with a promo banner and oversized type — built for sales and drops.",
+      dir: "theme-bold",
+    },
+    {
+      id: "minimal",
+      name: "Minimal",
+      desc: "Quiet type, generous whitespace and a five-column catalogue. The products do the talking.",
+      dir: "theme-minimal",
+    },
+  ],
+}
+
+/** Catalog entries for the create flows: id, name, description, badge, UI. */
+export function listExamples(kind) {
+  const entries = EXAMPLES[kind === "theme" ? "theme" : "plugin"] ?? []
+  return entries.map(({ id, name, desc, badge, withUi, reactUi }) => ({
+    id,
+    name,
+    description: desc,
+    badge: badge ?? null,
+    ui: reactUi ? "react" : withUi ? "js" : "none",
+  }))
+}
+
+/**
+ * Resolves the example a project should start from. An explicit `example` id
+ * wins; otherwise the legacy `withUi` / `uiFlavor` flags pick the pre-example
+ * defaults (blank / notes / react) so old callers keep working.
+ */
+export function resolveExample(kind, example, { withUi = true, uiFlavor = "js" } = {}) {
+  const catalog = EXAMPLES[kind === "theme" ? "theme" : "plugin"]
+  if (example) {
+    const found = catalog.find((entry) => entry.id === example)
+    if (!found) throw new Error(`Unknown ${kind} example "${example}" (available: ${catalog.map((entry) => entry.id).join(", ")})`)
+    return found
+  }
+  if (kind === "theme") return catalog.find((entry) => entry.id === "starter")
+  if (!withUi) return catalog.find((entry) => entry.id === "blank")
+  if (uiFlavor === "react") return catalog.find((entry) => entry.id === "react")
+  return catalog.find((entry) => entry.id === "notes")
+}
+
 function cancel() {
   prompts.cancel("Cancelled")
   process.exit(0)
@@ -59,6 +181,7 @@ export async function scaffoldProject({
   slug: slugOverride,
   name: nameOverride,
   version = "0.1.0",
+  example,
   withUi = true,
   uiFlavor = "js",
   install = false,
@@ -82,7 +205,8 @@ export async function scaffoldProject({
   }
 
   const name = nameOverride ? String(nameOverride).trim() : toTitle(slug)
-  const templateDir = fileURLToPath(new URL(`../templates/${kind}/`, import.meta.url))
+  const spec = resolveExample(kind, example, { withUi, uiFlavor })
+  const templateDir = fileURLToPath(new URL(`../templates/${spec.dir}/`, import.meta.url))
   const replacements = {
     __PLUGIN_SLUG__: slug,
     __PLUGIN_NAME__: name,
@@ -97,7 +221,7 @@ export async function scaffoldProject({
   }
   copyTemplate(templateDir, targetDir, replacements)
 
-  if (kind === "plugin" && withUi && uiFlavor === "react") {
+  if (kind === "plugin" && spec.reactUi) {
     // Swap the plain-JS UI for the React + TypeScript one, and wire up the
     // dependencies esbuild needs to bundle it (ui/src → assets/index.js).
     fs.rmSync(path.join(targetDir, "ui"), { recursive: true, force: true })
@@ -134,7 +258,7 @@ export async function scaffoldProject({
     )
   }
 
-  if (kind === "plugin" && !withUi) {
+  if (kind === "plugin" && !spec.withUi) {
     fs.rmSync(path.join(targetDir, "ui"), { recursive: true, force: true })
   }
 
@@ -143,7 +267,7 @@ export async function scaffoldProject({
     const manifestPath = path.join(targetDir, "plugin.json")
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
     let changed = false
-    if (!withUi) {
+    if (!spec.withUi) {
       delete manifest.ui
       delete manifest.dashboardPages
       changed = true
@@ -193,7 +317,7 @@ export async function scaffoldProject({
     // best-effort
   }
 
-  return { targetDir, slug, name, kind }
+  return { targetDir, slug, name, kind, example: spec.id }
 }
 
 export async function createCommand(args, flags) {
@@ -305,31 +429,26 @@ export async function createCommand(args, flags) {
   }
   if (!SEMVER.test(version)) die(`"${version}" is not a valid version (expected e.g. 0.1.0)`)
 
+  // ── Starting example ────────────────────────────────────────────────────────
+  // `--example <id>` picks one explicitly; otherwise interactive users choose
+  // from the catalog and non-interactive runs fall back to the defaults.
+  let example = typeof flags.example === "string" ? String(flags.example) : null
+  if (!example && interactive && !assumeYes) {
+    const catalog = EXAMPLES[kind === "theme" ? "theme" : "plugin"]
+    const answer = await prompts.select({
+      message: kind === "theme" ? "Start from an example theme" : "Start from an example plugin",
+      options: catalog.map((entry) => ({ value: entry.id, label: entry.name, hint: entry.desc })),
+      initialValue: kind === "theme" ? "starter" : "notes",
+    })
+    if (prompts.isCancel(answer)) cancel()
+    example = String(answer)
+  }
+
   let withUi = true
   let uiFlavor = "js"
   if (kind === "plugin") {
-    if (flags["no-ui"] === true) {
-      withUi = false
-    } else if (typeof flags.ui === "string") {
-      uiFlavor = String(flags.ui).toLowerCase() === "react" ? "react" : "js"
-    } else if (flags.ui === true) {
-      withUi = true
-    } else if (interactive) {
-      const answer = await prompts.confirm({ message: "Add a dashboard UI?", initialValue: true })
-      if (prompts.isCancel(answer)) cancel()
-      withUi = answer
-      if (withUi) {
-        const flavor = await prompts.select({
-          message: "UI style",
-          options: [
-            { value: "js", label: "Plain JS", hint: "no build step — ui/index.html + app.js" },
-            { value: "react", label: "React + TypeScript", hint: "bundled by esbuild, supports npm packages" },
-          ],
-        })
-        if (prompts.isCancel(flavor)) cancel()
-        uiFlavor = String(flavor)
-      }
-    }
+    if (flags["no-ui"] === true) withUi = false
+    else if (typeof flags.ui === "string") uiFlavor = String(flags.ui).toLowerCase() === "react" ? "react" : "js"
   }
 
   let description = flags.description !== undefined ? String(flags.description).trim() : null
@@ -375,6 +494,7 @@ export async function createCommand(args, flags) {
     kind,
     dir,
     version,
+    example,
     withUi,
     uiFlavor,
     install,

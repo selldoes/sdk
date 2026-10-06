@@ -46,10 +46,13 @@ module.exports = async (input, ctx) => {
 }
 ```
 
-The host may accept the SDK-built files or rebuild from the plugin source (the
-reference host rebuilds, so the artifact always matches the installed tree).
-Either way the external packages must be installed **on Linux x64** with the
-plugin's lockfile and production dependencies only.
+The host may accept the SDK-built files or rebuild from the plugin source. The
+reference host prefers the SDK-built bundles when the upload ships a complete
+`dist/node/` whose `artifact.json` dependencies match `plugin.json` (the SDK
+inlines its own runtime helpers, which a host-side rebuild cannot resolve), and
+falls back to rebuilding with esbuild for source-only uploads. Either way the
+external packages must be installed **on Linux x64** with the plugin's
+lockfile and production dependencies only.
 
 Lifecycle scripts stay disabled (`--ignore-scripts`) for supply-chain safety, so
 packages that download binaries in a postinstall step (plain `playwright`, some
@@ -128,6 +131,10 @@ Node jobs receive the same capability surface as QuickJS jobs:
 - Store scoping (`store_id`) is host-enforced, as with the sandbox.
 - Stream `ctx.jobs.progress/item/log` to the job row so the dashboard renders
   the same transcript it does for QuickJS jobs.
+- `ctx.jobs.enqueue({ type, input })` creates another job row for the same
+  plugin/store (host-side quotas apply). Chained batches are the supported way
+  to run crawls larger than one `timeoutMs` window; the host never auto-retries
+  a finished run, so the plugin decides what to queue next, and when.
 
 ## Schedules (host side)
 

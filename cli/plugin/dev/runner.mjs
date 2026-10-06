@@ -117,7 +117,7 @@ export class PluginRunner {
       }
       this.nodeHandlers.set(job.type, handler)
       this.nodeLoadError = null
-      for (const pkg of collectExternalPackages(result.metafile)) this.nodePackages.add(pkg)
+      for (const pkg of collectExternalPackages(result.metafile, { includeSdk: true })) this.nodePackages.add(pkg)
     } catch (error) {
       this.nodeLoadError = error instanceof Error ? error.message : String(error)
       this.nodeHandlers.delete(job.type)
@@ -133,6 +133,7 @@ export class PluginRunner {
       bundlePath: this.bundlePath,
       metafile: result.metafile,
       manifest: this.manifest,
+      nodeDependencies: [...this.nodePackages],
     })
     for (const warning of this.sandbox.warnings) this.log(`[sandbox] ${warning}`)
     for (const error of this.sandbox.errors) this.log(`[sandbox] ✗ ${error}`)

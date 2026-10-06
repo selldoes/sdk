@@ -1,0 +1,18 @@
+{
+  "storeId": 1,
+  "storeSlug": "dev-store",
+  "storeName": "Dev Store",
+  "port": 4590,
+  "ai": {
+    "mockReply": "(mock AI reply — set ai.mockReply in selldoes.config.json)"
+  },
+  "email": {
+    "disabled": false
+  },
+  "sampleJobs": {
+    "import-products": { "maxTicks": 50 },
+    "refresh-products": { "maxTicks": 50 },
+    "test-fetch": { "maxTicks": 5 },
+    "preview-product": { "input": { "url": "https://www.otrcat.com/p/your-sku" }, "maxTicks": 3 }
+  }
+}

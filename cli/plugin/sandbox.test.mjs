@@ -154,6 +154,71 @@ test("collectExternalPackages: keeps npm names, skips builtins and file paths", 
   assert.deepEqual(collectExternalPackages(metafile), ["@scope/pkg", "playwright"])
 })
 
+test("collectExternalPackages: SDK helper files are skipped unless includeSdk is set", () => {
+  const metafile = {
+    inputs: {
+      "../../sdk/src/node.js": {
+        imports: [
+          { path: "sharp", external: true },
+          { path: "playwright-core", external: true },
+        ],
+      },
+      "server/job.js": {
+        imports: [{ path: "cheerio", external: true }],
+      },
+    },
+  }
+  assert.deepEqual(collectExternalPackages(metafile), ["cheerio"])
+  assert.deepEqual(collectExternalPackages(metafile, { includeSdk: true }), ["cheerio", "playwright-core", "sharp"])
+})
+
+test("buildPlugin: selldoes/job bundles into the QuickJS entry", async () => {
+  const root = tempPlugin(
+    { ...BASE, permissions: ["db:read", "db:write", "db:schema"] },
+    {
+      "index.js":
+        'const { createQueue } = require("selldoes/job")\n' +
+        "module.exports = { jobs: { q: { async step(state, ctx) { return { done: true, result: typeof createQueue } } } } }\n",
+    },
+  )
+  const out = await buildPlugin(root, { log: () => {} })
+  assert.equal(out.sandbox.ok, true)
+  assert.deepEqual(out.sandbox.externals, [])
+})
+
+test("buildPlugin: selldoes/node in the QuickJS entry fails with an actionable error", async () => {
+  const root = tempPlugin({ ...BASE }, { "index.js": 'require("selldoes/node")\nmodule.exports = {}\n' })
+  await assert.rejects(
+    () => buildPlugin(root, { log: () => {} }),
+    /selldoes\/node.*Node job entry/,
+  )
+})
+
+test("buildPlugin: Node jobs inline selldoes/node, keep peers external and skip unused-dep warnings", async () => {
+  const manifest = {
+    ...BASE,
+    jobs: [{ type: "import-batch", name: "Import batch", runtime: "node", entry: "./server/import.js" }],
+    dependencies: { sharp: "^0.35.4" },
+  }
+  const root = tempPlugin(manifest, {
+    "index.js": "module.exports = {}\n",
+    "server/import.js":
+      'const { normalizeImage } = require("selldoes/node")\n' +
+      "module.exports = async () => typeof normalizeImage\n",
+  })
+  const out = await buildPlugin(root, { log: () => {} })
+  assert.equal(out.sandbox.ok, true)
+  assert.deepEqual(out.sandbox.warnings, [])
+  assert.deepEqual(out.sandbox.unusedDependencies, [])
+
+  const artifact = JSON.parse(fs.readFileSync(path.join(out.nodeDir, "artifact.json"), "utf8"))
+  assert.deepEqual(artifact.jobs.map((job) => job.type), ["import-batch"])
+  const bundle = fs.readFileSync(path.join(out.nodeDir, "import-batch.cjs"), "utf8")
+  assert.ok(!bundle.includes('require("selldoes/node")'), "the helper is bundled, not required at runtime")
+  assert.ok(bundle.includes("normalizeImage"), "the helper code is present")
+  assert.ok(bundle.includes('import("sharp")'), "the peer import stays external for the runtime image")
+})
+
 test("probeNodePackage: packages that need Node builtins work in the Node runtime", async () => {
   const root = tempPlugin({ ...BASE }, {})
   writeFakePackage(root, "fake-node", 'const fs = require("node:fs")\nmodule.exports = { read: (file) => fs.readFileSync(file, "utf8") }\n')

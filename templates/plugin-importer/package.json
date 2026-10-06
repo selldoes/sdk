@@ -1,0 +1,19 @@
+{
+  "name": "__PLUGIN_SLUG__",
+  "private": true,
+  "version": "__VERSION__",
+  "description": "A Selldoes plugin.",
+  "scripts": {
+    "dev": "selldoes dev --open",
+    "build": "selldoes build",
+    "pack": "selldoes pack",
+    "validate": "selldoes validate",
+    "publish": "selldoes publish",
+    "typecheck": "tsc -p jsconfig.json"
+  },
+  "devDependencies": {
+    "selldoes": "^__SELLDOES_VERSION__",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.6.3"
+  }
+}

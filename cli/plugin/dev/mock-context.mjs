@@ -10,18 +10,27 @@ import path from "node:path"
  * the runtime executes in Node (not QuickJS), and outbound integrations are
  * mocked unless configured in `selldoes.config.json`.
  */
-export function createMockContext({ pluginDir, manifest, db, storeId, config = {}, devDir, log = () => {} }) {
+export function createMockContext({ pluginDir, manifest, getManifest, db, storeId, config = {}, devDir, log = () => {} }) {
   const tablePrefix = `plugin_${String(manifest.slug).replace(/-/g, "_")}_`
-  const permissions = new Set(manifest.permissions ?? [])
-  const allowedTables = new Set(manifest.allowedTables ?? [])
+  /**
+   * plugin.json is re-read on every capability check: the dev server keeps
+   * running while you edit permissions/allowedTables, and a restart should not
+   * be required for the mock to honour them.
+   */
+  const currentManifest = () => (getManifest ? getManifest() : manifest) ?? manifest
+  const currentPermissions = () => new Set(currentManifest().permissions ?? [])
+  const currentAllowedTables = () => new Set(currentManifest().allowedTables ?? [])
   const outbox = []
   const events = []
   const jobEvents = { logs: [], items: [], progress: [] }
+  /** Jobs queued with `ctx.jobs.enqueue` during a dev run; drained by the dev server. */
+  const pendingJobs = []
+  let enqueuedJobCursor = 0
   const filesDir = path.join(devDir, "files")
   let realtimeCursor = 0
 
   const requirePermission = (permission, action) => {
-    if (!permissions.has(permission)) {
+    if (!currentPermissions().has(permission)) {
       throw new Error(`Missing permission "${permission}" required for ${action}. Add it to plugin.json "permissions".`)
     }
   }
@@ -30,13 +39,13 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
     const table = String(name ?? "")
     if (table.startsWith(tablePrefix)) return table
     if (table.startsWith("plugin_")) throw new Error(`Plugins cannot access another plugin's table "${table}"`)
-    if (allowedTables.has(table)) return table
+    if (currentAllowedTables().has(table)) return table
     return `${tablePrefix}${table.replace(/[^a-z0-9_]/gi, "_").toLowerCase()}`
   }
 
   const checkAccess = (table, mode) => {
     const owned = table.startsWith(tablePrefix)
-    if (!owned && !allowedTables.has(table)) {
+    if (!owned && !currentAllowedTables().has(table)) {
       throw new Error(`Table "${table}" is not declared in plugin.json "allowedTables".`)
     }
     if (mode === "read") requirePermission("db:read", `ctx.db read on "${table}"`)
@@ -78,9 +87,22 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
     fs.writeFileSync(storagePath, `${JSON.stringify(all, null, 2)}\n`)
   }
 
+  /**
+   * Mirrors the host's multi-category behaviour in the mock: `categories`
+   * becomes a deduped name list and the first name doubles as the product's
+   * primary `category`.
+   */
+  const withCategories = (input = {}) => {
+    if (!Array.isArray(input.categories)) return input
+    const names = [...new Set(input.categories.map((name) => String(name ?? "").trim()).filter(Boolean))]
+    return { ...input, categories: names, category: names[0] ?? "" }
+  }
+
   const ctx = {
     storeId,
-    permissions: [...permissions],
+    get permissions() {
+      return [...currentPermissions()]
+    },
     tablePrefix,
     config,
 
@@ -235,13 +257,13 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
       async create(input = {}) {
         requirePermission("products:write", "ctx.products.create")
         if (!input?.name) throw new Error("products.create requires a name")
-        return { id: db.insert("products", input, storeId).id }
+        return { id: db.insert("products", withCategories(input), storeId).id }
       },
       async update(id, input = {}) {
         requirePermission("products:write", "ctx.products.update")
         const existing = db.select("products", { id: Number(id) }, { limit: 1 }, storeId)[0]
         if (!existing) throw new Error(`Product ${id} not found in this store`)
-        db.update("products", { id: Number(id) }, input, storeId)
+        db.update("products", { id: Number(id) }, withCategories(input), storeId)
         return { updated: true }
       },
       async get(id) {
@@ -254,12 +276,13 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
       },
       async upsertBySku(input) {
         requirePermission("products:write", "ctx.products.upsertBySku")
+        const data = withCategories(input)
         const existing = db.select("products", { sku: input.sku }, { limit: 1 }, storeId)[0]
         if (existing) {
-          db.update("products", { id: existing.id }, input, storeId)
+          db.update("products", { id: existing.id }, data, storeId)
           return { id: existing.id, created: false }
         }
-        return { id: db.insert("products", input, storeId).id, created: true }
+        return { id: db.insert("products", data, storeId).id, created: true }
       },
     },
 
@@ -281,6 +304,15 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
       async log(message, level = "info") {
         jobEvents.logs.push({ message: String(message), level })
         log(`[job] ${message}`)
+      },
+      async enqueue(request = {}) {
+        const type = String(request?.type ?? "").trim()
+        const declared = (manifest.jobs ?? []).some((job) => job?.type === type)
+        if (!declared) throw new Error(`Job "${type}" is not declared in plugin.json "jobs"`)
+        const jobId = ++enqueuedJobCursor
+        pendingJobs.push({ jobId, type, input: request?.input ?? null, at: new Date().toISOString() })
+        log(`[job] enqueued ${type} (#${jobId})`)
+        return { jobId }
       },
     },
 
@@ -380,5 +412,5 @@ export function createMockContext({ pluginDir, manifest, db, storeId, config = {
     }
   }
 
-  return { ctx, outbox, events, jobEvents }
+  return { ctx, outbox, events, jobEvents, pendingJobs }
 }

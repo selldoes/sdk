@@ -102,6 +102,8 @@ Options
   --force                   create: overwrite a non-empty directory
   -y, --yes                 create: accept all defaults (plugin unless --theme)
   --plugin / --theme        create: skip the type prompt
+  --example <id>            create: start from an example (importer, ai-copy, delivery,
+                            widget, notes, react, blank; themes: starter, editorial, bold, minimal)
   --no-ui                   create: plugin without a dashboard UI
   --ui js|react             create: dashboard UI flavor (default js; react = TSX bundled by esbuild)
   --no-install              create: skip npm install

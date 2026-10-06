@@ -15,6 +15,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./job": {
+      "types": "./dist/job.d.ts",
+      "import": "./dist/job.js",
+      "default": "./dist/job.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
     "./theme": {
       "default": "./theme/index.js"
     }
@@ -42,6 +52,7 @@
     "prepack": "npm run build && npm run build:dev-ui"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.6.3"

@@ -3,19 +3,16 @@ import { useSearchParams } from "react-router-dom"
 import {
   Check,
   ExternalLink,
-  FileCode2,
   LayoutDashboard,
   Loader2,
   Play,
   Plus,
   Puzzle,
-  Route as RouteIcon,
   ShieldAlert,
   Sparkles,
-  Square,
-  Webhook,
 } from "lucide-react"
 import { AppIcon, resolveIcon } from "@/components/app-icon"
+import { ChoiceTile } from "@/components/create-dialogs"
 import { SectionBuilder } from "@/components/kit/section-builder"
 import { SectionKit } from "@/components/kit/section-kit"
 import { PermissionList } from "@/components/permission-list"
@@ -55,7 +52,6 @@ interface ResolvedPage {
   sections?: PluginDashboardSection[]
 }
 
-type CreateKind = "page" | "job" | "hook" | "route"
 type PageMode = "components" | "html"
 
 export function DashboardPage() {
@@ -177,8 +173,8 @@ export function DashboardPage() {
   // ── Components builder (dashboardPages[].sections) ────────────────────────
   const [builderOpen, setBuilderOpen] = React.useState(false)
 
-  // ── Creation: New page / New job / New hook / New route ───────────────────
-  const [createKind, setCreateKind] = React.useState<CreateKind | null>(null)
+  // ── Creation: New page (jobs/hooks/routes live on their own pages) ────────
+  const [createOpen, setCreateOpen] = React.useState(false)
 
   const handleScaffolded = React.useCallback(
     (next: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string; openBuilder?: boolean }) => {
@@ -198,7 +194,7 @@ export function DashboardPage() {
   React.useEffect(() => {
     setAssistantPage({
       context: hasUi
-        ? `The developer is previewing dashboard page "${activePage?.label}" — ${activeSections.length > 0 ? "rendered from dashboardPages sections (no-code components)" : "a sandboxed iframe"}; they can add pages/jobs/hooks/routes from the Dashboard page and edit components or ask the AI to rearrange them.`
+        ? `The developer is previewing dashboard page "${activePage?.label}" — ${activeSections.length > 0 ? "rendered from dashboardPages sections (no-code components)" : "a sandboxed iframe"}; they can add new dashboard pages from here, edit components or ask the AI to rearrange them (jobs, hooks and API routes have their own pages).`
         : "The developer is previewing the host's standard settings + jobs page (plugin has no ui.entry).",
       quick: hasUi
         ? ["Add a new dashboard page with a job runner", "Convert this page to no-code components", "Scaffold an import job for my scraper"]
@@ -211,7 +207,7 @@ export function DashboardPage() {
       <>
         <div className="space-y-4">
           <PageHead
-            title="Dashboard page"
+            title="Dashboard"
             description={
               <>
                 This plugin has no <code>ui.entry</code>, so the host renders its standard page: identity, permissions, settings (from{" "}
@@ -219,7 +215,7 @@ export function DashboardPage() {
               </>
             }
           />
-          <CreateBar onPick={setCreateKind} />
+          <CreatePageBar onPick={() => setCreateOpen(true)} />
           <Callout kind="info">
             Want your own UI instead? Scaffold the default notes example — it wires <code>ui.entry</code>,{" "}
             <code>dashboardPages</code> and a working notes app you can build on.{" "}
@@ -231,7 +227,7 @@ export function DashboardPage() {
 
           <HostPageReplica />
         </div>
-        <CreateDialog kind={createKind} onOpenChange={(open) => { if (!open) setCreateKind(null) }} onScaffolded={handleScaffolded} />
+        <CreatePageDialog open={createOpen} onOpenChange={setCreateOpen} onScaffolded={handleScaffolded} />
       </>
     )
   }
@@ -254,7 +250,7 @@ export function DashboardPage() {
     <>
       <div className="space-y-4">
         <PageHead
-          title="Dashboard page"
+          title="Dashboard"
           description={
             <>
               Rendered exactly like the host does — a sandboxed iframe calling{" "}
@@ -263,7 +259,7 @@ export function DashboardPage() {
             </>
           }
         />
-        <CreateBar onPick={setCreateKind} />
+        <CreatePageBar onPick={() => setCreateOpen(true)} />
 
         {activePage!.entry && activeStatus && !activeStatus.sourceExists ? (
           <Callout kind="danger">
@@ -397,7 +393,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <CreateDialog kind={createKind} onOpenChange={(open) => { if (!open) setCreateKind(null) }} onScaffolded={handleScaffolded} />
+      <CreatePageDialog open={createOpen} onOpenChange={setCreateOpen} onScaffolded={handleScaffolded} />
 
       <SectionBuilder
         open={builderOpen}
@@ -414,40 +410,28 @@ export function DashboardPage() {
   )
 }
 
-/** The creation bar — New page / New job / New hook / New route. */
-function CreateBar({ onPick }: { onPick: (kind: CreateKind) => void }) {
+/** The creation bar — the Dashboard page owns page creation; jobs, hooks and API routes live on their own pages. */
+function CreatePageBar({ onPick }: { onPick: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" onClick={() => onPick("page")}>
+      <Button size="sm" onClick={onPick}>
         <Plus />
         New page
       </Button>
-      <Button size="sm" variant="outline" onClick={() => onPick("job")}>
-        <FileCode2 />
-        New job
-      </Button>
-      <Button size="sm" variant="outline" onClick={() => onPick("hook")}>
-        <Webhook />
-        New hook
-      </Button>
-      <Button size="sm" variant="outline" onClick={() => onPick("route")}>
-        <RouteIcon />
-        New route
-      </Button>
       <span className="text-[11px] text-muted-foreground">
-        codegen into <code>ui/</code>, <code>jobs/</code>, <code>hooks/</code>, <code>routes/</code> + plugin.json, wired automatically
+        scaffolds <code>ui/</code> pages (or no-code components) and wires <code>dashboardPages</code> in plugin.json
       </span>
     </div>
   )
 }
 
-/** Dialog for the four creation kinds — writes files, patches the manifest, rebuilds. */
-function CreateDialog({
-  kind,
+/** Dialog for dashboard page creation — writes files, patches the manifest, rebuilds. */
+function CreatePageDialog({
+  open,
   onOpenChange,
   onScaffolded,
 }: {
-  kind: CreateKind | null
+  open: boolean
   onOpenChange: (open: boolean) => void
   onScaffolded: (manifest: PluginManifest, validation: Validation, message: string, extra?: { pagePath?: string; openBuilder?: boolean }) => void
 }) {
@@ -455,76 +439,43 @@ function CreateDialog({
   const [label, setLabel] = React.useState("")
   const [path, setPath] = React.useState("")
   const [icon, setIcon] = React.useState("")
-  const [type, setType] = React.useState("")
-  const [description, setDescription] = React.useState("")
   const [pageMode, setPageMode] = React.useState<PageMode>("components")
-  const [jobRuntime, setJobRuntime] = React.useState<"quickjs" | "node">("quickjs")
   const [busy, setBusy] = React.useState(false)
 
   React.useEffect(() => {
-    if (kind) {
+    if (open) {
       setLabel("")
       setPath("")
       setIcon("")
-      setType("")
-      setDescription("")
       setPageMode("components")
-      setJobRuntime("quickjs")
     }
-  }, [kind])
+  }, [open])
 
-  const titles: Record<CreateKind, { title: string; blurb: string }> = {
-    page: {
-      title: "New dashboard page",
-      blurb:
-        "A components page adds a dashboardPages entry (no iframe) and opens the visual builder; an HTML page scaffolds the notes example under ui/.",
-    },
-    job: { title: "New job", blurb: "QuickJS jobs create jobs/<type>.js (chunked init/step/finalize); Node jobs create server/<type>.js and run once with full npm access." },
-    hook: { title: "New hook", blurb: "Creates hooks/<name>.js, declares it in plugin.json and wires it into the entry." },
-    route: { title: "New API route", blurb: "Creates routes/<path>.js, declares it in apiRoutes and wires it into the entry." },
-  }
-
-  const ready = kind === "page" ? label.trim().length > 0 : kind === "job" ? type.trim().length > 0 : kind === "hook" ? label.trim().length > 0 : (path.trim() || label.trim()).length > 0
+  const ready = label.trim().length > 0
 
   const submit = async () => {
-    if (!kind || !ready) return
+    if (!ready || busy) return
     setBusy(true)
     try {
-      if (kind === "page") {
-        const name = label.trim()
-        const rawPath = path.trim() || `/${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "page"}`
-        const pagePath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
-        if (pageMode === "html") {
-          const entry = pagePath === "/" ? "ui/index.html" : `ui/${pagePath.replace(/^\//, "").replace(/\/$/, "")}.html`
-          const result = await dev.scaffoldUi({ entry, label: name, path: pagePath, ...(icon.trim() ? { icon: icon.trim() } : {}) })
-          onScaffolded(result.manifest, result.validation, result.written.length ? `Page created: ${result.written.join(", ")}` : "Page UI already present — rebuilt", { pagePath })
-        } else {
-          const current = bootstrap?.manifest
-          if (!current) throw new Error("The plugin manifest is not loaded yet")
-          const next = JSON.parse(JSON.stringify(current)) as PluginManifest
-          const list = Array.isArray(next.dashboardPages) ? next.dashboardPages : []
-          if (list.some((page) => page.path === pagePath)) throw new Error(`A dashboard page at "${pagePath}" already exists`)
-          const page: NonNullable<PluginManifest["dashboardPages"]>[number] = { label: name, path: pagePath, sections: [] }
-          if (icon.trim()) page.icon = icon.trim()
-          list.push(page)
-          next.dashboardPages = list
-          const response = await dev.saveManifest(next)
-          onScaffolded(response.manifest, response.validation, `Components page created: ${pagePath}`, { pagePath, openBuilder: true })
-        }
-      } else if (kind === "job") {
-        const result = await dev.scaffoldJob({
-          type: type.trim(),
-          ...(label.trim() ? { name: label.trim() } : {}),
-          ...(description.trim() ? { description: description.trim() } : {}),
-          ...(jobRuntime === "node" ? { runtime: "node" as const } : {}),
-        })
-        onScaffolded(result.manifest, result.validation, `Job scaffolded: ${result.file}`)
-      } else if (kind === "hook") {
-        const result = await dev.scaffoldHook({ name: label.trim() })
-        onScaffolded(result.manifest, result.validation, `Hook scaffolded: ${result.file}`)
-      } else if (kind === "route") {
-        const result = await dev.scaffoldRoute({ path: (path.trim() || label.trim()).startsWith("/") ? (path.trim() || label.trim()) : `/${path.trim() || label.trim()}` })
-        onScaffolded(result.manifest, result.validation, `Route scaffolded: ${result.file}`)
+      const name = label.trim()
+      const rawPath = path.trim() || `/${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "page"}`
+      const pagePath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
+      if (pageMode === "html") {
+        const entry = pagePath === "/" ? "ui/index.html" : `ui/${pagePath.replace(/^\//, "").replace(/\/$/, "")}.html`
+        const result = await dev.scaffoldUi({ entry, label: name, path: pagePath, ...(icon.trim() ? { icon: icon.trim() } : {}) })
+        onScaffolded(result.manifest, result.validation, result.written.length ? `Page created: ${result.written.join(", ")}` : "Page UI already present — rebuilt", { pagePath })
+      } else {
+        const current = bootstrap?.manifest
+        if (!current) throw new Error("The plugin manifest is not loaded yet")
+        const next = JSON.parse(JSON.stringify(current)) as PluginManifest
+        const list = Array.isArray(next.dashboardPages) ? next.dashboardPages : []
+        if (list.some((page) => page.path === pagePath)) throw new Error(`A dashboard page at "${pagePath}" already exists`)
+        const page: NonNullable<PluginManifest["dashboardPages"]>[number] = { label: name, path: pagePath, sections: [] }
+        if (icon.trim()) page.icon = icon.trim()
+        list.push(page)
+        next.dashboardPages = list
+        const response = await dev.saveManifest(next)
+        onScaffolded(response.manifest, response.validation, `Components page created: ${pagePath}`, { pagePath, openBuilder: true })
       }
       onOpenChange(false)
     } catch (error) {
@@ -534,103 +485,47 @@ function CreateDialog({
     }
   }
 
-  if (!kind) return null
-  const meta = titles[kind]
-
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{meta.title}</DialogTitle>
-          <DialogDescription>{meta.blurb}</DialogDescription>
+          <DialogTitle>New dashboard page</DialogTitle>
+          <DialogDescription>
+            {
+              "A components page adds a dashboardPages entry (no iframe) and opens the visual builder; an HTML page scaffolds the notes example under ui/."
+            }
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          {kind === "page" ? (
-            <>
-              <div className="space-y-1.5">
-                <Label>Page type</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["components", "html"] as PageMode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setPageMode(mode)}
-                      className={cn(
-                        "rounded-lg border px-3 py-2 text-left transition-colors",
-                        pageMode === mode ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
-                      )}
-                    >
-                      <span className="block text-[12.5px] font-semibold">{mode === "components" ? "Components" : "HTML"}</span>
-                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
-                        {mode === "components" ? "No-code kit — build it in the visual builder" : "Notes example under ui/ (iframe)"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-label">Label</Label>
-                <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Reports" autoFocus />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-path">Path (optional)</Label>
-                <Input id="create-path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="/reports" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-icon">Icon (optional lucide name)</Label>
-                <Input id="create-icon" value={icon} onChange={(event) => setIcon(event.target.value)} placeholder="bar-chart-2" />
-              </div>
-            </>
-          ) : null}
-          {kind === "job" ? (
-            <>
-              <div className="space-y-1.5">
-                <Label>Runtime</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["quickjs", "node"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setJobRuntime(mode)}
-                      className={cn(
-                        "rounded-lg border px-3 py-2 text-left transition-colors",
-                        jobRuntime === mode ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
-                      )}
-                    >
-                      <span className="block text-[12.5px] font-semibold">{mode === "quickjs" ? "QuickJS (chunked)" : "Node (full npm)"}</span>
-                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
-                        {mode === "quickjs" ? "jobs/<type>.js — ticks, checkpoints, sandboxed" : "server/<type>.js — runs once, any npm package"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-type">Job type</Label>
-                <Input id="create-type" value={type} onChange={(event) => setType(event.target.value)} placeholder="import-products" autoFocus />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-label">Display name (optional)</Label>
-                <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Import products" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="create-desc">Description (optional)</Label>
-                <Input id="create-desc" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Walks the catalog in chunks" />
-              </div>
-            </>
-          ) : null}
-          {kind === "hook" ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="create-label">Hook name (event)</Label>
-              <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="order:delivered" autoFocus />
+          <div className="space-y-1.5">
+            <Label>Page type</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <ChoiceTile
+                selected={pageMode === "components"}
+                onSelect={() => setPageMode("components")}
+                title="Components"
+                blurb="No-code kit — build it in the visual builder"
+              />
+              <ChoiceTile
+                selected={pageMode === "html"}
+                onSelect={() => setPageMode("html")}
+                title="HTML"
+                blurb="Notes example under ui/ (iframe)"
+              />
             </div>
-          ) : null}
-          {kind === "route" ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="create-path">Route path</Label>
-              <Input id="create-path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="/stats" autoFocus />
-            </div>
-          ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="create-label">Label</Label>
+            <Input id="create-label" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Reports" autoFocus />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="create-path">Path (optional)</Label>
+            <Input id="create-path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="/reports" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="create-icon">Icon (optional lucide name)</Label>
+            <Input id="create-icon" value={icon} onChange={(event) => setIcon(event.target.value)} placeholder="bar-chart-2" />
+          </div>
         </div>
         <DialogFooter>
           <Button onClick={() => void submit()} disabled={!ready || busy}>

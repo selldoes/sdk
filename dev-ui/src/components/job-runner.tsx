@@ -14,17 +14,21 @@ export interface JobRunState {
 export function useJobRunner() {
   const [state, setState] = React.useState<JobRunState>({})
 
-  const run = React.useCallback(async (type: string, input?: unknown, maxTicks?: number) => {
+  /** Runs a job; resolves with the error (if any) so callers can self-heal. */
+  const run = React.useCallback(async (type: string, input?: unknown, maxTicks?: number): Promise<{ error?: string } | undefined> => {
     setState({ running: true, type })
     try {
       const data = await dev.runJob({ type, input: input ?? {}, maxTicks: maxTicks ?? 5 })
       if (data.error) {
         setState({ error: data.error, type })
-        return
+        return { error: data.error }
       }
       setState({ run: data.run, telemetry: data.telemetry, type })
+      return {}
     } catch (error) {
-      setState({ error: error instanceof Error ? error.message : String(error), type })
+      const message = error instanceof Error ? error.message : String(error)
+      setState({ error: message, type })
+      return { error: message }
     }
   }, [])
 

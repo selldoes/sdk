@@ -497,7 +497,7 @@ export function ShipPage() {
             <Callout kind="info">
               Want the listing to look its best before review? Check{" "}
               <Link to="/listing" className="font-semibold underline">
-                In Selldoes
+                Listing
               </Link>{" "}
               and polish your description, icon and screenshots on the{" "}
               <Link to="/details" className="font-semibold underline">

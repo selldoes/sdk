@@ -40,8 +40,9 @@ const PACK_EXCLUDED_DIRS = new Set(["node_modules", "dist", "coverage", ".git", 
 const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "selldoes.config.json"])
 
 /**
- * Collects every UI HTML entry declared by the manifest: `ui.entry` plus each
- * `dashboardPages[].entry`. Entries are plugin-root-relative ("ui/index.html").
+ * Collects every UI HTML entry declared by the manifest: `ui.entry`, each
+ * `dashboardPages[].entry`, the storefront widget and every storefront page.
+ * Entries are plugin-root-relative ("ui/index.html").
  */
 function collectUiEntries(manifest) {
   const entries = new Set()
@@ -51,6 +52,8 @@ function collectUiEntries(manifest) {
   }
   add(manifest.ui?.entry)
   for (const page of manifest.dashboardPages ?? []) add(page?.entry)
+  add(manifest.storefrontWidget?.entry)
+  for (const page of manifest.storefrontPages ?? []) add(page?.entry)
   return [...entries]
 }
 
@@ -186,24 +189,20 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
   )
   for (const warning of result.warnings) log(`  [esbuild] ${warning.text}`)
 
-  // The bundle is the artifact the sandbox will execute — check it here so a
-  // package that needs fs/net or exceeds 4 MB fails the build, not a store.
-  const sandbox = checkSandboxBundle({ bundlePath, metafile: result.metafile, manifest })
-  for (const warning of sandbox.warnings) log(`  [sandbox] ${warning}`)
-  if (!sandbox.ok) {
-    throw new Error(`The plugin bundle does not match the sandbox contract:\n${formatSandboxIssues(sandbox)}`)
-  }
-
   // ── Node job artifact (optional) ────────────────────────────────────────────
+  // Built before the sandbox check so packages used only by Node entries are
+  // not reported as unused QuickJS dependencies.
   const nodeJobs = (manifest.jobs ?? []).filter((job) => job?.runtime === "node")
   let nodeDir = null
   let nodeArtifact = null
+  let nodeDependencies = []
   if (nodeJobs.length > 0) {
     nodeDir = path.join(resolvedOut, "node")
     fs.mkdirSync(nodeDir, { recursive: true })
 
     const declared = manifest.dependencies ?? {}
     const imported = new Set()
+    const nodeOnly = new Set()
     const jobArtifacts = []
     for (const job of nodeJobs) {
       const type = String(job.type)
@@ -219,6 +218,9 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
       )
       for (const warning of nodeResult.warnings) log(`  [esbuild:node] ${warning.text}`)
       for (const pkg of collectExternalPackages(nodeResult.metafile)) imported.add(pkg)
+      // Includes SDK helper peers (sharp, playwright-core, …) so declared
+      // node-only dependencies are not reported as unused QuickJS deps.
+      for (const pkg of collectExternalPackages(nodeResult.metafile, { includeSdk: true })) nodeOnly.add(pkg)
       jobArtifacts.push({ type, file, ...nodeJobLimits(job) })
     }
 
@@ -245,7 +247,16 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
       dependencies: declared,
     }
     fs.writeFileSync(path.join(nodeDir, "artifact.json"), `${JSON.stringify(nodeArtifact, null, 2)}\n`)
+    nodeDependencies = [...nodeOnly].sort()
     log(`  node jobs: ${nodeJobs.map((job) => job.type).join(", ")} → dist/node/`)
+  }
+
+  // The sandbox bundle is the artifact the sandbox executes — check it here so
+  // a package that needs fs/net or exceeds 4 MB fails the build, not a store.
+  const sandbox = checkSandboxBundle({ bundlePath, metafile: result.metafile, manifest, nodeDependencies })
+  for (const warning of sandbox.warnings) log(`  [sandbox] ${warning}`)
+  if (!sandbox.ok) {
+    throw new Error(`The plugin bundle does not match the sandbox contract:\n${formatSandboxIssues(sandbox)}`)
   }
 
   // ── Dashboard UI (optional) ─────────────────────────────────────────────────

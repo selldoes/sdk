@@ -19,6 +19,7 @@ import { CodePage } from "@/pages/code"
 import { PackagesPage } from "@/pages/packages"
 import { ConsolePage } from "@/pages/console"
 import { DetailsPage } from "@/pages/details"
+import { PermissionsPage } from "@/pages/permissions"
 import { ListingPage } from "@/pages/listing"
 import { DashboardPage } from "@/pages/dashboard"
 import { StorefrontPage } from "@/pages/storefront"
@@ -135,6 +136,7 @@ function Shell() {
                       <Route path="/packages" element={<PackagesPage />} />
                       <Route path="/console" element={<ConsolePage />} />
                       <Route path="/details" element={<DetailsPage />} />
+                      <Route path="/permissions" element={<PermissionsPage />} />
                       <Route path="/listing" element={<ListingPage />} />
                       <Route path="/dashboard" element={<DashboardPage />} />
                       <Route path="/storefront" element={<StorefrontPage />} />

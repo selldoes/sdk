@@ -1,0 +1,15 @@
+{
+  "name": "__THEME_NAME__",
+  "version": "__VERSION__",
+  "apiVersion": "1",
+  "mode": "full-page",
+  "pages": {
+    "home": { "custom": true, "entry": "pages/home.js" },
+    "product": { "custom": true, "entry": "pages/product.js" }
+  },
+  "shell": {
+    "hideToolbar": true,
+    "hideHeader": true,
+    "hideFooter": true
+  }
+}

@@ -1,100 +1,43 @@
 import * as React from "react"
-import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  FileText,
-  Image as ImageIcon,
-  Info,
-  Loader2,
-  RefreshCw,
-  Search,
-  Shield,
-  Trash2,
-  Upload,
-} from "lucide-react"
+import { ChevronDown, ChevronUp, FileText, ImageIcon, Info, Trash2, Upload } from "lucide-react"
 import { Link } from "react-router-dom"
 import { AppIcon, PLUGIN_ICON_CHOICES } from "@/components/app-icon"
+import { ManifestSaveBar } from "@/components/manifest-save-bar"
 import { PageHead, Callout } from "@/components/shared"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { dev, readFileBase64 } from "@/lib/api"
 import { ICON_ACCEPT, ICON_GUIDE, prepareIconFile } from "@/lib/icon-upload"
-import { CATEGORIES, PERMISSION_INFO, PERMISSION_ORDER, RISK_STYLES, filterPermissions, highestRisk } from "@/lib/permissions"
-import type { PluginManifest } from "@/lib/types"
+import { CATEGORIES } from "@/lib/permissions"
+import { useManifestDraft } from "@/lib/use-manifest-draft"
 import { useVisit } from "@/lib/use-visit"
 import { cn, mediaUrl } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
-function shallowEqual(a: PluginManifest, b: PluginManifest) {
-  return JSON.stringify(a) === JSON.stringify(b)
-}
-
+/** Identity, icon and screenshots — the marketplace-facing metadata. Permissions live on their own page. */
 export function DetailsPage() {
-  const { bootstrap, refresh, applyManifest, toast, setAssistantPage } = useApp()
+  const { setAssistantPage, toast } = useApp()
   useVisit("details")
-  const initial = bootstrap!.manifest
-  const validation = bootstrap!.validation
-  const snapshots = bootstrap!.snapshots
-  const [manifest, setManifest] = React.useState<PluginManifest>(initial)
-  const [saving, setSaving] = React.useState(false)
-  const [savedAt, setSavedAt] = React.useState<string | null>(null)
-  const [permissionQuery, setPermissionQuery] = React.useState("")
+  const draft = useManifestDraft({ label: "Details" })
+  const manifest = draft.manifest
+  const set = draft.set
   const iconInput = React.useRef<HTMLInputElement>(null)
   const shotInput = React.useRef<HTMLInputElement>(null)
-  const dirty = !shallowEqual(manifest, initial)
 
-  const permissions = (manifest.permissions ?? []) as string[]
-  const allowedTables = manifest.allowedTables ?? []
   const tagsText = (manifest.tags ?? []).join(", ")
-  const tablesText = allowedTables.join(", ")
-  const visiblePermissions = filterPermissions(PERMISSION_ORDER, permissionQuery)
-
-  const set = (patch: Partial<PluginManifest>) => setManifest((previous) => ({ ...previous, ...patch }))
 
   React.useEffect(() => {
     setAssistantPage({
-      context: `The developer is editing plugin.json metadata (name, description, icon, screenshots, permissions). Current permissions: ${JSON.stringify(
-        permissions,
-      )}; allowedTables: ${JSON.stringify(allowedTables)}.`,
-      quick: ["Improve my marketplace description", "Do I request any permission I don't need?"],
+      context: `The developer is editing plugin.json metadata (name, description, icon, screenshots). Current name: "${manifest.name}"; ${
+        (manifest.screenshots ?? []).length
+      } screenshot(s).`,
+      quick: ["Improve my marketplace description", "Suggest a better icon for this plugin"],
     })
   }, [setAssistantPage]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      const result = await dev.saveManifest({ ...manifest, tags: manifest.tags ?? [], allowedTables })
-      applyManifest(result.manifest, result.validation)
-      setManifest(result.manifest)
-      setSavedAt(new Date().toLocaleTimeString())
-      if (result.validation.errors.length) toast("Saved with validation errors", "error")
-      else toast("Details saved — preview rebuilt", "success")
-      await refresh()
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const undo = async () => {
-    if (!window.confirm("Restore plugin.json from the last save?")) return
-    try {
-      await dev.undoManifest()
-      await refresh()
-      toast("Restored the previous plugin.json", "success")
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    }
-  }
 
   const uploadIcon = async (file: File) => {
     try {
@@ -160,11 +103,11 @@ export function DetailsPage() {
   return (
     <div className="space-y-4">
       <PageHead
-        title="Details & permissions"
+        title="Details"
         description={
           <>
-            Everything on this page is written to <code>plugin.json</code>. Other files (code, UI, jobs) stay in your editor — the
-            preview reloads them as you save.
+            Identity, icon and screenshots — what store owners see in the marketplace and dashboard. Everything on this page is written to{" "}
+            <code>plugin.json</code>.
           </>
         }
       />
@@ -416,102 +359,6 @@ export function DetailsPage() {
               />
             </CardContent>
           </Card>
-
-          {/* Permissions */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Shield className="h-4 w-4" />
-                    Permissions
-                  </CardTitle>
-                  <CardDescription>
-                    Ask for the minimum. Every permission is shown to store owners before they install — the risk and impact text comes
-                    from the platform itself.
-                  </CardDescription>
-                </div>
-                <Badge variant="outline" className="shrink-0">
-                  {permissions.length} selected · {highestRisk(permissions)}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={permissionQuery}
-                  onChange={(event) => setPermissionQuery(event.target.value)}
-                  placeholder={`Search ${PERMISSION_ORDER.length} permissions…`}
-                  className="h-9 pl-8"
-                  aria-label="Search permissions"
-                />
-              </div>
-              {visiblePermissions.map((permission) => {
-                const info = PERMISSION_INFO[permission]
-                const checked = permissions.includes(permission)
-                const styles = RISK_STYLES[info.risk]
-                return (
-                  <label
-                    key={permission}
-                    className={cn(
-                      "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
-                      checked ? "border-primary/50 bg-primary/5" : "border-border hover:border-primary/30",
-                    )}
-                  >
-                    <Checkbox
-                      className="mt-0.5"
-                      checked={checked}
-                      onCheckedChange={(value) => {
-                        const next = value === true ? [...permissions, permission] : permissions.filter((entry) => entry !== permission)
-                        set({ permissions: next })
-                      }}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] font-semibold">{info.label}</span>
-                        <code className="text-[10.5px] text-muted-foreground">{permission}</code>
-                        <span className={cn("rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", styles.badge)}>
-                          {info.risk} risk
-                        </span>
-                      </span>
-                      <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted-foreground">{info.description}</span>
-                      <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted-foreground">
-                        <strong>Impact:</strong> {info.impact}
-                      </span>
-                    </span>
-                  </label>
-                )
-              })}
-              {visiblePermissions.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-                  No permissions match “{permissionQuery}”.
-                </p>
-              ) : null}
-
-              <div className="pt-2">
-                <Label htmlFor="tables">Allowed store tables</Label>
-                <Input
-                  id="tables"
-                  className="mt-1.5 max-w-xl"
-                  placeholder="products, store_pages"
-                  value={tablesText}
-                  onChange={(event) =>
-                    set({
-                      allowedTables: event.target.value
-                        .split(",")
-                        .map((table) => table.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Comma-separated platform tables the plugin may read/write. Your own <code>plugin_&lt;slug&gt;_*</code> tables are always
-                  available and don't need listing.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Rail */}
@@ -543,7 +390,7 @@ export function DetailsPage() {
               <p className="mt-2.5 text-[11px] text-muted-foreground">
                 Full listing preview on the{" "}
                 <Link to="/listing" className="text-primary hover:underline">
-                  In Selldoes
+                  Listing
                 </Link>{" "}
                 page.
               </p>
@@ -559,7 +406,11 @@ export function DetailsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-[12.5px] text-muted-foreground">
               <p>
-                This form writes to <code>plugin.json</code> directly (with undo).
+                This form writes to <code>plugin.json</code> directly (with undo). Permissions live on the{" "}
+                <Link to="/permissions" className="text-primary hover:underline">
+                  Permissions
+                </Link>{" "}
+                page.
               </p>
               <div className="border-t border-border pt-3">
                 <p className="mb-2 font-semibold text-foreground">Edit in code:</p>
@@ -579,11 +430,11 @@ export function DetailsPage() {
             </CardContent>
           </Card>
 
-          {validation.warnings.length > 0 ? (
+          {draft.validation.warnings.length > 0 ? (
             <Callout kind="warn">
               <p className="font-semibold">Warnings</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                {validation.warnings.map((warning) => (
+                {draft.validation.warnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
@@ -592,32 +443,7 @@ export function DetailsPage() {
         </div>
       </div>
 
-      {/* Save bar */}
-      <div className="sticky bottom-4 z-20 rounded-xl border border-primary/35 bg-card/95 p-3 shadow-lg backdrop-blur">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button onClick={save} disabled={saving || !dirty}>
-            {saving ? <Loader2 className="animate-spin" /> : <Check />}
-            Save plugin.json
-          </Button>
-          <Button variant="outline" onClick={() => void undo()} disabled={snapshots === 0}>
-            <RefreshCw />
-            Undo last save{snapshots ? ` (${snapshots})` : ""}
-          </Button>
-          <span className="ml-auto text-[11.5px] text-muted-foreground">
-            {dirty ? "Unsaved changes" : savedAt ? `Saved ${savedAt} ✓` : validation.errors.length ? `${validation.errors.length} validation error(s)` : "Valid"}
-          </span>
-        </div>
-        {validation.errors.length > 0 ? (
-          <Callout kind="danger" className="mt-2.5">
-            <p className="font-semibold">plugin.json is not valid yet:</p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-4">
-              {validation.errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          </Callout>
-        ) : null}
-      </div>
+      <ManifestSaveBar draft={draft} />
     </div>
   )
 }

@@ -7,8 +7,9 @@ import {
   CloudDownload,
   FilePlus2,
   FolderOpen,
-  Loader2,
   Link2,
+  Loader2,
+  Package,
   Plus,
   Puzzle,
   Rocket,
@@ -24,7 +25,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { resolveIcon } from "@/components/app-icon"
 import { CATEGORIES, PERMISSION_INFO, permissionInfo, RISK_STYLES, filterPermissions } from "@/lib/permissions"
@@ -34,71 +34,281 @@ import { cn } from "@/lib/utils"
 import { confirmDiscardChanges } from "@/lib/dirty-guard"
 import { useBusySet } from "@/lib/use-busy"
 import { ws } from "@/lib/ws-api"
-import type { WsPackage } from "@/lib/ws-api"
+import type { WsExample, WsPackage } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 import { ImportPane, PullPane } from "./workspace-panes"
 
-// ─── Starting points (mirror what `scaffoldProject` actually produces) ───────
+// ─── Starting points ─────────────────────────────────────────────────────────
+// The catalog itself lives in the CLI (`cli/create.mjs` → `/__ws/examples`), so
+// the wizard, `selldoes create` and the templates on disk can never drift.
 
-type TemplateId = "blank" | "starter" | "react" | "theme"
+type ExampleKind = "plugin" | "theme"
 
-interface StarterTemplate {
-  id: TemplateId
-  name: string
-  desc: string
-  kind: "plugin" | "theme"
-  withUi: boolean
-  uiFlavor: "js" | "react"
-  accent: AccentName
-  icon: string
-  badge?: string
+/** Accent + icon per example id, used by the cards and the workspace switcher. */
+const EXAMPLE_STYLE: Record<string, { accent: AccentName; icon: string }> = {
+  notes: { accent: "sky", icon: "layout-dashboard" },
+  react: { accent: "violet", icon: "sparkles" },
+  blank: { accent: "orange", icon: "file-plus" },
+  importer: { accent: "amber", icon: "radio" },
+  "ai-copy": { accent: "rose", icon: "sparkles" },
+  delivery: { accent: "emerald", icon: "package" },
+  widget: { accent: "sky", icon: "message-circle" },
+  starter: { accent: "emerald", icon: "palette" },
+  editorial: { accent: "amber", icon: "book-open" },
+  bold: { accent: "rose", icon: "zap" },
+  minimal: { accent: "sky", icon: "layout-grid" },
 }
 
-const TEMPLATES: StarterTemplate[] = [
+function styleFor(id: string): { accent: AccentName; icon: string } {
+  return EXAMPLE_STYLE[id] ?? { accent: "orange", icon: "puzzle" }
+}
+
+// ─── Thumbnails + the classic starting points ────────────────────────────────
+
+type ThumbVariant =
+  | "blank"
+  | "dashboard"
+  | "react"
+  | "theme"
+  | "scraper"
+  | "copy"
+  | "delivery"
+  | "widget"
+  | "editorial"
+  | "bold"
+  | "minimal"
+
+const EXAMPLE_THUMBS: Record<string, ThumbVariant> = {
+  notes: "dashboard",
+  react: "react",
+  blank: "blank",
+  importer: "scraper",
+  "ai-copy": "copy",
+  delivery: "delivery",
+  widget: "widget",
+  starter: "theme",
+  editorial: "editorial",
+  bold: "bold",
+  minimal: "minimal",
+}
+
+function thumbFor(exampleId: string, kind: ExampleKind): ThumbVariant {
+  return EXAMPLE_THUMBS[exampleId] ?? (kind === "theme" ? "theme" : "dashboard")
+}
+
+/** The four classic starting points, kept for the familiar first step. */
+const STARTERS: Array<{ id: string; name: string; desc: string; kind: ExampleKind; accent: AccentName; badge?: string }> = [
   {
     id: "blank",
     name: "Blank plugin",
     desc: "Manifest + entry file. Add hooks, jobs and a dashboard UI whenever you need them.",
     kind: "plugin",
-    withUi: false,
-    uiFlavor: "js",
     accent: "orange",
-    icon: "puzzle",
   },
   {
-    id: "starter",
+    id: "notes",
     name: "Plugin + dashboard UI",
     desc: "Plain-JS UI page wired to a notes API route — a working starting point.",
     kind: "plugin",
-    withUi: true,
-    uiFlavor: "js",
     accent: "sky",
-    icon: "layout-dashboard",
   },
   {
     id: "react",
     name: "Plugin + React UI",
     desc: "TypeScript + React dashboard UI, bundled with esbuild on every save.",
     kind: "plugin",
-    withUi: true,
-    uiFlavor: "react",
     accent: "violet",
-    icon: "sparkles",
     badge: "runs npm install",
   },
   {
-    id: "theme",
+    id: "starter",
     name: "Storefront theme",
     desc: "Layouts, sections and theme settings for a storefront — no dashboard UI.",
     kind: "theme",
-    withUi: false,
-    uiFlavor: "js",
     accent: "emerald",
-    icon: "palette",
   },
 ]
 
-const STEP_LABELS = ["Start", "Details", "Options"]
+/** CSS-drawn preview of what a starting point produces. */
+function Thumb({ variant, accent, className }: { variant: ThumbVariant; accent: AccentName; className?: string }) {
+  const tone = ACCENTS[accent]
+  const frame = "overflow-hidden rounded-lg border border-border bg-background"
+  switch (variant) {
+    case "blank":
+      return (
+        <div className={cn("flex items-center justify-center gap-3 rounded-lg border border-border bg-muted/40", className)}>
+          <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", tone.tile)}>
+            <FilePlus2 className="h-[18px] w-[18px]" />
+          </span>
+          <span className="space-y-1">
+            <span className="block h-2 w-20 rounded-full bg-foreground/15" />
+            <span className="block h-2 w-14 rounded-full bg-foreground/10" />
+          </span>
+        </div>
+      )
+    case "dashboard":
+      return (
+        <div className={cn(frame, className)}>
+          <div className="flex h-4 items-center gap-1 border-b border-border bg-muted/60 px-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
+            <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
+          </div>
+          <div className={cn("mx-2 mt-2 flex h-7 items-center justify-between rounded px-2", tone.tile)}>
+            <span className="h-1.5 w-10 rounded-full bg-current opacity-40" />
+            <span className="h-1.5 w-5 rounded-full bg-current opacity-40" />
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 p-2">
+            <span className="h-6 rounded bg-muted" />
+            <span className="h-6 rounded bg-muted" />
+          </div>
+        </div>
+      )
+    case "react":
+      return (
+        <div className={cn("relative overflow-hidden rounded-lg border border-border bg-zinc-950", className)}>
+          <div className="flex h-4 items-center gap-1 border-b border-white/10 px-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
+            <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
+          </div>
+          <div className="space-y-1.5 p-2.5">
+            <span className={cn("block h-2.5 w-24 rounded-full opacity-80", tone.swatch)} />
+            <span className="block h-2 w-32 rounded-full bg-white/15" />
+            <span className="block h-2 w-20 rounded-full bg-white/10" />
+            <span className="mt-1.5 block h-6 w-16 rounded-md bg-white/10" />
+          </div>
+          <span className="absolute right-2 top-6 rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-white/70">TSX</span>
+        </div>
+      )
+    case "theme":
+      return (
+        <div className={cn(frame, className)}>
+          <div className="flex h-4 items-center gap-1 border-b border-border bg-muted/60 px-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
+            <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
+            <span className="h-1.5 w-6 rounded-full bg-foreground/10" />
+          </div>
+          <div className={cn("mx-2 mt-2 h-8 rounded", tone.tile)} />
+          <div className="grid grid-cols-3 gap-1.5 p-2">
+            <span className="h-5 rounded bg-muted" />
+            <span className="h-5 rounded bg-muted" />
+            <span className="h-5 rounded bg-muted" />
+          </div>
+        </div>
+      )
+    case "scraper":
+      return (
+        <div className={cn(frame, className)}>
+          <div className={cn("flex h-6 items-center justify-between px-2.5", tone.tile)}>
+            <span className="h-1.5 w-12 rounded-full bg-current opacity-40" />
+            <span className="h-3 w-3 rounded-sm bg-current opacity-40" />
+          </div>
+          <div className="space-y-1.5 p-2.5">
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="flex items-center gap-1.5">
+                <span className="h-3.5 w-3.5 rounded bg-muted" />
+                <span className="h-1.5 flex-1 rounded-full bg-foreground/15" />
+                <span className="h-1.5 w-6 rounded-full bg-foreground/10" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    case "copy":
+      return (
+        <div className={cn(frame, className)}>
+          <div className="flex items-center gap-1.5 px-2.5 pt-2.5">
+            <span className={cn("flex h-5 w-5 items-center justify-center rounded-md", tone.tile)}>
+              <Sparkles className="h-3 w-3" />
+            </span>
+            <span className="h-1.5 w-16 rounded-full bg-foreground/15" />
+          </div>
+          <div className="space-y-1.5 p-2.5">
+            <span className="block h-1.5 w-full rounded-full bg-foreground/10" />
+            <span className="block h-1.5 w-4/5 rounded-full bg-foreground/10" />
+            <span className="block h-1.5 w-3/5 rounded-full bg-foreground/10" />
+          </div>
+        </div>
+      )
+    case "delivery":
+      return (
+        <div className={cn(frame, className)}>
+          <div className="flex items-center gap-2 p-2.5">
+            <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", tone.tile)}>
+              <Package className="h-4 w-4" />
+            </span>
+            <span className="flex-1 space-y-1.5">
+              <span className="block h-1.5 w-20 rounded-full bg-foreground/15" />
+              <span className="block h-1.5 w-12 rounded-full bg-foreground/10" />
+            </span>
+          </div>
+          <div className="space-y-1 px-2.5 pb-2.5">
+            <span className="block h-1.5 w-full rounded-full bg-muted" />
+            <span className="block h-1.5 w-2/3 rounded-full bg-muted" />
+          </div>
+        </div>
+      )
+    case "widget":
+      return (
+        <div className={cn(frame, "relative", className)}>
+          <div className="space-y-1.5 p-2.5">
+            <span className="block h-1.5 w-2/3 rounded-full bg-foreground/10" />
+            <span className="block h-1.5 w-1/2 rounded-full bg-foreground/10" />
+          </div>
+          <div className="absolute bottom-2 right-2 space-y-1.5">
+            <span className="block h-7 w-24 rounded-lg border border-border bg-muted/60" />
+            <span className={cn("ml-auto block h-7 w-7 rounded-full", tone.swatch)} />
+          </div>
+        </div>
+      )
+    case "editorial":
+      return (
+        <div className={cn(frame, className)}>
+          <div className="px-2.5 pt-2.5">
+            <span className="block h-2.5 w-4/5 rounded-sm bg-foreground/20" />
+            <span className="mt-1.5 block h-2.5 w-3/5 rounded-sm bg-foreground/20" />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 p-2.5">
+            <span className={cn("col-span-2 h-10 rounded", tone.tile)} />
+            <span className="space-y-1">
+              <span className="block h-3 rounded bg-muted" />
+              <span className="block h-3 rounded bg-muted" />
+              <span className="block h-3 rounded bg-muted" />
+            </span>
+          </div>
+        </div>
+      )
+    case "bold":
+      return (
+        <div className={cn("relative overflow-hidden rounded-lg border border-border bg-zinc-950", className)}>
+          <div className={cn("h-3", tone.swatch)} />
+          <div className="px-2.5 pt-2">
+            <span className="block h-3 w-3/4 rounded-sm bg-white/25" />
+            <span className={cn("mt-1 block h-3 w-1/2 rounded-sm", tone.swatch)} />
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 p-2.5">
+            <span className="h-7 rounded bg-white/10" />
+            <span className="h-7 rounded bg-white/10" />
+            <span className="h-7 rounded bg-white/10" />
+          </div>
+        </div>
+      )
+    case "minimal":
+      return (
+        <div className={cn(frame, className)}>
+          <div className="flex items-center justify-between px-2.5 pt-2.5">
+            <span className="h-1.5 w-12 rounded-full bg-foreground/20" />
+            <span className="h-1.5 w-6 rounded-full bg-foreground/10" />
+          </div>
+          <div className="grid grid-cols-4 gap-1.5 p-2.5">
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((tile) => (
+              <span key={tile} className="h-6 rounded bg-muted" />
+            ))}
+          </div>
+        </div>
+      )
+  }
+}
+
 const RECOMMENDED_PERMISSIONS = ["db:read", "db:write", "db:schema"]
 const ICON_CHOICES = [
   "puzzle",
@@ -114,6 +324,15 @@ const ICON_CHOICES = [
   "sparkles",
   "shield",
 ]
+
+type WizardStep = "start" | "examples" | "details" | "options"
+
+const STEP_TITLES: Record<WizardStep, string> = {
+  start: "Start",
+  examples: "Example",
+  details: "Details",
+  options: "Options",
+}
 
 function slugify(value: string): string {
   return value
@@ -151,7 +370,9 @@ export function WorkspaceDialog() {
 
   // Create draft
   const [approach, setApproach] = React.useState<"template" | "ai">("template")
-  const [templateId, setTemplateId] = React.useState<TemplateId>("starter")
+  const [kind, setKind] = React.useState<ExampleKind>("plugin")
+  const [catalog, setCatalog] = React.useState<{ plugin: WsExample[]; theme: WsExample[] }>({ plugin: [], theme: [] })
+  const [exampleId, setExampleId] = React.useState("")
   const [prompt, setPrompt] = React.useState("")
   const [name, setName] = React.useState("")
   const [slug, setSlug] = React.useState("")
@@ -164,23 +385,24 @@ export function WorkspaceDialog() {
   const [icon, setIcon] = React.useState("puzzle")
   const [customIcon, setCustomIcon] = React.useState<PreparedIcon | null>(null)
   const [accent, setAccent] = React.useState<AccentName>("orange")
-  const [withUi, setWithUi] = React.useState(true)
-  const [uiFlavor, setUiFlavor] = React.useState<"js" | "react">("js")
   const [permissions, setPermissions] = React.useState<string[]>(RECOMMENDED_PERMISSIONS)
 
-  const template = TEMPLATES.find((entry) => entry.id === templateId) ?? TEMPLATES[0]
   const isAi = approach === "ai"
+  const examplesForKind = catalog[kind] ?? []
+  const example = examplesForKind.find((entry) => entry.id === exampleId) ?? examplesForKind[0] ?? null
+  const flow: WizardStep[] = isAi ? ["start", "details", "options"] : ["start", "examples", "details", "options"]
+  const currentStep = flow[Math.min(step, flow.length - 1)]
 
-  // Fresh wizard every time the dialog opens.
+  // Fresh wizard every time the dialog opens; the example catalog is served by
+  // the CLI so the cards match what `scaffoldProject` will actually produce.
   React.useEffect(() => {
     if (!workspaceDialogOpen) return
     setPane(workspaceDialogPane)
     setStep(0)
     busy.clear()
     setApproach("template")
-    setTemplateId("starter")
-    setWithUi(true)
-    setUiFlavor("js")
+    setKind("plugin")
+    setExampleId("")
     setIcon("puzzle")
     setCustomIcon(null)
     setAccent("orange")
@@ -194,8 +416,26 @@ export function WorkspaceDialog() {
     setCategory("other")
     setTags("")
     setAuthor(workspace?.account?.name ?? "")
+    void ws
+      .examples()
+      .then((entries) => setCatalog(entries))
+      .catch(() => {
+        // The create call resolves defaults server-side if the catalog is down.
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceDialogOpen, workspaceDialogPane])
+
+  // Keep a valid example selected as the catalog loads and the kind changes.
+  React.useEffect(() => {
+    if (!workspaceDialogOpen) return
+    const entries = catalog[kind] ?? []
+    if (entries.length === 0) return
+    if (!entries.some((entry) => entry.id === exampleId)) {
+      setExampleId(entries[0].id)
+      applyExampleStyle(entries[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, kind, exampleId, workspaceDialogOpen])
 
   const run = async (key: string, action: () => Promise<void>) => {
     await busy.run(key, async () => {
@@ -207,13 +447,24 @@ export function WorkspaceDialog() {
     })
   }
 
-  const chooseTemplate = (entry: StarterTemplate) => {
-    setTemplateId(entry.id)
-    setWithUi(entry.withUi)
-    setUiFlavor(entry.uiFlavor)
-    setIcon(entry.icon)
+  const applyExampleStyle = (entry: WsExample) => {
+    const style = styleFor(entry.id)
+    setIcon(style.icon)
+    setAccent(style.accent)
     setCustomIcon(null)
-    setAccent(entry.accent)
+  }
+
+  const chooseStarter = (starter: (typeof STARTERS)[number]) => {
+    setKind(starter.kind)
+    setExampleId(starter.id)
+    setIcon(styleFor(starter.id).icon)
+    setAccent(starter.accent)
+    setCustomIcon(null)
+  }
+
+  const chooseExample = (entry: WsExample) => {
+    setExampleId(entry.id)
+    applyExampleStyle(entry)
   }
 
   const chooseBuiltInIcon = (name: string) => {
@@ -248,14 +499,12 @@ export function WorkspaceDialog() {
   }
 
   const versionValid = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)
-  const stepValid =
-    step === 0
-      ? isAi
-        ? prompt.trim().length > 0
-        : true
-      : step === 1
-        ? name.trim().length > 0 && slug.trim().length > 1 && versionValid
-        : true
+  const stepValid = (() => {
+    if (currentStep === "start") return isAi ? prompt.trim().length > 0 : true
+    if (currentStep === "examples") return Boolean(example)
+    if (currentStep === "details") return name.trim().length > 0 && slug.trim().length > 1 && versionValid
+    return true
+  })()
 
   const doCreate = () => {
     if (!confirmDiscardChanges()) return
@@ -280,12 +529,14 @@ export function WorkspaceDialog() {
         toast(`Generated ${project.name} — ${files.length} file(s)`, "success")
         if (iconError) toast(`Icon not saved: ${iconError}`, "error")
       } else {
-        const isTheme = template.kind === "theme"
+        const isTheme = kind === "theme"
         const { project, needsInstall, iconError } = await ws.create({
           ...base,
-          kind: template.kind,
-          withUi: isTheme ? false : withUi,
-          uiFlavor,
+          kind,
+          ...(example ? { example: example.id } : {}),
+          // The example decides the UI; the server still needs the flavor for
+          // the "npm install" follow-up on React projects.
+          ...(example?.ui === "react" ? { uiFlavor: "react" as const } : {}),
           permissions,
           // Themes can't spawn a web preview — register them without selecting.
           ...(isTheme ? { select: false } : {}),
@@ -354,11 +605,12 @@ export function WorkspaceDialog() {
   const headerSubtitle = (() => {
     if (pane === "import") return "Point the workspace at an existing project folder or .zip"
     if (pane === "pull") return "Download one of your published packages into the workspace"
-    if (step === 0) return isAi ? "Describe what the plugin should do — the AI scaffolds the project" : "Pick a working starter and adjust everything next"
-    if (step === 1) return `Using the ${template.name} starter`
+    if (currentStep === "start") return isAi ? "Describe what the plugin should do — the AI scaffolds the project" : "Choose what you're building, then pick an example next"
+    if (currentStep === "examples") return `Starting points for your ${kind} — each one is a complete, working project`
+    if (currentStep === "details") return example ? `Built from the ${example.name} example` : "Name your project and adjust the details"
     return isAi
       ? "Review — the AI picks the permissions its code needs"
-      : template.kind === "theme"
+      : kind === "theme"
         ? "Review the theme, then create it"
         : "Choose what it may access, then review"
   })()
@@ -366,10 +618,11 @@ export function WorkspaceDialog() {
   const footerHint = (() => {
     if (pane === "import") return "The folder is referenced, not copied — its git history stays intact."
     if (pane === "pull") return "Downloads a package you published to a folder you choose."
-    if (step === 0) return isAi ? "Step 1 of 3 · Describe it" : `Step 1 of 3 · ${template.name} selected`
-    if (step === 1) return "Step 2 of 3 · Details"
-    if (isAi || template.kind === "theme") return "Step 3 of 3 · Review"
-    return "Step 3 of 3 · Permissions & options"
+    const position = `Step ${step + 1} of ${flow.length}`
+    if (currentStep === "start") return isAi ? `${position} · Describe it` : `${position} · Plugin or theme`
+    if (currentStep === "examples") return `${position} · ${example ? `${example.name} selected` : "Choose an example"}`
+    if (currentStep === "details") return `${position} · Details`
+    return isAi ? `${position} · Review` : kind === "theme" ? `${position} · Review` : `${position} · Permissions & options`
   })()
 
   return (
@@ -403,12 +656,13 @@ export function WorkspaceDialog() {
             <div>
               <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Create</p>
               <div className="space-y-0.5">
-                {STEP_LABELS.map((label, index) => {
+                {flow.map((stepId, index) => {
+                  const label = STEP_TITLES[stepId]
                   const active = pane === "new" && step === index
                   const done = pane === "new" && step > index
                   return (
                     <button
-                      key={label}
+                      key={stepId}
                       type="button"
                       onClick={() => {
                         setPane("new")
@@ -479,18 +733,20 @@ export function WorkspaceDialog() {
                 projects={workspace?.projects}
                 onAccountChange={refreshWorkspace}
               />
-            ) : step === 0 ? (
+            ) : currentStep === "start" ? (
               <StepStart
                 approach={approach}
                 setApproach={setApproach}
-                templateId={templateId}
-                onChooseTemplate={chooseTemplate}
+                exampleId={example?.id ?? ""}
+                onChooseStarter={chooseStarter}
                 prompt={prompt}
                 setPrompt={setPrompt}
                 onOpenImport={() => setPane("import")}
                 onOpenPull={() => setPane("pull")}
               />
-            ) : step === 1 ? (
+            ) : currentStep === "examples" ? (
+              <StepExamples kind={kind} examples={examplesForKind} exampleId={example?.id ?? ""} onSelect={chooseExample} />
+            ) : currentStep === "details" ? (
               <StepDetails
                 name={name}
                 slug={slug}
@@ -504,7 +760,7 @@ export function WorkspaceDialog() {
                 icon={icon}
                 accent={accent}
                 customIcon={customIcon}
-                allowUpload={template.kind !== "theme"}
+                allowUpload={kind !== "theme"}
                 onChangeName={changeName}
                 onChangeSlug={changeSlug}
                 setDescription={setDescription}
@@ -520,11 +776,8 @@ export function WorkspaceDialog() {
             ) : (
               <StepOptions
                 isAi={isAi}
-                template={template}
-                withUi={withUi}
-                setWithUi={setWithUi}
-                uiFlavor={uiFlavor}
-                setUiFlavor={setUiFlavor}
+                kind={kind}
+                example={example}
                 permissions={permissions}
                 togglePermission={togglePermission}
                 name={name}
@@ -552,7 +805,7 @@ export function WorkspaceDialog() {
               </Button>
             ) : null}
             {pane === "new" ? (
-              step < 2 ? (
+              step < flow.length - 1 ? (
                 <Button size="sm" disabled={!stepValid} onClick={() => setStep(step + 1)}>
                   Continue
                   <ArrowRight />
@@ -576,8 +829,8 @@ export function WorkspaceDialog() {
 function StepStart({
   approach,
   setApproach,
-  templateId,
-  onChooseTemplate,
+  exampleId,
+  onChooseStarter,
   prompt,
   setPrompt,
   onOpenImport,
@@ -585,8 +838,8 @@ function StepStart({
 }: {
   approach: "template" | "ai"
   setApproach: (approach: "template" | "ai") => void
-  templateId: TemplateId
-  onChooseTemplate: (template: StarterTemplate) => void
+  exampleId: string
+  onChooseStarter: (starter: (typeof STARTERS)[number]) => void
   prompt: string
   setPrompt: (prompt: string) => void
   onOpenImport: () => void
@@ -597,7 +850,7 @@ function StepStart({
       <div className="grid grid-cols-2 gap-2">
         {(
           [
-            { id: "template", title: "Start from a template", desc: "Pick a working starter and adjust everything next.", icon: Puzzle },
+            { id: "template", title: "Start from an example", desc: "Pick a complete, working project and adjust everything next.", icon: Puzzle },
             { id: "ai", title: "Describe it, AI builds it", desc: "Write what the plugin should do and generate the files.", icon: Sparkles },
           ] as const
         ).map(({ id, title, desc, icon: Icon }) => {
@@ -623,10 +876,45 @@ function StepStart({
       </div>
 
       {approach === "template" ? (
-        <div className="grid grid-cols-2 gap-3">
-          {TEMPLATES.map((entry) => (
-            <TemplateCard key={entry.id} template={entry} selected={entry.id === templateId} onSelect={() => onChooseTemplate(entry)} />
-          ))}
+        <div>
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">What are you building?</p>
+          <div className="grid grid-cols-2 gap-3">
+            {STARTERS.map((starter) => {
+              const selected = starter.id === exampleId
+              return (
+                <button
+                  key={starter.id}
+                  type="button"
+                  onClick={() => onChooseStarter(starter)}
+                  className={cn(
+                    "group relative overflow-hidden rounded-xl border-2 p-2.5 text-left transition-all",
+                    selected ? "border-primary bg-primary/[0.03] shadow-sm" : "border-border hover:border-primary/40",
+                  )}
+                >
+                  <Thumb variant={thumbFor(starter.id, starter.kind)} accent={starter.accent} className="h-24 w-full" />
+                  <div className="mt-2.5 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-[13px] font-semibold">
+                        {starter.name}
+                        {starter.badge ? (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-bold text-muted-foreground">{starter.badge}</span>
+                        ) : null}
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{starter.desc}</p>
+                    </div>
+                    <span
+                      className={cn(
+                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+                        selected ? "border-primary bg-primary text-primary-foreground" : "border-border text-transparent",
+                      )}
+                    >
+                      <Check className="h-3 w-3" />
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-muted/20 p-3">
@@ -652,14 +940,14 @@ function StepStart({
               "a plugin that shows a live visitor counter on product pages",
               "reward customers with points on every order",
               "a scraper that imports products from a supplier feed",
-            ].map((example) => (
+            ].map((sample) => (
               <button
-                key={example}
+                key={sample}
                 type="button"
-                onClick={() => setPrompt(example)}
+                onClick={() => setPrompt(sample)}
                 className="rounded-full border border-border bg-background px-2.5 py-1 text-[10.5px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
               >
-                {example}
+                {sample}
               </button>
             ))}
           </div>
@@ -680,7 +968,88 @@ function StepStart({
   )
 }
 
-// ─── Step 2 · Details ────────────────────────────────────────────────────────
+// ─── Step 2 · Example ────────────────────────────────────────────────────────
+
+function StepExamples({
+  kind,
+  examples,
+  exampleId,
+  onSelect,
+}: {
+  kind: ExampleKind
+  examples: WsExample[]
+  exampleId: string
+  onSelect: (example: WsExample) => void
+}) {
+  if (examples.length === 0) {
+    return <p className="text-xs text-muted-foreground">Loading examples…</p>
+  }
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        {examples.map((entry) => (
+          <ExampleCard key={entry.id} example={entry} kind={kind} selected={entry.id === exampleId} onSelect={() => onSelect(entry)} />
+        ))}
+      </div>
+      <p className="text-[10.5px] leading-snug text-muted-foreground">
+        Every example is a complete project — jobs, routes, dashboard pages and a README explaining how it works. Everything is
+        yours to edit after creating.
+      </p>
+    </div>
+  )
+}
+
+function ExampleCard({
+  example,
+  kind,
+  selected,
+  onSelect,
+}: {
+  example: WsExample
+  kind: ExampleKind
+  selected: boolean
+  onSelect: () => void
+}) {
+  const style = styleFor(example.id)
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "group relative flex flex-col overflow-hidden rounded-xl border-2 p-2.5 text-left transition-all",
+        selected ? "border-primary bg-primary/[0.03] shadow-sm" : "border-border hover:border-primary/40",
+      )}
+    >
+      <Thumb variant={thumbFor(example.id, kind)} accent={style.accent} className="h-24 w-full" />
+      <div className="mt-2.5 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-[13px] font-semibold">
+            {example.name}
+            {example.badge ? (
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-bold text-muted-foreground">{example.badge}</span>
+            ) : null}
+          </p>
+          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{example.description}</p>
+          {kind === "plugin" ? (
+            <p className="mt-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/80">
+              {example.ui === "react" ? "React dashboard UI" : example.ui === "js" ? "Dashboard UI" : "Kit sections only"}
+            </p>
+          ) : null}
+        </div>
+        <span
+          className={cn(
+            "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+            selected ? "border-primary bg-primary text-primary-foreground" : "border-border text-transparent",
+          )}
+        >
+          <Check className="h-3 w-3" />
+        </span>
+      </div>
+    </button>
+  )
+}
+
+// ─── Step 3 · Details ────────────────────────────────────────────────────────
 
 function StepDetails({
   name,
@@ -867,15 +1236,12 @@ function StepDetails({
   )
 }
 
-// ─── Step 3 · Options & review ───────────────────────────────────────────────
+// ─── Step 4 · Options & review ───────────────────────────────────────────────
 
 function StepOptions({
   isAi,
-  template,
-  withUi,
-  setWithUi,
-  uiFlavor,
-  setUiFlavor,
+  kind,
+  example,
   permissions,
   togglePermission,
   name,
@@ -889,11 +1255,8 @@ function StepOptions({
   customPreview,
 }: {
   isAi: boolean
-  template: StarterTemplate
-  withUi: boolean
-  setWithUi: (value: boolean) => void
-  uiFlavor: "js" | "react"
-  setUiFlavor: (value: "js" | "react") => void
+  kind: ExampleKind
+  example: WsExample | null
   permissions: string[]
   togglePermission: (permission: string) => void
   name: string
@@ -914,44 +1277,24 @@ function StepOptions({
             The AI writes the manifest and grants only the permissions its code actually uses — minimum needed, never more. You can
             tighten them in <code className="text-[10px]">plugin.json</code> afterwards.
           </div>
-        ) : template.kind === "theme" ? (
+        ) : kind === "theme" ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2.5 text-[10.5px] leading-snug text-muted-foreground">
             Themes render the storefront directly — no dashboard UI and no permissions to declare. Preview one with{" "}
             <code className="text-[10px]">selldoes dev --store &lt;slug&gt;</code>.
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-              <div>
-                <p className="text-xs font-semibold">Dashboard UI</p>
-                <p className="text-[10.5px] text-muted-foreground">Render your own page in the store dashboard.</p>
-              </div>
-              <div className="flex items-center gap-3">
-                {withUi ? (
-                  <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
-                    {(
-                      [
-                        { value: "js", label: "Plain JS" },
-                        { value: "react", label: "React TSX" },
-                      ] as const
-                    ).map((flavor) => (
-                      <button
-                        key={flavor.value}
-                        type="button"
-                        onClick={() => setUiFlavor(flavor.value)}
-                        className={cn(
-                          "h-6 rounded-md px-2 text-[11px] font-semibold transition-colors",
-                          uiFlavor === flavor.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {flavor.label}
-                      </button>
-                    ))}
-                  </div>
+            {example ? (
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <p className="text-xs font-semibold">{example.name}</p>
+                <p className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground">{example.description}</p>
+                {example.ui === "react" ? (
+                  <p className="mt-1.5 text-[10.5px] leading-snug text-muted-foreground">
+                    React UI projects need <code className="text-[10px]">npm install</code> — the shell will remind you after creating.
+                  </p>
                 ) : null}
-                <Switch checked={withUi} onCheckedChange={(checked) => setWithUi(checked)} />
               </div>
-            </div>
+            ) : null}
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -964,16 +1307,11 @@ function StepOptions({
             </div>
           </>
         )}
-
-        {withUi && template.kind === "plugin" && uiFlavor === "react" && !isAi ? (
-          <p className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2 text-[10.5px] leading-snug text-muted-foreground">
-            React UI projects need <code className="text-[10px]">npm install</code> — the shell will remind you after creating.
-          </p>
-        ) : null}
       </div>
 
       <ReviewCard
-        template={template}
+        kind={kind}
+        example={example}
         isAi={isAi}
         name={name}
         slug={slug}
@@ -983,8 +1321,6 @@ function StepOptions({
         category={category}
         icon={icon}
         accent={accent}
-        withUi={withUi}
-        uiFlavor={uiFlavor}
         permissionCount={permissions.length}
         customPreview={customPreview}
       />
@@ -1011,107 +1347,6 @@ function Field({
       {children}
       {hint ? <p className="text-[10.5px] leading-snug text-muted-foreground">{hint}</p> : null}
     </div>
-  )
-}
-
-function TemplateThumb({ template, className }: { template: StarterTemplate; className?: string }) {
-  const accent = ACCENTS[template.accent]
-  if (template.id === "blank") {
-    return (
-      <div className={cn("flex items-center justify-center gap-3 rounded-lg border border-border bg-muted/40", className)}>
-        <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", accent.tile)}>
-          <FilePlus2 className="h-[18px] w-[18px]" />
-        </span>
-        <span className="space-y-1">
-          <span className="block h-2 w-20 rounded-full bg-foreground/15" />
-          <span className="block h-2 w-14 rounded-full bg-foreground/10" />
-        </span>
-      </div>
-    )
-  }
-  if (template.id === "theme") {
-    return (
-      <div className={cn("overflow-hidden rounded-lg border border-border bg-background", className)}>
-        <div className="flex h-4 items-center gap-1 border-b border-border bg-muted/60 px-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
-          <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
-          <span className="h-1.5 w-6 rounded-full bg-foreground/10" />
-        </div>
-        <div className={cn("mx-2 mt-2 h-8 rounded", accent.tile)} />
-        <div className="grid grid-cols-3 gap-1.5 p-2">
-          <span className="h-5 rounded bg-muted" />
-          <span className="h-5 rounded bg-muted" />
-          <span className="h-5 rounded bg-muted" />
-        </div>
-      </div>
-    )
-  }
-  if (template.id === "react") {
-    return (
-      <div className={cn("relative overflow-hidden rounded-lg border border-border bg-zinc-950", className)}>
-        <div className="flex h-4 items-center gap-1 border-b border-white/10 px-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
-          <span className="h-1.5 w-1.5 rounded-full bg-white/25" />
-        </div>
-        <div className="space-y-1.5 p-2.5">
-          <span className={cn("block h-2.5 w-24 rounded-full opacity-80", accent.swatch)} />
-          <span className="block h-2 w-32 rounded-full bg-white/15" />
-          <span className="block h-2 w-20 rounded-full bg-white/10" />
-          <span className="mt-1.5 block h-6 w-16 rounded-md bg-white/10" />
-        </div>
-        <span className="absolute right-2 top-6 rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-white/70">TSX</span>
-      </div>
-    )
-  }
-  return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-background", className)}>
-      <div className="flex h-4 items-center gap-1 border-b border-border bg-muted/60 px-2">
-        <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
-        <span className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
-      </div>
-      <div className={cn("mx-2 mt-2 flex h-7 items-center justify-between rounded px-2", accent.tile)}>
-        <span className="h-1.5 w-10 rounded-full bg-current opacity-40" />
-        <span className="h-1.5 w-5 rounded-full bg-current opacity-40" />
-      </div>
-      <div className="grid grid-cols-2 gap-1.5 p-2">
-        <span className="h-6 rounded bg-muted" />
-        <span className="h-6 rounded bg-muted" />
-      </div>
-    </div>
-  )
-}
-
-function TemplateCard({ template, selected, onSelect }: { template: StarterTemplate; selected: boolean; onSelect: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        "group relative overflow-hidden rounded-xl border-2 p-2.5 text-left transition-all",
-        selected ? "border-primary bg-primary/[0.03] shadow-sm" : "border-border hover:border-primary/40",
-      )}
-    >
-      <TemplateThumb template={template} className="h-24 w-full" />
-      <div className="mt-2.5 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-[13px] font-semibold">
-            {template.name}
-            {template.badge ? (
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-bold text-muted-foreground">{template.badge}</span>
-            ) : null}
-          </p>
-          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{template.desc}</p>
-        </div>
-        <span
-          className={cn(
-            "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
-            selected ? "border-primary bg-primary text-primary-foreground" : "border-border text-transparent",
-          )}
-        >
-          <Check className="h-3 w-3" />
-        </span>
-      </div>
-    </button>
   )
 }
 
@@ -1180,7 +1415,8 @@ function PermissionPicker({ permissions, onToggle }: { permissions: string[]; on
 }
 
 function ReviewCard({
-  template,
+  kind,
+  example,
   isAi,
   name,
   slug,
@@ -1190,12 +1426,11 @@ function ReviewCard({
   category,
   icon,
   accent,
-  withUi,
-  uiFlavor,
   permissionCount,
   customPreview,
 }: {
-  template: StarterTemplate
+  kind: ExampleKind
+  example: WsExample | null
   isAi: boolean
   name: string
   slug: string
@@ -1205,24 +1440,30 @@ function ReviewCard({
   category: string
   icon: string
   accent: AccentName
-  withUi: boolean
-  uiFlavor: "js" | "react"
   permissionCount: number
   customPreview: string | null
 }) {
   const Icon = resolveIcon(icon)
   const rows: Array<[string, string]> = [
-    ["Kind", isAi ? "Plugin (AI)" : template.kind === "theme" ? "Theme" : "Plugin"],
+    ["Kind", isAi ? "Plugin (AI)" : kind === "theme" ? "Theme" : "Plugin"],
     ["Version", version || "0.1.0"],
     ["Author", author || "—"],
     [
       "Dashboard UI",
-      isAi ? "AI decides" : template.kind === "theme" ? "none (storefront theme)" : withUi ? (uiFlavor === "react" ? "React TSX" : "Plain JS") : "none",
+      isAi
+        ? "AI decides"
+        : kind === "theme"
+          ? "none (storefront theme)"
+          : example?.ui === "react"
+            ? "React TSX"
+            : example?.ui === "js"
+              ? "Plain JS"
+              : "kit sections only",
     ],
     ["Category", category],
     [
       "Permissions",
-      isAi ? "AI minimal" : template.kind === "theme" ? "n/a (theme)" : permissionCount > 0 ? `${permissionCount} selected` : "none",
+      isAi ? "AI minimal" : kind === "theme" ? "n/a (theme)" : permissionCount > 0 ? `${permissionCount} selected` : "none",
     ],
   ]
   return (
@@ -1232,9 +1473,11 @@ function ReviewCard({
           <span className="flex h-12 w-16 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-primary">
             <Sparkles className="h-5 w-5" />
           </span>
-        ) : (
-          <TemplateThumb template={template} className="h-12 w-16 shrink-0" />
-        )}
+        ) : example ? (
+          <span className={cn("flex h-12 w-16 shrink-0 items-center justify-center rounded-lg border border-border", ACCENTS[styleFor(example.id).accent].tile)}>
+            {React.createElement(resolveIcon(styleFor(example.id).icon), { className: "h-5 w-5" })}
+          </span>
+        ) : null}
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md", ACCENTS[accent].tile)}>
             {customPreview ? <img src={customPreview} alt="" className="h-full w-full object-cover" /> : <Icon className="h-4 w-4" />}
@@ -1253,6 +1496,11 @@ function ReviewCard({
           </div>
         ))}
       </dl>
+      {example && !isAi && kind === "plugin" ? (
+        <p className="mt-3 border-t border-border pt-2.5 text-[10.5px] leading-snug text-muted-foreground">
+          Built from the <span className="font-semibold">{example.name}</span> example.
+        </p>
+      ) : null}
       {description ? <p className="mt-3 border-t border-border pt-2.5 text-[11px] leading-snug text-muted-foreground">{description}</p> : null}
     </div>
   )

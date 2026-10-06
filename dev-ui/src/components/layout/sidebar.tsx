@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom"
 import {
   BookOpen,
+  Compass,
   Database,
   FileCode2,
   FileText,
@@ -8,13 +9,14 @@ import {
   Mail,
   Package,
   Play,
-  Plug,
   Puzzle,
   Radio,
   Rocket,
+  Route as RouteIcon,
   ScrollText,
   Search,
   Settings2,
+  Shield,
   ShoppingBag,
   Sliders,
   Sparkles,
@@ -33,51 +35,58 @@ interface NavItem {
   to: string
   label: string
   icon: LucideIcon
-  hint?: string
 }
 
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: "Getting started",
+    label: "Plugin",
     items: [
-      { to: "/", label: "Overview", icon: LayoutDashboard, hint: "checklist" },
-      { to: "/details", label: "Details & permissions", icon: Sliders, hint: "plugin.json" },
-      { to: "/listing", label: "In Selldoes", icon: Store, hint: "marketplace" },
+      { to: "/", label: "Overview", icon: Compass },
+      { to: "/permissions", label: "Permissions", icon: Shield },
+      { to: "/details", label: "Details", icon: Sliders },
     ],
   },
   {
     label: "Develop",
     items: [
-      { to: "/code", label: "Code", icon: FileCode2, hint: "editor" },
-      { to: "/packages", label: "Packages", icon: Package, hint: "npm" },
-      { to: "/console", label: "Console", icon: ScrollText, hint: "logs" },
+      { to: "/code", label: "Code", icon: FileCode2 },
+      { to: "/packages", label: "Packages", icon: Package },
+      { to: "/console", label: "Console", icon: ScrollText },
     ],
   },
   {
-    label: "Your plugin",
+    label: "Design",
     items: [
-      { to: "/dashboard", label: "Dashboard page", icon: LayoutDashboard },
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/storefront", label: "Storefront", icon: ShoppingBag },
-      { to: "/jobs", label: "Jobs", icon: Play, hint: "background" },
+    ],
+  },
+  {
+    label: "Backend",
+    items: [
+      { to: "/jobs", label: "Jobs", icon: Play },
+      { to: "/hooks", label: "Hooks", icon: Webhook },
+      { to: "/api", label: "API routes", icon: RouteIcon },
     ],
   },
   {
     label: "Test",
     items: [
-      { to: "/api", label: "API console", icon: Plug },
-      { to: "/hooks", label: "Hooks", icon: Webhook },
-      { to: "/data", label: "Store data", icon: Database, hint: "mock" },
+      { to: "/data", label: "Store data", icon: Database },
       { to: "/email", label: "Email outbox", icon: Mail },
       { to: "/realtime", label: "Realtime", icon: Radio },
     ],
   },
   {
     label: "Ship",
-    items: [{ to: "/ship", label: "Validate & publish", icon: Rocket }],
+    items: [
+      { to: "/listing", label: "Listing", icon: Store },
+      { to: "/ship", label: "Validate & publish", icon: Rocket },
+    ],
   },
   {
     label: "Manage",
-    items: [{ to: "/settings", label: "Project settings", icon: Settings2, hint: "this project" }],
+    items: [{ to: "/settings", label: "Project settings", icon: Settings2 }],
   },
 ]
 
@@ -163,7 +172,6 @@ export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
                   <span className="flex-1">{item.label}</span>
-                  {item.hint ? <span className="text-[10px] opacity-70">{item.hint}</span> : null}
                 </NavLink>
               ))}
             </div>

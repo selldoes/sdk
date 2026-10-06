@@ -1,0 +1,19 @@
+{
+  "name": "__THEME_SLUG__",
+  "private": true,
+  "version": "__VERSION__",
+  "type": "module",
+  "description": "A Selldoes theme.",
+  "scripts": {
+    "dev": "selldoes dev",
+    "build": "selldoes build",
+    "publish": "selldoes publish"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "selldoes": "^__SELLDOES_VERSION__"
+  }
+}

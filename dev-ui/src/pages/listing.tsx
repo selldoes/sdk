@@ -42,7 +42,7 @@ export function ListingPage() {
   return (
     <div className="space-y-5">
       <PageHead
-        title="In Selldoes"
+        title="Listing"
         description="Exactly what store owners see: the marketplace card, the listing page, the install dialog and where your plugin lands in the dashboard."
       />
 

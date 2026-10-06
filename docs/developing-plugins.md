@@ -14,15 +14,17 @@ The SDK remembers your projects per machine (`~/.selldoes/workspace.json`), so
 you run the tooling from anywhere — the plugin folder is just a path. In the
 dev shell the **sidebar workspace switcher** is a dropdown (like the
 dashboard's store switcher): your projects, restart/open/remove for the
-current one, then **New workspace** — a three-step dialog (start → details →
-options) that scaffolds template or AI projects, imports a folder/.zip, or
-pulls a package you own. It doubles as onboarding when the workspace is
-empty; switching is in-place — the shell proxies to whichever project's
-preview is selected:
+current one, then **New workspace** — a wizard that asks what you are building
+(plugin or theme), shows a gallery of complete examples and scaffolds the one
+you pick (or describes a plugin to AI), imports a folder/.zip, or pulls a
+package you own. It doubles as onboarding when the workspace is empty;
+switching is in-place — the shell proxies to whichever project's preview is
+selected:
 
 ```bash
 selldoes                       # dev shell + browser: sidebar switcher, onboarding when empty
 selldoes home                  # the same launcher, in your terminal
+selldoes create my-plugin --example importer   # start from an example (see below)
 selldoes import ~/code/my-plugin   # folder or .zip → registered in the workspace
 selldoes login --token sk_dev_…    # developer account (portal → API tokens)
 selldoes pull my-plugin            # download a package your account owns, keep developing
@@ -33,6 +35,29 @@ selldoes delete my-plugin          # delete its developer workspace copy on the 
 `dev`, `build`, `validate`, `bump` and `publish` work from inside a project
 exactly as before; run them outside one and you land in the workspace instead
 of an error.
+
+### Starting examples
+
+The create wizard and `selldoes create --example <id>` share one catalog of
+complete, working projects (`templates/` in the SDK):
+
+| Kind | Id | What you get |
+|---|---|---|
+| Plugin | `notes` | The canonical starter: manifest, entry and a plain-JS dashboard wired to a notes API route |
+| Plugin | `react` | The same starter with a React + TypeScript dashboard (esbuild bundles on save) |
+| Plugin | `blank` | Manifest + entry only |
+| Plugin | `importer` | A full scraping pipeline: listing walk, chunked import + refresh jobs, artwork/AI copy and a status page — the OTRCat importer |
+| Plugin | `ai-copy` | Walks the catalog and rewrites descriptions + bullets with `ctx.ai`, one product per step |
+| Plugin | `delivery` | A digital-delivery section on the storefront order page (`deliveryProvider`) |
+| Plugin | `widget` | A storefront chat bubble that stores visitor messages through a public route |
+| Theme | `starter` | Clean home + product page built on the theme hooks and components |
+| Theme | `editorial` | Magazine-style home and long-form product page |
+| Theme | `bold` | Dark, high-contrast storefront for sales and drops |
+| Theme | `minimal` | Quiet type, whitespace and a five-column catalogue |
+
+Every example ships a README explaining its core logic; the importer example
+is the reference implementation for the queue/job/AI patterns in
+[Background jobs](#background-jobs).
 
 ### Create with AI
 
@@ -291,8 +316,8 @@ code in Node, while production uses a QuickJS sandbox — avoid Node globals
 |---|---|
 | `db:read` / `db:write` | Read/write permitted tables + own `plugin_<slug>_*` tables |
 | `db:schema` | `ctx.db.ensureTable(name, columns)` |
-| `api:external` | `ctx.http.get/post` (60s default timeout, `opts.timeoutMs` capped at 60s) |
-| `ai:use` | `ctx.ai.complete` / `ctx.ai.image` |
+| `api:external` | `ctx.http.get/post` (60s default timeout, `opts.timeoutMs` capped at 60s, 4 MB responses) |
+| `ai:use` | `ctx.ai.complete` / `ctx.ai.image` (generated images are saved to media storage and returned as a URL) |
 | `email:send` | `ctx.email.send` through the platform SMTP |
 | `files:read` / `files:write` | `ctx.files` (S3 media) |
 | `products:read` / `products:write` | `ctx.products` |
@@ -306,6 +331,11 @@ example a `configSchema` field of type `secret`); values are never bundled with
 the plugin or written to logs. `ctx.storage` is a small JSON store scoped to
 the plugin **and** the store — use it for cursors, tokens and sync state
 instead of assuming a persistent filesystem (jobs run in disposable sandboxes).
+
+`ctx.products.upsertBySku()` is the idempotent import primitive (create or
+update keyed by SKU); `create`/`update` also accept `categories: ["A", "B"]` —
+missing categories are created for the store, linked to the product and the
+first name becomes its primary `category`.
 
 Manifest extras: `ui` (dashboard iframe; `ui.entry` + per-page
 `dashboardPages[].entry`), `storefrontWidget` (bubble on every
@@ -350,6 +380,29 @@ report to the job row; step results may also include `progress`. The preview
 server's **Jobs** tab runs handlers against the mock context and renders
 progress, items and logs. A legacy `async (input, ctx) => …` function is still
 supported.
+
+### Chaining jobs
+
+`ctx.jobs.enqueue({ type, input })` queues another job **declared by the same
+plugin** for the same store and returns its id. It is the building block for
+crawls and multi-batch imports that do not fit one tick or one Node run — a
+discovery step can queue one import job per batch, or a finished batch can
+queue its successor:
+
+```js
+async step(state, ctx) {
+  const batch = await processNextBatch(state, ctx) // chunk of products
+  if (batch.hasNext) {
+    await ctx.jobs.enqueue({ type: "import-batch", input: { cursor: batch.cursor } })
+  }
+  return { state: { cursor: batch.cursor }, done: !batch.hasNext, result: { processed: batch.processed } }
+}
+```
+
+Enqueues respect the store's job quotas (defaults: 3 active jobs, 50 jobs per
+day), so a runaway loop stops with a clear quota error instead of flooding the
+runtime. The dev preview drains queued jobs after the current run, so chained
+workflows can be tested end-to-end from the Jobs page.
 
 ### Node jobs
 
@@ -397,6 +450,9 @@ On a container/VM host tier the browsers can be installed into the image
   `ctx.products`, `ctx.files`, `ctx.ai`, `ctx.storage`, `ctx.secrets`,
   `ctx.jobs` — enforced by the host. The job never receives store credentials
   or direct database access.
+- `ctx.jobs.enqueue({ type, input })` queues the next declared job (same
+  plugin/store, same quotas), so a Node run can hand its batch to the next one
+  instead of needing the entire crawl to fit in a single run.
 - Limits: `timeoutMs` 1s–30min (default 5min), `memoryMb` 128–4096 (default
   512). Jobs are queued, and concurrent runs per store are capped by the
   platform. The host may enforce a lower cap than the manifest asks for (the
@@ -433,6 +489,68 @@ Declare cron schedules that enqueue declared jobs:
 - The preview's **Jobs** tab lists schedules with their next fire time and a
   **Run now** button. The host owns the real scheduler (enqueue, retries,
   overlap policy, per-store enable/disable in the dashboard).
+
+## Runtime helpers
+
+The SDK ships two runtime helpers. The CLI **bundles them into your plugin**,
+so they are toolchain code, not dependencies the platform installs:
+
+| Import | Works in | What it is |
+|---|---|---|
+| `selldoes/job` | QuickJS + Node | `createQueue(ctx, name)` — a durable, store-scoped work queue on `ctx.db` |
+| `selldoes/node` | Node jobs only | `normalizeImage`, `fetchBuffer`, `fetchText`, `launchBrowser` |
+
+### `selldoes/job` — work queues
+
+```js
+const { createQueue } = require("selldoes/job")
+
+const queue = createQueue(ctx, "import_queue")   // plugin-owned, store-scoped table
+await queue.push({ ref: sku, data: { url } })    // add work (or an array of items)
+const items = await queue.claim(10)              // lease up to 10 pending rows
+await queue.complete(items)
+await queue.fail(items, "parse error")           // retries until maxAttempts, then failed
+const stats = await queue.stats()                // { pending, processing, done, failed, total }
+await queue.drain(async (item) => { ... })       // claim → handle → complete/fail
+```
+
+Rows live in a plugin-owned table (`ctx.db.ensureTable`, automatically
+store-scoped), so they survive restarts, deploys and job churn — use them
+instead of `ctx.storage` cursors for anything bigger than a pointer. `claim()`
+leases rows atomically (a second concurrent claim cannot steal them). A failed
+item goes back to `pending` until `maxAttempts` (default 3), then `failed`;
+`drain()` leaves failures for a later run rather than retrying them inside the
+same one.
+
+### `selldoes/node` — scrapers, images, browsers
+
+These need real npm packages, so declare them first and import this only from a
+Node entry (`"runtime": "node"`):
+
+```bash
+selldoes add sharp                                 # normalizeImage
+selldoes add playwright-core @sparticuz/chromium   # launchBrowser
+```
+
+```js
+// server/import-batch.js — runtime: "node"
+const { fetchText, fetchBuffer, normalizeImage, launchBrowser } = require("selldoes/node")
+
+module.exports = async (input, ctx) => {
+  const html = await fetchText(input.url)     // no 4 MB ctx.http cap, browser UA
+  const image = await normalizeImage((await fetchBuffer(input.imageUrl)).data) // 1600×1600 webp
+
+  const browser = await launchBrowser()       // sparticuz Chromium on Lambda, local browser in dev
+  const page = await browser.newPage()
+  await page.goto(input.url, { waitUntil: "networkidle" })
+  await browser.close()
+  return { ok: true }
+}
+```
+
+Importing `selldoes/node` from the QuickJS entry fails the build with an
+explicit error, and a missing peer package fails at runtime with the exact
+`selldoes add …` command to fix it.
 
 ## npm dependencies
 

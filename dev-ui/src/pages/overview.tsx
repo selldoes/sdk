@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { AlertCircle, Check, ChevronRight, ListChecks, Play, Puzzle, Rocket, Sparkles } from "lucide-react"
+import { AlertCircle, Check, ChevronRight, ListChecks, Play, Puzzle, Rocket, Shield, Sparkles } from "lucide-react"
 import { PageHead, Callout, EmptyState, SectionTitle } from "@/components/shared"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
 import { Button } from "@/components/ui/button"
@@ -230,9 +230,10 @@ export function OverviewPage() {
       </div>
 
       <SectionTitle>Where to go next</SectionTitle>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { to: "/details", title: "Edit details", note: "Description, icon, screenshots and permissions.", icon: AlertCircle },
+          { to: "/details", title: "Edit details", note: "Description, icon and screenshots.", icon: AlertCircle },
+          { to: "/permissions", title: "Edit permissions", note: "Requested permissions and allowed tables.", icon: Shield },
           { to: "/listing", title: "See the listing", note: "Marketplace card, install dialog and dashboard page.", icon: Rocket },
           { to: "/ship", title: "Ship it", note: "Validate, build and publish for review.", icon: Check },
         ].map((entry) => (

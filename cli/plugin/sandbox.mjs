@@ -54,6 +54,59 @@ export function nodeJobLimits(job) {
   }
 }
 
+// ─── SDK runtime helpers ────────────────────────────────────────────────────
+
+/**
+ * Resolves `selldoes/job` and `selldoes/node` to the CLI's own copy of the
+ * helper so it is bundled into the plugin artifact (the helper is part of the
+ * toolchain, not a dependency the execution image installs). In an SDK
+ * checkout the source file wins — always fresh; installed users get `dist/`.
+ */
+export function resolveSdkHelperPath(subpath) {
+  const root = path.resolve(HERE, "..", "..")
+  const srcTs = path.join(root, "src", `${subpath}.ts`)
+  const srcJs = path.join(root, "src", `${subpath}.js`)
+  const dist = path.join(root, "dist", `${subpath}.js`)
+  if (fs.existsSync(srcTs)) return srcTs
+  if (fs.existsSync(srcJs)) return srcJs
+  if (fs.existsSync(dist)) return dist
+  return null
+}
+
+/**
+ * esbuild plugin for the SDK runtime helpers.
+ *
+ * `selldoes/job` is QuickJS-safe (pure `ctx.db` code) and bundles everywhere.
+ * `selldoes/node` needs real Node packages, so importing it from the sandbox
+ * bundle fails with an actionable error instead of a mysterious external.
+ */
+export function sdkHelpersPlugin({ nodeRuntime = false } = {}) {
+  return {
+    name: "selldoes-sdk-helpers",
+    setup(build) {
+      build.onResolve({ filter: /^selldoes\/(job|node)$/ }, (args) => {
+        const subpath = args.path.slice("selldoes/".length)
+        if (subpath === "node" && !nodeRuntime) {
+          return {
+            errors: [
+              {
+                text:
+                  '"selldoes/node" can only be imported from a Node job entry (a job with "runtime": "node" and server/*.js) — ' +
+                  "it needs sharp/playwright, which the QuickJS sandbox cannot run.",
+              },
+            ],
+          }
+        }
+        const helper = resolveSdkHelperPath(subpath)
+        if (!helper) {
+          return { errors: [{ text: `The selldoes CLI could not find its "${args.path}" helper — reinstall selldoes.` }] }
+        }
+        return { path: helper }
+      })
+    },
+  }
+}
+
 /**
  * Builtins the sandbox will never provide. Returning an esbuild error beats an
  * "empty" shim: the build fails with the import site instead of shipping a
@@ -167,7 +220,7 @@ export function sandboxBuildOptions({
     minify,
     metafile,
     ...(banner ? { banner: { js: banner } } : {}),
-    plugins: [...sandboxPlugins(), ...extraPlugins],
+    plugins: [sdkHelpersPlugin(), ...sandboxPlugins(), ...extraPlugins],
   }
 }
 
@@ -189,7 +242,7 @@ export function nodeBuildOptions({ pluginDir, entryPoints, outfile, metafile = f
     packages: "external",
     logLevel,
     metafile,
-    plugins: [...extraPlugins],
+    plugins: [sdkHelpersPlugin({ nodeRuntime: true }), ...extraPlugins],
   }
 }
 
@@ -245,10 +298,18 @@ export function collectExternals(metafile) {
 /**
  * npm packages left external in a Node artifact (the image installs them from
  * package.json). Relative paths and Node builtins are skipped.
+ *
+ * By default SDK-injected files (`selldoes/job`, `selldoes/node`) are skipped:
+ * their optional peers resolve from the plugin's own node_modules at runtime
+ * and the helper fails with an actionable message when one is missing, so a
+ * package the helper *could* use should not be reported as an undeclared
+ * import. Pass `{ includeSdk: true }` to count them anyway (used to tell which
+ * declared dependencies only a Node entry needs).
  */
-export function collectExternalPackages(metafile) {
+export function collectExternalPackages(metafile, { includeSdk = false } = {}) {
   const packages = new Set()
-  for (const info of Object.values(metafile?.inputs ?? {})) {
+  for (const [file, info] of Object.entries(metafile?.inputs ?? {})) {
+    if (!includeSdk && (path.isAbsolute(file) || file.startsWith("..") || NODE_MODULES.test(file))) continue
     for (const imported of info.imports ?? []) {
       if (!imported.external) continue
       const target = String(imported.path ?? "")
@@ -341,8 +402,12 @@ function describeBuildError(message) {
  * Checks a built bundle against the sandbox contract.
  * Returns `{ ok, errors, warnings, bytes, sizeKb, externals, packages, imported,
  * missingDependencies, unusedDependencies, load }` — never throws.
+ *
+ * `nodeDependencies` lists packages used only by `"runtime": "node"` entries:
+ * they are legitimately absent from the sandbox bundle and are not reported as
+ * unused.
  */
-export function checkSandboxBundle({ bundlePath, metafile, manifest } = {}) {
+export function checkSandboxBundle({ bundlePath, metafile, manifest, nodeDependencies = [] } = {}) {
   const errors = []
   const warnings = []
   let bytes = 0
@@ -373,7 +438,8 @@ export function checkSandboxBundle({ bundlePath, metafile, manifest } = {}) {
   for (const name of missingDependencies) {
     errors.push(`"${name}" is bundled but not declared in plugin.json dependencies — the platform will not install it`)
   }
-  const unusedDependencies = Object.keys(declared).filter((name) => !packages.includes(name))
+  const nodeOnly = new Set(nodeDependencies.map((name) => String(name)))
+  const unusedDependencies = Object.keys(declared).filter((name) => !packages.includes(name) && !nodeOnly.has(name))
   for (const name of unusedDependencies) {
     warnings.push(`"${name}" is declared in plugin.json but was not bundled by this build`)
   }

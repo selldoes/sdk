@@ -1,0 +1,280 @@
+{
+  "slug": "__PLUGIN_SLUG__",
+  "name": "__PLUGIN_NAME__",
+  "description": "__PLUGIN_DESCRIPTION__",
+  "version": "__VERSION__",
+  "author": "__PLUGIN_AUTHOR__",
+  "icon": "radio",
+  "category": "__PLUGIN_CATEGORY__",
+  "permissions": [
+    "api:external",
+    "ai:use",
+    "db:read",
+    "files:read",
+    "files:write",
+    "products:read",
+    "products:write",
+    "storage:read",
+    "storage:write"
+  ],
+  "allowedTables": [
+    "products"
+  ],
+  "entry": "./index.js",
+  "dashboardPages": [
+    {
+      "label": "__PLUGIN_NAME__",
+      "path": "/",
+      "icon": "radio",
+      "sections": [
+        {
+          "type": "text",
+          "settings": {
+            "title": "Import products",
+            "body": "Run **Import products** to scan the listing URL and create catalog entries. The job is chunked: the host keeps calling it and checkpoints progress after every product, so you can close the page and come back. Adjust what it imports in the panel below."
+          }
+        },
+        {
+          "type": "job",
+          "settings": {
+            "title": "Import products",
+            "job": "import-products",
+            "maxTicks": 200
+          }
+        },
+        {
+          "type": "job",
+          "settings": {
+            "title": "Refresh prices & variants",
+            "job": "refresh-products",
+            "maxTicks": 200
+          }
+        },
+        {
+          "type": "job",
+          "settings": {
+            "title": "Test fetch",
+            "job": "test-fetch",
+            "maxTicks": 5
+          }
+        },
+        {
+          "type": "job",
+          "settings": {
+            "title": "Preview a product parse (pass a product URL as input)",
+            "job": "preview-product",
+            "maxTicks": 3
+          }
+        },
+        {
+          "type": "table",
+          "settings": {
+            "title": "Recently created products",
+            "route": "/recent",
+            "columns": [
+              "name",
+              "sku",
+              "price",
+              "status"
+            ],
+            "maxRows": 20
+          }
+        },
+        {
+          "type": "settings"
+        },
+        {
+          "type": "logs",
+          "settings": {
+            "title": "Import log",
+            "lines": 20
+          }
+        }
+      ]
+    },
+    {
+      "label": "Status",
+      "path": "/status",
+      "icon": "bar-chart-2",
+      "entry": "ui/status.html"
+    }
+  ],
+  "ui": {
+    "entry": "ui/status.html",
+    "title": "__PLUGIN_NAME__"
+  },
+  "apiRoutes": [
+    {
+      "path": "/ping",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/recent",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/status",
+      "methods": [
+        "GET"
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "type": "import-products",
+      "name": "Import products",
+      "description": "Scans the listing URL and imports every product it finds (one product per step, chunked across ticks).",
+      "tickBudgetMs": 30000
+    },
+    {
+      "type": "refresh-products",
+      "name": "Refresh prices & variants",
+      "description": "Re-checks imported SKUs on OTRCat and updates price, variants and categories when they changed.",
+      "tickBudgetMs": 30000
+    },
+    {
+      "type": "test-fetch",
+      "name": "Test fetch",
+      "description": "Fetches the listing URL a number of times to verify connectivity, permissions and progress reporting.",
+      "tickBudgetMs": 30000
+    },
+    {
+      "type": "probe-capabilities",
+      "name": "Probe store capabilities",
+      "description": "Imports one image from a URL and creates/updates a hidden draft product — verifies ctx.files and ctx.products end to end.",
+      "tickBudgetMs": 30000
+    },
+    {
+      "type": "preview-product",
+      "name": "Preview a product parse",
+      "description": "Fetches one product URL and returns the parsed fields plus the product payload it would save — writes nothing. Use it to test the parser.",
+      "tickBudgetMs": 30000
+    }
+  ],
+  "configSchema": [
+    {
+      "key": "listingUrl",
+      "label": "Listing URL",
+      "type": "string",
+      "default": "https://www.otrcat.com/all?order=name&d=&limit=100",
+      "placeholder": "https://www.otrcat.com/…",
+      "description": "OTRCat page that lists the products to import. The importer follows the page's Next links, so keep it paginated (limit=100)."
+    },
+    {
+      "key": "maxProducts",
+      "label": "Max products (0 = all)",
+      "type": "number",
+      "default": 0,
+      "description": "Stop after importing this many products. Useful for a first test run."
+    },
+    {
+      "key": "priceMultiplier",
+      "label": "Price multiplier",
+      "type": "number",
+      "default": 1,
+      "description": "Multiplies every scraped price (base price and variants). 1 = OTRCat prices, 1.5 = +50%."
+    },
+    {
+      "key": "defaultStatus",
+      "label": "New product status",
+      "type": "select",
+      "default": "draft",
+      "options": [
+        {
+          "value": "draft",
+          "label": "Draft (hidden until you publish)"
+        },
+        {
+          "value": "active",
+          "label": "Active (visible in the store)"
+        }
+      ],
+      "description": "Status assigned to imported products."
+    },
+    {
+      "key": "skipExisting",
+      "label": "Skip products that already exist",
+      "type": "boolean",
+      "default": true,
+      "description": "When on, SKUs already in the catalog are left untouched. Turn off to update them instead."
+    },
+    {
+      "key": "importImages",
+      "label": "Import product artwork",
+      "type": "boolean",
+      "default": true,
+      "description": "Downloads the OTRCat cover image into your store's file storage."
+    },
+    {
+      "key": "aiCopy",
+      "label": "AI copy (description + bullets)",
+      "type": "boolean",
+      "default": true,
+      "description": "Rewrites the description and generates bullet points through your AI provider. Slower — roughly one product per tick."
+    },
+    {
+      "key": "aiImage",
+      "label": "AI main image",
+      "type": "boolean",
+      "default": false,
+      "description": "Generates the main image from the OTRCat artwork through your saved AI image prompt. Off = import the original artwork."
+    },
+    {
+      "key": "aiImagePromptId",
+      "label": "AI image prompt id",
+      "type": "number",
+      "default": 15,
+      "description": "Saved AI prompt to use (Dashboard → AI Prompts). Used when AI main image is on."
+    },
+    {
+      "key": "aiImageSize",
+      "label": "AI image size",
+      "type": "string",
+      "default": "2048x2048",
+      "description": "Requested output size, e.g. 2048x2048. The provider may snap to a supported size."
+    },
+    {
+      "key": "aiPrompt",
+      "label": "Custom AI description prompt",
+      "type": "text",
+      "description": "Optional. Overrides the built-in description prompt (the product data is appended automatically)."
+    },
+    {
+      "key": "bulletCount",
+      "label": "Bullet points per product",
+      "type": "number",
+      "default": 4,
+      "description": "How many AI bullet points to generate."
+    },
+    {
+      "key": "useProxy",
+      "label": "Use HTML proxy for fetching",
+      "type": "boolean",
+      "default": false,
+      "description": "Route page fetches through the html-scraper proxy (needs the API key below). Off = fetch OTRCat directly."
+    },
+    {
+      "key": "proxyApiKey",
+      "label": "Proxy API key",
+      "type": "secret",
+      "description": "Optional key for the html-scraper proxy. Stored encrypted."
+    },
+    {
+      "key": "pagesToFetch",
+      "label": "Test fetch: pages to request",
+      "type": "number",
+      "default": 3,
+      "description": "Used by the Test fetch job only."
+    }
+  ],
+  "tags": [
+    "example",
+    "scraper",
+    "import"
+  ],
+  "homepage": "https://selldoes.com"
+}

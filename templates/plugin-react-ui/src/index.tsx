@@ -87,7 +87,7 @@ export default function PluginUi() {
     <main className="plugin">
       <header>
         <h1>__PLUGIN_NAME__</h1>
-        <p className="muted">React dashboard UI, rendered in a sandboxed iframe.</p>
+        <p className="muted">React + TypeScript dashboard UI — the notes example, ready to replace.</p>
       </header>
 
       <form onSubmit={add}>

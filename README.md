@@ -39,7 +39,7 @@ selldoes open index.js:12            # jump to a file/line in VS Code, Cursor or
 
 | Surface | What it's for |
 |---|---|
-| **Dev shell** (`selldoes`, bare → `/{projectId}`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). Every page lives at `/{projectId}/{page}` — the project's internal id leads the URL, and switching projects keeps you on the same page. The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a three-step dialog (start → details → options) for template or Describe-AI projects, folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding. Two settings surfaces keep machine and project concerns apart: **User settings** (the icon in the header) — assistant provider/key, connected accounts (developer + theme lanes), workspace registry, default editor and the default release bump; and **Project settings** (sidebar) — the current project's dev server, release-bump override, assistant model override and danger-zone actions. **Validate & publish** bumps the version (patch/minor/major), builds and ships the release to review in one click |
+| **Dev shell** (`selldoes`, bare → `/{projectId}`) | Daily driver: the preview UI with a **workspace switcher in the sidebar** (like the dashboard's store switcher). Every page lives at `/{projectId}/{page}` — the project's internal id leads the URL, and switching projects keeps you on the same page. The dropdown lists your projects (switch in-place, restart/open/remove the current one) plus **New workspace** — a wizard that asks what you're building, then shows a gallery of complete examples (importer, AI copy, delivery, storefront widget, four themes, …) or scaffolds from a description with AI, alongside folder/.zip imports and pulling packages you own. Empty workspace → the same dialog opens as onboarding. Two settings surfaces keep machine and project concerns apart: **User settings** (the icon in the header) — assistant provider/key, connected accounts (developer + theme lanes), workspace registry, default editor and the default release bump; and **Project settings** (sidebar) — the current project's dev server, release-bump override, assistant model override and danger-zone actions. **Validate & publish** bumps the version (patch/minor/major), builds and ships the release to review in one click |
 | **Code + Console** (shell pages) | Monaco editor over the project (SDK types, save → rebuild, git diffs/commit, quick open, search, terminal drawer) and a live log console whose build errors jump to the offending line |
 | **Preview** (proxied per project, spawned on `4591+`) | The existing per-plugin dev UI — jobs, API console, storefront, AI assistant with diffs + closed-loop apply. The shell proxies to whichever project is selected |
 | **Terminal** (`selldoes home`, `ask`, verbs) | TUI launcher, headless/CI (`build`, `publish`, `validate`, `pull`), terminal assistant, `selldoes open` |
@@ -121,6 +121,10 @@ workspace's "Describe AI" create, and `selldoes ask`:
 ```js
 // Plugin runtime — types only, the sandbox provides `ctx` at runtime
 import { definePlugin } from "selldoes"
+
+// Runtime helpers — bundled into your plugin by the CLI (not platform deps)
+import { createQueue } from "selldoes/job"                     // QuickJS + Node
+import { normalizeImage, launchBrowser } from "selldoes/node"  // Node jobs only
 
 // Theme runtime — React hooks + components, bundled into your theme
 import { useStore, useProducts, ProductGrid, Price } from "selldoes/theme"

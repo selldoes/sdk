@@ -6,10 +6,12 @@ import {
   Bot,
   Boxes,
   DollarSign,
+  FilePlus2,
   FileText,
   Filter,
   KeyRound,
   LayoutDashboard,
+  LayoutGrid,
   LifeBuoy,
   Mail,
   MessageCircle,
@@ -30,6 +32,7 @@ import {
   Truck,
   Users,
   Wand2,
+  Zap,
   type LucideIcon,
 } from "lucide-react"
 import { cn, mediaUrl } from "@/lib/utils"
@@ -45,11 +48,13 @@ const ICONS: Record<string, LucideIcon> = {
   bot: Bot,
   boxes: Boxes,
   "dollar-sign": DollarSign,
+  "file-plus": FilePlus2,
   "file-text": FileText,
   filter: Filter,
   "key-round": KeyRound,
   key: KeyRound,
   "layout-dashboard": LayoutDashboard,
+  "layout-grid": LayoutGrid,
   "life-buoy": LifeBuoy,
   lifebuoy: LifeBuoy,
   mail: Mail,
@@ -72,6 +77,7 @@ const ICONS: Record<string, LucideIcon> = {
   users: Users,
   "wand-2": Wand2,
   wand: Wand2,
+  zap: Zap,
 }
 
 export const PLUGIN_ICON_CHOICES = [

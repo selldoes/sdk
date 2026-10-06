@@ -30,12 +30,12 @@ export function buildChecklist(manifest: PluginManifest, activity: DevActivity, 
       note: `${permissions.length} requested · highest risk ${highestRisk(permissions)}${
         (manifest.allowedTables ?? []).length ? ` · ${manifest.allowedTables!.length} table(s)` : ""
       }`,
-      to: "/details",
-      done: visits.details === true && permissions.length > 0,
+      to: "/permissions",
+      done: visits.permissions === true && permissions.length > 0,
     },
     {
       key: "listing",
-      title: "See it inside Selldoes",
+      title: "See the listing",
       note: "Marketplace card, listing page, install dialog and dashboard page.",
       to: "/listing",
       done: visits.listing === true,

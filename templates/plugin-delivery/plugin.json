@@ -1,0 +1,40 @@
+{
+  "slug": "__PLUGIN_SLUG__",
+  "name": "__PLUGIN_NAME__",
+  "description": "__PLUGIN_DESCRIPTION__",
+  "version": "__VERSION__",
+  "author": "__PLUGIN_AUTHOR__",
+  "icon": "package",
+  "category": "__PLUGIN_CATEGORY__",
+  "permissions": [],
+  "allowedTables": [],
+  "entry": "./index.js",
+  "delivery": true,
+  "dashboardPages": [
+    {
+      "label": "__PLUGIN_NAME__",
+      "path": "/",
+      "icon": "package",
+      "sections": [
+        {
+          "type": "text",
+          "settings": {
+            "title": "Digital delivery section",
+            "body": "When `delivery: true` is declared, the storefront renders what `deliveryProvider()` returns on the order-detail page. This example lists each digital line from the order with its download link, license key or delivery instructions.\n\nOpen a storefront order in the preview to see it, or call the `/preview` route from the API console."
+          }
+        },
+        {
+          "type": "links",
+          "settings": {
+            "items": [
+              { "label": "Order delivery docs", "href": "https://selldoes.com/docs/plugins" },
+              { "label": "Manifest reference", "href": "https://selldoes.com/docs/plugins" }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "apiRoutes": [{ "path": "/preview", "methods": ["GET"] }],
+  "tags": ["example", "delivery", "digital"]
+}

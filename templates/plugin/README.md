@@ -44,6 +44,22 @@ checks, store scoping and allowed-tables rules — so if it works locally, it
 works in production (production additionally runs in QuickJS: avoid Node
 globals like `process`, `Buffer` or `require`).
 
+## Runtime helpers
+
+Two helpers ship with the SDK and are bundled into your plugin by the CLI:
+
+- `selldoes/job` — `createQueue(ctx, "import_queue")`: a durable, store-scoped
+  work queue on `ctx.db` (`push`, `claim`, `complete`, `fail`, `drain`, `stats`).
+  Works in the QuickJS sandbox and in Node jobs.
+- `selldoes/node` — Node jobs only: `fetchText`/`fetchBuffer`,
+  `normalizeImage` (sharp) and `launchBrowser` (playwright-core +
+  `@sparticuz/chromium` on Lambda). Add the peer packages first:
+  `npx selldoes add sharp` / `npx selldoes add playwright-core @sparticuz/chromium`.
+
+Long imports fit together with `ctx.jobs.enqueue({ type, input })`, which
+queues the next declared job — a discovery job can enqueue import batches and
+each batch can queue its successor.
+
 ## Publish
 
 ```bash

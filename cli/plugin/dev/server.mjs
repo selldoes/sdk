@@ -242,9 +242,12 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     state.setSettings(values ?? {})
   }
 
-  const { ctx, outbox, events, jobEvents } = createMockContext({
+  const { ctx, outbox, events, jobEvents, pendingJobs } = createMockContext({
     pluginDir,
     manifest: manifestStore.read(),
+    // Permissions/allowedTables are re-read on every capability check, so
+    // editing plugin.json applies without restarting the dev server.
+    getManifest: () => manifestStore.read(),
     db,
     storeId,
     config: ctxConfig,
@@ -1386,6 +1389,28 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           state.record("jobs", { type: body?.type })
           const summary = run.kind === "node" ? "on the Node runtime" : `${run.ticks.length} tick(s)`
           log(`job ${body?.type} ran ${summary}${run.done ? " — done" : " — tick limit reached"}`)
+
+          // Drain jobs queued with ctx.jobs.enqueue, so chained workflows
+          // (discover → import batches) run end-to-end in the dev preview.
+          const chained = []
+          const CHAIN_LIMIT = 10
+          while (pendingJobs.length > 0 && chained.length < CHAIN_LIMIT) {
+            const next = pendingJobs.shift()
+            const chainedRun = await runner.runJob(next.type, next.input ?? {}, ctx, maxTicks)
+            chained.push({
+              type: next.type,
+              jobId: next.jobId,
+              kind: chainedRun.kind,
+              ticks: chainedRun.ticks.length,
+              done: chainedRun.done,
+              result: chainedRun.result ?? null,
+            })
+            log(`chained job ${next.type} ran${chainedRun.done ? " — done" : " — tick limit reached"}`)
+          }
+          if (pendingJobs.length > 0) {
+            log(`job queue still holds ${pendingJobs.length} job(s) — run the job again to continue`)
+          }
+
           const stateJson = run.state === undefined || run.state === null ? "" : JSON.stringify(run.state)
           return json(res, 200, {
             ok: true,
@@ -1396,6 +1421,8 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
               result: run.result ?? null,
               state: stateJson && stateJson.length <= 20000 ? run.state : undefined,
             },
+            chained,
+            queued: pendingJobs.length,
             telemetry: {
               progress: jobEvents.progress.slice(),
               items: jobEvents.items.slice(),

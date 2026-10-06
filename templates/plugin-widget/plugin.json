@@ -1,0 +1,48 @@
+{
+  "slug": "__PLUGIN_SLUG__",
+  "name": "__PLUGIN_NAME__",
+  "description": "__PLUGIN_DESCRIPTION__",
+  "version": "__VERSION__",
+  "author": "__PLUGIN_AUTHOR__",
+  "icon": "message-circle",
+  "category": "__PLUGIN_CATEGORY__",
+  "permissions": ["db:read", "db:write", "db:schema"],
+  "allowedTables": [],
+  "entry": "./index.js",
+  "storefrontWidget": {
+    "entry": "ui/widget.html",
+    "width": 64,
+    "height": 64
+  },
+  "dashboardPages": [
+    {
+      "label": "__PLUGIN_NAME__",
+      "path": "/",
+      "icon": "message-circle",
+      "sections": [
+        {
+          "type": "text",
+          "settings": {
+            "title": "Visitor messages",
+            "body": "The widget in the bottom-right corner of every storefront page posts to a **public route** — no login needed. Messages land in the table below, stored in the plugin's own `contact_messages` table."
+          }
+        },
+        { "type": "table", "settings": { "title": "Messages", "route": "/messages", "columns": ["name", "email", "body", "handled"], "maxRows": 50 } },
+        { "type": "settings" },
+        { "type": "logs", "settings": { "title": "Widget activity", "lines": 15 } }
+      ]
+    }
+  ],
+  "apiRoutes": [{ "path": "/messages", "methods": ["GET", "POST"] }],
+  "publicRoutes": [{ "path": "/message", "methods": ["POST"] }],
+  "configSchema": [
+    {
+      "key": "greeting",
+      "label": "Widget greeting",
+      "type": "string",
+      "default": "Questions? Leave us a message.",
+      "description": "Shown at the top of the widget panel."
+    }
+  ],
+  "tags": ["example", "widget", "storefront"]
+}

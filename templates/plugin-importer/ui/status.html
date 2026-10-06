@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>__PLUGIN_NAME__ — Status</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>__PLUGIN_NAME__</h1>
+        <p class="muted">Import status — run jobs from the main page of the sidebar entry.</p>
+      </div>
+      <button id="refresh" class="ghost">Refresh</button>
+    </header>
+
+    <section class="cards">
+      <div class="card">
+        <span class="label">Products in catalog</span>
+        <strong id="total">–</strong>
+      </div>
+      <div class="card">
+        <span class="label">Last import</span>
+        <strong id="last-when">never</strong>
+      </div>
+      <div class="card">
+        <span class="label">Created / updated</span>
+        <strong id="last-counts">–</strong>
+      </div>
+      <div class="card">
+        <span class="label">Skipped / failed</span>
+        <strong id="last-issues">–</strong>
+      </div>
+    </section>
+
+    <section>
+      <h2>Recently created products</h2>
+      <table id="recent">
+        <thead>
+          <tr><th>Name</th><th>SKU</th><th>Price</th><th>Status</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted" hidden>Nothing imported yet — run <strong>Import products</strong> from the main page.</p>
+    </section>
+
+    <p id="error" class="error" hidden></p>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

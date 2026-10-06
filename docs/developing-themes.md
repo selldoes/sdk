@@ -8,12 +8,15 @@ implemented by the platform host).
 ## Quick start
 
 ```bash
-npx selldoes create my-theme        # choose Theme
+npx selldoes create my-theme        # choose Theme → pick one of four examples
 cd my-theme
 npm install
 npx selldoes login --api-key sk_…   # Dashboard → Settings → API Keys
 npx selldoes dev --store <slug>     # live preview against your store
 ```
+
+Theme examples: **Starter storefront**, **Editorial**, **Bold drop** and
+**Minimal** — each is a complete home + product page you can build on.
 
 ## Anatomy
 

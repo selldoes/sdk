@@ -1,0 +1,71 @@
+{
+  "slug": "__PLUGIN_SLUG__",
+  "name": "__PLUGIN_NAME__",
+  "description": "__PLUGIN_DESCRIPTION__",
+  "version": "__VERSION__",
+  "author": "__PLUGIN_AUTHOR__",
+  "icon": "sparkles",
+  "category": "__PLUGIN_CATEGORY__",
+  "permissions": ["ai:use", "products:read", "products:write"],
+  "allowedTables": [],
+  "entry": "./index.js",
+  "dashboardPages": [
+    {
+      "label": "__PLUGIN_NAME__",
+      "path": "/",
+      "icon": "sparkles",
+      "sections": [
+        {
+          "type": "text",
+          "settings": {
+            "title": "Rewrite your product copy with AI",
+            "body": "The job walks the catalog, finds products whose description or bullets are missing or short, and rewrites them through your store's AI provider. One product per step — safe to stop and resume. Configure the style in the settings panel below."
+          }
+        },
+        { "type": "job", "settings": { "title": "Generate product copy", "job": "generate-copy", "maxTicks": 200 } },
+        { "type": "table", "settings": { "title": "Latest products", "route": "/products", "columns": ["name", "sku", "copy"], "maxRows": 20 } },
+        { "type": "settings" },
+        { "type": "logs", "settings": { "title": "AI copy log", "lines": 20 } }
+      ]
+    }
+  ],
+  "apiRoutes": [{ "path": "/products", "methods": ["GET"] }],
+  "jobs": [
+    {
+      "type": "generate-copy",
+      "name": "Generate product copy",
+      "description": "Rewrites descriptions and bullet points through the store's AI provider, one product per step.",
+      "tickBudgetMs": 30000
+    }
+  ],
+  "configSchema": [
+    {
+      "key": "instructions",
+      "label": "Writing instructions",
+      "type": "text",
+      "description": "Optional. Your voice/tone rules; the product data is appended automatically."
+    },
+    {
+      "key": "onlyMissing",
+      "label": "Only products missing copy",
+      "type": "boolean",
+      "default": true,
+      "description": "On = skip products that already have a description and bullets. Off = rewrite everything."
+    },
+    {
+      "key": "maxProducts",
+      "label": "Max products (0 = all)",
+      "type": "number",
+      "default": 25,
+      "description": "Stop after this many products. Useful for a first run."
+    },
+    {
+      "key": "bulletCount",
+      "label": "Bullet points per product",
+      "type": "number",
+      "default": 4,
+      "description": "How many bullet points the model should write."
+    }
+  ],
+  "tags": ["example", "ai", "products"]
+}

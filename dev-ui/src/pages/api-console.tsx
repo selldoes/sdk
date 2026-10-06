@@ -1,5 +1,6 @@
 import * as React from "react"
-import { Loader2, Plug, Send } from "lucide-react"
+import { Loader2, Plug, Plus, Send } from "lucide-react"
+import { CreateRouteDialog } from "@/components/create-dialogs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -7,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { EmptyState, PageHead } from "@/components/shared"
+import { healMissingDeclaration, parseMissingDeclaration } from "@/lib/self-heal"
+import type { PluginManifest, Validation } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/state/app"
@@ -17,20 +20,47 @@ interface RouteRow {
   kind: "dashboard" | "public"
   base: string
   full: string
+  /** Conventional scaffold location — mirrors the CLI's routes/<safe-stem>.js. */
+  file: string
+}
+
+function routeFileHint(routePath: string) {
+  const stem =
+    routePath
+      .replace(/^\//, "")
+      .replace(/:/g, "-")
+      .replace(/[^a-z0-9:_-]+/i, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "item"
+  return `routes/${stem}.js`
 }
 
 export function ApiPage() {
-  const { bootstrap, toast, setAssistantPage } = useApp()
+  const { bootstrap, toast, setAssistantPage, applyManifest, refresh } = useApp()
   useVisit("api")
   const manifest = bootstrap!.manifest
   const routes: RouteRow[] = [
     ...(manifest.apiRoutes ?? []).map((route) => {
       const base = `/api/plugin-api/${manifest.slug}`
-      return { path: route.path, methods: route.methods, kind: "dashboard" as const, base, full: base + route.path }
+      return {
+        path: route.path,
+        methods: route.methods,
+        kind: "dashboard" as const,
+        base,
+        full: base + route.path,
+        file: routeFileHint(route.path),
+      }
     }),
     ...(manifest.publicRoutes ?? []).map((route) => {
       const base = `/api/plugin-public/${manifest.slug}`
-      return { path: route.path, methods: route.methods, kind: "public" as const, base, full: base + route.path }
+      return {
+        path: route.path,
+        methods: route.methods,
+        kind: "public" as const,
+        base,
+        full: base + route.path,
+        file: routeFileHint(route.path),
+      }
     }),
   ]
   const first = routes[0]
@@ -41,14 +71,28 @@ export function ApiPage() {
   const [result, setResult] = React.useState("—")
   const [busy, setBusy] = React.useState(false)
 
+  // ── Creation: New route (scaffold into routes/ + plugin.json + entry) ────
+  const [createOpen, setCreateOpen] = React.useState(false)
+
+  const handleScaffolded = React.useCallback(
+    (next: PluginManifest, validation: Validation, message: string) => {
+      applyManifest(next, validation)
+      toast(message, "success")
+      void refresh()
+    },
+    [applyManifest, refresh, toast],
+  )
+
   React.useEffect(() => {
     setAssistantPage({
-      context: `The developer is in the API console. Declared routes: ${JSON.stringify(routes.map((route) => `${route.methods.join("/")} ${route.full}`))}.`,
+      context: `The developer is on the API routes page. Declared routes: ${JSON.stringify(
+        routes.map((route) => `${route.methods.join("/")} ${route.full}`),
+      )}.`,
       quick: ["Explain my API routes", "Add a route that lists records"],
     })
   }, [setAssistantPage]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const send = async () => {
+  const send = async (healed = false) => {
     setBusy(true)
     setResult("…")
     try {
@@ -58,6 +102,23 @@ export function ApiPage() {
         body: method === "GET" ? undefined : body || "{}",
       })
       const text = await response.text()
+      // Missing plugin.json declaration (permission / allowedTables) — declare it and retry once.
+      if (!response.ok && !healed) {
+        let errorText = text
+        try {
+          errorText = String((JSON.parse(text) as { error?: unknown }).error ?? text)
+        } catch {
+          // keep raw text
+        }
+        const missing = parseMissingDeclaration(errorText)
+        if (missing) {
+          const changed = await healMissingDeclaration(missing, { manifest, applyManifest, refresh, toast })
+          if (changed) {
+            await send(true)
+            return
+          }
+        }
+      }
       let formatted = text
       try {
         formatted = JSON.stringify(JSON.parse(text), null, 2)
@@ -78,8 +139,14 @@ export function ApiPage() {
   return (
     <div className="space-y-4">
       <PageHead
-        title="API console"
-        description="Pick a declared route, send it, and inspect the JSON your handler returns. Requests run with the same permission checks as production."
+        title="API routes"
+        description="Endpoints your plugin exposes — dashboard (apiRoutes) and public (publicRoutes). Click a method to load it into the tester; requests run with the same permission checks as production."
+        action={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus />
+            New route
+          </Button>
+        }
       />
 
       {routes.length === 0 ? (
@@ -89,16 +156,22 @@ export function ApiPage() {
           message={
             <>
               Declare <code>apiRoutes</code> (dashboard) or <code>publicRoutes</code> (visitors) in plugin.json and export matching handlers
-              from your entry.
+              from your entry — or scaffold one.
             </>
+          }
+          action={
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus />
+              New route
+            </Button>
           }
         />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <Card>
+          <Card className="h-fit">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Declared routes</CardTitle>
-              <CardDescription>Click a method to load it into the console.</CardDescription>
+              <CardDescription>Click a method to load it into the tester.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {routes.map((route) => (
@@ -114,7 +187,7 @@ export function ApiPage() {
                     </span>
                     <code className="truncate text-[10.5px] text-muted-foreground">{route.base + route.path}</code>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {route.methods.map((entry) => (
                       <Button
                         key={entry}
@@ -129,6 +202,7 @@ export function ApiPage() {
                         {entry}
                       </Button>
                     ))}
+                    <code className="text-[9.5px] text-muted-foreground">{route.file}</code>
                   </div>
                 </div>
               ))}
@@ -154,7 +228,7 @@ export function ApiPage() {
                   </SelectContent>
                 </Select>
                 <Input value={path} onChange={(event) => setPath(event.target.value)} className="flex-1" />
-                <Button onClick={send} disabled={busy || !path}>
+                <Button onClick={() => void send()} disabled={busy || !path}>
                   {busy ? <Loader2 className="animate-spin" /> : <Send />}
                   Send
                 </Button>
@@ -186,6 +260,8 @@ export function ApiPage() {
           </Card>
         </div>
       )}
+
+      <CreateRouteDialog open={createOpen} onOpenChange={setCreateOpen} onScaffolded={handleScaffolded} />
     </div>
   )
 }

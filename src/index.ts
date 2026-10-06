@@ -171,9 +171,16 @@ export interface PluginDB {
 }
 
 export interface PluginHttp {
-  /** GET a public URL. 60s default timeout (override per call with `opts.timeoutMs`, capped at 60s). */
+  /**
+   * GET a public URL. 60s default timeout (override per call with
+   * `opts.timeoutMs`, capped at 60s). Responses are capped at 4 MB — use
+   * pagination or move large downloads to a Node job.
+   */
   get(url: string, headers?: Record<string, string>, opts?: { timeoutMs?: number }): Promise<{ status: number; data: unknown }>
-  /** POST JSON to a public URL. 60s default timeout (override per call with `opts.timeoutMs`, capped at 60s). */
+  /**
+   * POST JSON to a public URL. 60s default timeout (override per call with
+   * `opts.timeoutMs`, capped at 60s). Responses are capped at 4 MB.
+   */
   post(url: string, body: unknown, headers?: Record<string, string>, opts?: { timeoutMs?: number }): Promise<{ status: number; data: unknown }>
 }
 
@@ -186,7 +193,11 @@ export interface PluginAI {
     temperature?: number
     timeoutMs?: number
   }): Promise<{ text: string; tokensUsed: number }>
-  /** Generate an image through the store's AI image settings (saved prompt + provider). */
+  /**
+   * Generate an image through the store's AI image settings (saved prompt + provider).
+   * The result is persisted to the store's media storage and returned as `url`;
+   * inline `base64` is only used when persistence is unavailable.
+   */
   image(opts?: {
     prompt?: string
     /** Saved AI prompt id (Dashboard → AI Prompts); defaults to the store's image prompt. */
@@ -235,6 +246,13 @@ export interface PluginProductInput {
   screenshots?: string[] | string
   category?: string
   subCategory?: string
+  /**
+   * Category names to assign the product to (multi-category). Missing
+   * categories are created for the store and linked; the first name becomes
+   * the product's primary `category`. Omitted means "leave categories alone";
+   * `[]` clears them.
+   */
+  categories?: string[]
   bulletpoints?: string
   deliveryInstructions?: string
   productNotes?: string
@@ -352,6 +370,13 @@ export interface PluginJobReporter {
   progress(progress: PluginJobProgress): Promise<void>
   item(item: PluginJobItemInput): Promise<void>
   log(message: string, level?: "info" | "warn" | "error"): Promise<void>
+  /**
+   * Queues another job declared by this plugin (same store). Use it to chain
+   * long-running work — e.g. a crawl job that enqueues the next batch when it
+   * finishes. Respects the store's job quotas; throws when the job type is not
+   * declared or the queue is at its limit.
+   */
+  enqueue(input: { type: string; input?: unknown }): Promise<{ jobId: number }>
 }
 
 /**

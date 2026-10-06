@@ -4,11 +4,23 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
-export function PageHead({ title, description }: { title: string; description?: React.ReactNode }) {
+export function PageHead({
+  title,
+  description,
+  action,
+}: {
+  title: string
+  description?: React.ReactNode
+  /** Top-right slot — page-level actions like "New job". */
+  action?: React.ReactNode
+}) {
   return (
-    <div className="mb-5">
-      <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
-      {description ? <p className="mt-1 max-w-4xl text-sm text-muted-foreground">{description}</p> : null}
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
+        {description ? <p className="mt-1 max-w-4xl text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   )
 }

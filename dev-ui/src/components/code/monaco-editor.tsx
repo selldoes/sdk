@@ -80,6 +80,9 @@ export function MonacoEditor({ path, value, readOnly, theme, problems, revealLin
   const monacoRef = React.useRef<Monaco | null>(null)
   const editorRef = React.useRef<CodeEditor | null>(null)
   const modelsRef = React.useRef(new Map<string, TextModel>())
+  // Monaco's model service is global — two editor instances (e.g. job cards
+  // all previewing index.js) must not share model URIs or createModel throws.
+  const instanceIdRef = React.useRef(`i${Math.random().toString(36).slice(2, 9)}`)
   const [ready, setReady] = React.useState(false)
   const callbacksRef = React.useRef({ onChange, onSave, onSelection })
   callbacksRef.current = { onChange, onSave, onSelection }
@@ -136,7 +139,11 @@ export function MonacoEditor({ path, value, readOnly, theme, problems, revealLin
     if (!ready || !monaco || !editor) return
     let model = modelsRef.current.get(path)
     if (!model) {
-      model = monaco.editor.createModel(value, languageFor(path), monaco.Uri.parse(`inmemory://selldoes/${encodeURI(path)}`))
+      model = monaco.editor.createModel(
+        value,
+        languageFor(path),
+        monaco.Uri.parse(`inmemory://selldoes/${instanceIdRef.current}/${encodeURI(path)}`),
+      )
       modelsRef.current.set(path, model)
     }
     if (editor.getModel() !== model) editor.setModel(model)
@@ -195,6 +202,8 @@ export function MonacoDiff({ path, original, modified, theme }: MonacoDiffProps)
   const monacoRef = React.useRef<Monaco | null>(null)
   const editorRef = React.useRef<DiffEditor | null>(null)
   const modelsRef = React.useRef<{ original: TextModel | null; modified: TextModel | null }>({ original: null, modified: null })
+  // Per-instance URI namespace — the model service is global (see MonacoEditor).
+  const instanceIdRef = React.useRef(`d${Math.random().toString(36).slice(2, 9)}`)
   const [ready, setReady] = React.useState(false)
   const themeRef = React.useRef(theme)
   themeRef.current = theme
@@ -235,10 +244,18 @@ export function MonacoDiff({ path, original, modified, theme }: MonacoDiffProps)
     if (!ready || !monaco || !editor) return
     const language = languageFor(path)
     if (!modelsRef.current.original) {
-      modelsRef.current.original = monaco.editor.createModel(original, language, monaco.Uri.parse(`inmemory://selldoes/${encodeURI(path)}?original`))
+      modelsRef.current.original = monaco.editor.createModel(
+        original,
+        language,
+        monaco.Uri.parse(`inmemory://selldoes/${instanceIdRef.current}/${encodeURI(path)}?original`),
+      )
     }
     if (!modelsRef.current.modified) {
-      modelsRef.current.modified = monaco.editor.createModel(modified, language, monaco.Uri.parse(`inmemory://selldoes/${encodeURI(path)}?modified`))
+      modelsRef.current.modified = monaco.editor.createModel(
+        modified,
+        language,
+        monaco.Uri.parse(`inmemory://selldoes/${instanceIdRef.current}/${encodeURI(path)}?modified`),
+      )
     }
     if (modelsRef.current.original.getValue() !== original) modelsRef.current.original.setValue(original)
     if (modelsRef.current.modified.getValue() !== modified) modelsRef.current.modified.setValue(modified)

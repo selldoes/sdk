@@ -2,6 +2,15 @@ import type { UserSettingsPatch, UserSettingsResponse } from "./types"
 
 /** Client for the workspace server (`/__ws/*`) — the web front door. */
 
+export interface WsExample {
+  id: string
+  name: string
+  description: string
+  badge?: string | null
+  /** Dashboard UI the example ships with. */
+  ui: "none" | "js" | "react"
+}
+
 export interface WsProject {
   id: string
   kind: "plugin" | "theme"
@@ -117,12 +126,17 @@ function post<T>(path: string, data?: unknown): Promise<T> {
 export const ws = {
   bootstrap: () => request<WsBootstrap>("/__ws/bootstrap"),
   importFolder: (folderPath: string) => post<{ project: WsProject }>("/__ws/import", { path: folderPath }),
+  /** Starting points for the New-workspace dialog (served by the CLI). */
+  examples: () =>
+    request<{ plugin: WsExample[]; theme: WsExample[] }>("/__ws/examples"),
   create: (input: {
     name: string
     parentDir?: string
     kind: "plugin" | "theme"
     version?: string
     slug?: string
+    /** Example id from `ws.examples()` (e.g. "importer", "editorial"). */
+    example?: string
     description?: string
     author?: string
     category?: string

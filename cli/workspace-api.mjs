@@ -114,6 +114,13 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       return json(res, 200, { ok: true, defaultDir })
     }
 
+    // Starting points for the New-workspace dialog. Read from the CLI so the
+    // UI and `selldoes create` can never drift apart.
+    if (action === "examples" && method === "GET") {
+      const { listExamples } = await import("./create.mjs")
+      return json(res, 200, { plugin: listExamples("plugin"), theme: listExamples("theme") })
+    }
+
     // ── User (global) settings — ~/.selldoes/settings.json ──────────────────
     // Assistant credentials, default project dir, editor preference and the
     // default release bump — machine-level, never per project.
@@ -184,6 +191,7 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
         slug,
         name,
         version: String(body.version ?? "0.1.0"),
+        example: typeof body.example === "string" && body.example.trim() ? body.example.trim() : undefined,
         withUi: kind === "theme" ? false : body.withUi !== false,
         uiFlavor: body.uiFlavor === "react" ? "react" : "js",
         install: false,
