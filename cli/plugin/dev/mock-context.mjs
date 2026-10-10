@@ -307,7 +307,7 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
       },
       async enqueue(request = {}) {
         const type = String(request?.type ?? "").trim()
-        const declared = (manifest.jobs ?? []).some((job) => job?.type === type)
+        const declared = (currentManifest().jobs ?? []).some((job) => job?.type === type)
         if (!declared) throw new Error(`Job "${type}" is not declared in plugin.json "jobs"`)
         const jobId = ++enqueuedJobCursor
         pendingJobs.push({ jobId, type, input: request?.input ?? null, at: new Date().toISOString() })

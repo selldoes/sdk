@@ -143,9 +143,9 @@ The same button appears when a plugin has no `ui.entry` at all.
 
 ### No-code components (kit)
 
-A `dashboardPages` item may declare `sections` instead of (or alongside) an
-iframe entry — the preview renders them with the shared **kit** (no iframe),
-the same idea as the store's section registries:
+A `dashboardPages` item may declare `sections` instead of an iframe entry —
+the **kit** turns them into a real dashboard page, the same idea as the store's
+section registries:
 
 ```json
 {
@@ -160,21 +160,29 @@ the same idea as the store's section registries:
 }
 ```
 
+On every build (`selldoes build` / `publish` / the dev server) the compiler
+turns each sections page into a real UI entry — `ui/kit/<name>.html` plus the
+kit runtime (`runtime.js`, `runtime.css`) — and points `dashboardPages[].entry`
+at it. The host serves that entry in its sandboxed dashboard iframe, so the
+preview, the published artifact and the store all run the **exact same
+renderer**, and generated files travel through `pack`/`publish` like any other
+UI asset. A hand-written `entry` on the page wins over the kit and is left
+untouched.
+
 Kit types: `text` (markdown), `stats`, `table` (your `apiRoutes` path — the
 handler returns an array or `{ rows: [...] }` / `{ items: [...] }`), `job`
 (run button + live transcript), `settings` (renders `configSchema`), `logs`,
-`links`. Pages with `sections` need no `entry`; keep one as a fallback for
-hosts that render iframes.
+`links`.
 
 **Add/Edit components** on the Dashboard page opens the visual builder:
 component palette on the left (click or drag onto the canvas), a live preview
-in the middle (the exact kit renderer the host uses), and a settings inspector
+in the middle (the compiled page, exactly what ships), and a settings inspector
 on the right. It ships starter templates (Reports, About, Ops, Settings),
 drag/arrow reordering, duplicate/delete, an optional per-section `id`, and a
 **JSON** tab that stays in sync with the canvas for raw edits. **Save** writes
 `dashboardPages[].sections` through the normal manifest pipeline — validated,
 snapshotted and undoable (the builder's Undo button restores the previous
-`plugin.json`).
+`plugin.json`); the next rebuild regenerates the compiled page.
 
 **New page → Components** creates a kit-only page (a `dashboardPages` entry
 with `sections: []` and no `entry`) and opens the builder; **New page → HTML**

@@ -128,24 +128,39 @@ export function AppProvider({
   }, [])
 
   const refresh = React.useCallback(async () => {
-    try {
-      const data = await dev.bootstrap()
-      setBootstrap(data)
-      setError(null)
-      setNoProject(false)
-    } catch (cause) {
-      const code = (cause as { code?: string }).code
-      if (code === "no-project") {
-        // Workspace shell, nothing selected yet — not an error state.
-        setBootstrap(null)
+    const maxRetries = 5
+    const baseDelay = 500
+    let lastError: unknown = null
+    let noProject = false
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const data = await dev.bootstrap()
+        setBootstrap(data)
         setError(null)
-        setNoProject(true)
-      } else {
-        setError(cause instanceof Error ? cause.message : String(cause))
+        setNoProject(false)
+        setLoading(false)
+        return
+      } catch (cause) {
+        const code = (cause as { code?: string }).code
+        if (code === "no-project") {
+          // Workspace shell, nothing selected yet — not an error state.
+          setBootstrap(null)
+          setError(null)
+          setNoProject(true)
+          setLoading(false)
+          return
+        }
+        lastError = cause
+        // Exponential backoff: 500ms, 1s, 2s, 4s, 8s
+        if (attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt)
+          await new Promise((resolve) => setTimeout(resolve, delay))
+        }
       }
-    } finally {
-      setLoading(false)
     }
+    // All retries exhausted — show error
+    setError(lastError instanceof Error ? lastError.message : String(lastError))
+    setLoading(false)
   }, [])
 
   React.useEffect(() => {

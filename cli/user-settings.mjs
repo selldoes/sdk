@@ -163,7 +163,8 @@ export function userSettingsView() {
  * One-time migration: assistant credentials that older SDK versions saved into
  * each project's selldoes.config.json move up to the user settings (fill-if-
  * unset); a project keeps only `assistant.model` as its per-project override.
- * Returns { migrated: [slug], cleared: n }.
+ * Returns { migrated: [slug], cleared: n } — `migrated` only lists projects
+ * whose credentials actually moved, `cleared` counts rewritten project files.
  */
 export function migrateProjectAssistantConfigs(projects = []) {
   const migrated = []
@@ -185,20 +186,30 @@ export function migrateProjectAssistantConfigs(projects = []) {
     if (!section || typeof section !== "object" || Array.isArray(section)) continue
 
     // Credentials + provider preference are machine-level.
+    let moved = false
     for (const field of ["provider", "apiKey", "baseUrl", "maxTokens"]) {
       if (section[field] !== undefined && section[field] !== null && section[field] !== "" && userAssistantConfig[field] === undefined) {
         userAssistantConfig[field] = section[field]
         userChanged = true
+        moved = true
       }
     }
     // The model stays per project when set — it is the project's override.
     const nextSection = {}
     if (section.model) nextSection.model = String(section.model)
-    if (Object.keys(nextSection).length > 0) fileConfig.assistant = nextSection
-    else delete fileConfig.assistant
-    fs.writeFileSync(configPath, `${JSON.stringify(fileConfig, null, 2)}\n`)
-    migrated.push(String(project.slug ?? project.path))
-    cleared++
+    // After a first pass the section is exactly the model override: skip the
+    // rewrite (and the "moved credentials" report) so every workspace start
+    // stays a no-op instead of touching the same files again.
+    const alreadyMigrated =
+      Object.keys(section).length === Object.keys(nextSection).length &&
+      Object.keys(nextSection).every((key) => section[key] === nextSection[key])
+    if (!alreadyMigrated) {
+      if (Object.keys(nextSection).length > 0) fileConfig.assistant = nextSection
+      else delete fileConfig.assistant
+      fs.writeFileSync(configPath, `${JSON.stringify(fileConfig, null, 2)}\n`)
+      cleared++
+    }
+    if (moved) migrated.push(String(project.slug ?? project.path))
   }
 
   if (userChanged) writeSettings({ ...user, assistant: userAssistantConfig })

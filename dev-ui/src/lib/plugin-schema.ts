@@ -53,7 +53,7 @@ export const PLUGIN_SCHEMA = {
           sections: {
             type: "array",
             description:
-              "No-code components rendered instead of the iframe: text, stats, table, job, settings, logs, links.",
+              "No-code components compiled into the page's UI entry on build (text, stats, table, job, settings, logs, links); a hand-written entry wins.",
             items: {
               type: "object",
               required: ["type"],

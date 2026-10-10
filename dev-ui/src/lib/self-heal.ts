@@ -16,23 +16,36 @@ import { dev } from "@/lib/api"
 interface MissingDeclaration {
   kind: "permission" | "table"
   value: string
-  /** Capability that needed it, e.g. "ctx.http". */
+  /** Capability that needed it, e.g. "ctx.http" (dots are part of the name). */
   action?: string
 }
 
 export function parseMissingDeclaration(error: string): MissingDeclaration | null {
-  const permission = /Missing permission "([^"]+)" required for ([^.]+)\./.exec(error)
+  // Non-greedy up to the sentence-ending period: the action itself contains
+  // dots ("ctx.http", 'ctx.db read on "products"'), so stop at ". " / end.
+  const permission = /Missing permission "([^"]+)" required for (.+?)\.?(?:\s|$)/.exec(error)
   if (permission) return { kind: "permission", value: permission[1], action: permission[2] }
   const table = /Table "([^"]+)" is not declared in plugin\.json "allowedTables"\./.exec(error)
   if (table) return { kind: "table", value: table[1] }
   return null
 }
 
+export interface HealOutcome {
+  /**
+   * False when plugin.json already declared the permission/table — nothing was
+   * written. A still-refused capability with `changed: false` means the running
+   * dev server was started before the declaration existed (it read plugin.json
+   * once at boot), so it needs a restart, not another retry.
+   */
+  changed: boolean
+}
+
 /**
  * Heals a missing permission/allowedTables declaration: patches the manifest,
- * saves plugin.json (idempotent server-side) and refreshes the shell. Always
- * returns true — the caller should retry the action once regardless, since the
- * client's view of plugin.json can lag the disk (stale bootstrap, HMR).
+ * saves plugin.json (idempotent server-side) and refreshes the shell. Callers
+ * should retry the action once regardless — the client's view of plugin.json
+ * can lag the disk (stale bootstrap, HMR) — but check `changed` to tell whether
+ * this call actually wrote a declaration or found it already present.
  */
 export async function healMissingDeclaration(
   missing: MissingDeclaration,
@@ -42,7 +55,7 @@ export async function healMissingDeclaration(
     refresh: () => Promise<void>
     toast: (message: string, type: "success" | "error") => void
   },
-): Promise<boolean> {
+): Promise<HealOutcome> {
   const { manifest, applyManifest, refresh, toast } = deps
   if (missing.kind === "permission") {
     const declared = (manifest.permissions ?? []) as string[]
@@ -53,7 +66,7 @@ export async function healMissingDeclaration(
     if (!alreadyThere) {
       toast(`Added "${missing.value}"${missing.action ? ` (needed for ${missing.action})` : ""} to plugin.json — re-running`, "success")
     }
-    return true
+    return { changed: !alreadyThere }
   }
   const declared = manifest.allowedTables ?? []
   const alreadyThere = declared.includes(missing.value)
@@ -63,5 +76,5 @@ export async function healMissingDeclaration(
   if (!alreadyThere) {
     toast(`Added table "${missing.value}" to allowedTables — re-running`, "success")
   }
-  return true
+  return { changed: !alreadyThere }
 }

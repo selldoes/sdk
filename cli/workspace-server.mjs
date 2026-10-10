@@ -1,10 +1,10 @@
 import http from "node:http"
 import fs from "node:fs"
-import net from "node:net"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentTypeFor } from "./util.mjs"
+import { probePort, reclaimPort } from "./port.mjs"
 import { sendNotFound } from "./not-found-page.mjs"
 import { defaultProjectsDir, getCurrentProjectId, getWorkspaceSettings, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
 import { attachTerminalServer } from "./terminal.mjs"
@@ -97,15 +97,6 @@ function readBody(req) {
         resolve({})
       }
     })
-  })
-}
-
-function probePort(port, host) {
-  return new Promise((resolve) => {
-    const probe = net.createServer()
-    probe.once("error", () => resolve(false))
-    probe.once("listening", () => probe.close(() => resolve(true)))
-    probe.listen(port, host)
   })
 }
 
@@ -523,6 +514,10 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
   const listenPort = Number(port)
+  // A previous workspace may still hold the port (a hard Ctrl+C on Windows can
+  // orphan the node process) — stop it so restarts don't crash-loop on
+  // EADDRINUSE. Another app on the port gets a clear error instead.
+  await reclaimPort(listenPort, host)
   await new Promise((resolve, reject) => {
     server.once("error", reject)
     server.listen(listenPort, host, resolve)

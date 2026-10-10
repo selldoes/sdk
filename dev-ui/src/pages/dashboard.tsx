@@ -254,8 +254,8 @@ export function DashboardPage() {
           description={
             <>
               Rendered exactly like the host does — a sandboxed iframe calling{" "}
-              <code>/api/plugin-api/{manifest.slug}/…</code> with the mock store, or the no-code components kit when a page declares{" "}
-              <code>sections</code>.
+              <code>/api/plugin-api/{manifest.slug}/…</code> with the mock store, or the compiled no-code components page
+              when a page declares <code>sections</code>.
             </>
           }
         />
@@ -336,9 +336,17 @@ export function DashboardPage() {
                   </CardTitle>
                   <CardDescription>
                     {hasSections ? (
-                      <>
-                        Rendered from <code>dashboardPages[].sections</code> — no iframe. Edit JSON or ask the AI to rearrange.
-                      </>
+                      source ? (
+                        <>
+                          Compiled from <code>dashboardPages[].sections</code> into <code>{activePage!.entry}</code> — the exact page
+                          the store serves. Edit components or ask the AI to rearrange.
+                        </>
+                      ) : (
+                        <>
+                          Compiling from <code>dashboardPages[].sections</code> — the next rebuild generates the page under{" "}
+                          <code>ui/kit/</code>.
+                        </>
+                      )
                     ) : (
                       <>
                         Source: <code>{activePage!.entry}</code> · rebuilt on every file save.
@@ -361,15 +369,15 @@ export function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {hasSections ? (
-                <SectionKit slug={manifest.slug} store={store} sections={activeSections} />
-              ) : source ? (
+              {source ? (
                 <iframe
                   key={source}
                   src={source}
                   title={`Plugin dashboard UI — ${activePage!.label}`}
                   className="h-[720px] w-full rounded-xl border border-border bg-white"
                 />
+              ) : hasSections ? (
+                <SectionKit slug={manifest.slug} store={store} sections={activeSections} />
               ) : (
                 <Callout kind="info">
                   <p>

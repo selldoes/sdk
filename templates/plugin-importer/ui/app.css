@@ -1,5 +1,8 @@
+/* Light-only design: declaring `light dark` made browsers with a dark
+   preference (Windows/app dark mode) paint the canvas near-black behind the
+   light-colored text — the whole page read as black. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 * {

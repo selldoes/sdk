@@ -39,12 +39,10 @@ function Gate({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-28 w-full" />
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-64 w-full" />
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm font-medium text-muted-foreground">Starting up…</p>
         </div>
       </div>
     )

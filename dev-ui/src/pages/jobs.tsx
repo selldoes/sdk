@@ -17,7 +17,79 @@ import { healMissingDeclaration, parseMissingDeclaration } from "@/lib/self-heal
 import type { PluginJobDefinition, PluginManifest, PluginScheduleDefinition, Validation } from "@/lib/types"
 import { useDevStream } from "@/lib/use-dev-stream"
 import { useVisit } from "@/lib/use-visit"
+import { ws } from "@/lib/ws-api"
+import type { WsBootstrap } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
+
+/**
+ * Runs `attempt` (which resolves the server error, if any) and self-heals
+ * missing plugin.json declarations:
+ *
+ *  1. refuse → save the missing permission/allowedTables → retry
+ *  2. still refused → the declaration was already in plugin.json, so this
+ *     preview process predates it → restart the workspace preview → retry
+ *  3. still refused → explain what to do (standalone `selldoes dev` has no
+ *     supervisor and must be restarted by hand)
+ */
+async function runWithDeclarationHeal(
+  attempt: () => Promise<{ error?: string } | undefined>,
+  deps: {
+    manifest: PluginManifest
+    applyManifest: (manifest: PluginManifest, validation: Validation) => void
+    refresh: () => Promise<void>
+    toast: (message: string, type: "success" | "error") => void
+    workspace: WsBootstrap | null
+    refreshWorkspace: () => Promise<void>
+    onNote?: (note: string | null) => void
+  },
+) {
+  const { onNote, toast } = deps
+  const healed = new Set<string>()
+  let restarted = false
+  for (let step = 0; step < 4; step += 1) {
+    const result = await attempt()
+    const missing = result?.error ? parseMissingDeclaration(result.error) : null
+    if (!missing) return
+    const key = `${missing.kind}:${missing.value}`
+    if (!healed.has(key)) {
+      // A declaration we haven't written yet — save it and try again.
+      healed.add(key)
+      try {
+        const { changed } = await healMissingDeclaration(missing, deps)
+        const where = missing.kind === "table" ? "allowedTables" : "plugin.json"
+        onNote?.(
+          changed
+            ? `Auto-declared "${missing.value}" in ${where}${missing.action ? ` (required for ${missing.action})` : ""} — the action re-ran automatically. It is ticked on the Permissions page now.`
+            : `"${missing.value}" was already declared in ${where} — retrying. If it stays blocked, the running preview predates the declaration.`,
+        )
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error), "error")
+        return
+      }
+      continue
+    }
+    if (!restarted && deps.workspace?.current) {
+      // Already on disk, still refused: this process booted before it existed.
+      try {
+        restarted = true
+        onNote?.(`The running preview was started before "${missing.value}" was declared — restarting it to apply the declaration…`)
+        await ws.restart()
+        await deps.refreshWorkspace()
+      } catch (error) {
+        toast(error instanceof Error ? error.message : String(error), "error")
+        return
+      }
+      continue
+    }
+    toast(
+      restarted
+        ? `Still blocked on "${missing.value}" after restarting the preview — check the preview log for errors`
+        : `Still blocked on "${missing.value}" — the running dev server started before the declaration was saved. Restart \`selldoes dev\` to apply it.`,
+      "error",
+    )
+    return
+  }
+}
 
 export function JobsPage() {
   const { bootstrap, setAssistantPage, applyManifest, refresh, toast } = useApp()
@@ -118,21 +190,19 @@ export function JobsPage() {
 
 function ScheduleCard({ schedule }: { schedule: PluginScheduleDefinition }) {
   const { state, run } = useJobRunner()
-  const { bootstrap, applyManifest, refresh, toast } = useApp()
+  const { bootstrap, applyManifest, refresh, toast, workspace, refreshWorkspace } = useApp()
   const next = schedule.nextRunAt ? new Date(schedule.nextRunAt) : null
 
   /** Run now — self-heals missing plugin.json declarations like the Test button. */
-  const runNow = async (healed = false) => {
-    const attempt = await run(schedule.job, schedule.input ?? {})
-    const missing = attempt?.error ? parseMissingDeclaration(attempt.error) : null
-    if (!missing || healed) return
-    try {
-      const changed = await healMissingDeclaration(missing, { manifest: bootstrap!.manifest, applyManifest, refresh, toast })
-      if (changed) await runNow(true)
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error")
-    }
-  }
+  const runNow = () =>
+    runWithDeclarationHeal(() => run(schedule.job, schedule.input ?? {}), {
+      manifest: bootstrap!.manifest,
+      applyManifest,
+      refresh,
+      toast,
+      workspace,
+      refreshWorkspace,
+    })
 
   return (
     <Card>
@@ -171,8 +241,11 @@ function ScheduleCard({ schedule }: { schedule: PluginScheduleDefinition }) {
  * job is defined inline (`{ "import-products": { init, step } }`). Brace
  * matching is string/comment aware; returns null when the key or its block
  * can't be found so callers can fall back to the whole file.
+ *
+ * Deliberately NOT exported: a non-component export next to `JobsPage` would
+ * stop Vite React Fast Refresh from accepting this module.
  */
-export function extractJobBlock(source: string, type: string): string | null {
+function extractJobBlock(source: string, type: string): string | null {
   const escaped = type.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   const patterns = [new RegExp(`["']${escaped}["']\\s*:\\s*`, "g"), new RegExp(`\\b${escaped}\\s*:\\s*`, "g")]
   let keyMatch: RegExpExecArray | null = null
@@ -234,7 +307,7 @@ export function extractJobBlock(source: string, type: string): string | null {
 }
 
 function JobCard({ job, bump }: { job: PluginJobDefinition; bump: number }) {
-  const { bootstrap, theme, applyManifest, refresh, toast } = useApp()
+  const { bootstrap, theme, applyManifest, refresh, toast, workspace, refreshWorkspace } = useApp()
   const sample = bootstrap!.activity.sampleJobs?.[job.type]
   const { state, run } = useJobRunner()
   const [input, setInput] = React.useState(JSON.stringify(sample?.input ?? {}, null, 2))
@@ -281,33 +354,24 @@ function JobCard({ job, bump }: { job: PluginJobDefinition; bump: number }) {
   }, [loadSource, bump])
 
   /**
-   * Test = just run it. When the mock context refuses over a missing
-   * plugin.json declaration (permission / allowedTables), declare it, save and
-   * re-run once — the sandbox re-reads the manifest per capability check.
+   * Test = just run it. Missing plugin.json declarations (permission /
+   * allowedTables) are saved and retried; if the preview process still refuses
+   * a declaration that is already on disk, it is restarted and retried once.
    */
   const runHealed = React.useCallback(
-    async (input: unknown, ticks: number, healed = false) => {
-      if (!healed) setHealNote(null)
-      const attempt = await run(job.type, input, ticks)
-      const missing = attempt?.error ? parseMissingDeclaration(attempt.error) : null
-      if (!missing) return
-      if (healed) {
-        toast(`Still blocked on "${missing.value}" after auto-declare — check it on the Permissions page`, "error")
-        return
-      }
-      try {
-        await healMissingDeclaration(missing, { manifest: bootstrap!.manifest, applyManifest, refresh, toast })
-        setHealNote(
-          missing.kind === "permission"
-            ? `Auto-declared "${missing.value}" in plugin.json${missing.action ? ` (required for ${missing.action})` : ""} — the test re-ran automatically. It is ticked on the Permissions page now.`
-            : `Auto-declared table "${missing.value}" in allowedTables — the test re-ran automatically.`,
-        )
-        await runHealed(input, ticks, true)
-      } catch (error) {
-        toast(error instanceof Error ? error.message : String(error), "error")
-      }
+    async (input: unknown, ticks: number) => {
+      setHealNote(null)
+      await runWithDeclarationHeal(() => run(job.type, input, ticks), {
+        manifest: bootstrap!.manifest,
+        applyManifest,
+        refresh,
+        toast,
+        workspace,
+        refreshWorkspace,
+        onNote: setHealNote,
+      })
     },
-    [run, job.type, bootstrap, applyManifest, refresh, toast],
+    [run, job.type, bootstrap, applyManifest, refresh, toast, workspace, refreshWorkspace],
   )
 
   /** Test runs the declared sample input — the happy path, no typing required. */

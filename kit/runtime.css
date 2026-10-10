@@ -1,0 +1,329 @@
+/*
+ * Selldoes kit runtime styles.
+ *
+ * Light-only by design: declaring `light dark` would make browsers with a dark
+ * preference paint the canvas near-black behind the light text.
+ */
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: #18181b;
+  background: transparent;
+}
+
+.kit-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.kit-card {
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.kit-card-head {
+  padding: 12px 16px 4px;
+}
+
+.kit-card-head.kit-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.kit-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.kit-card-desc {
+  margin: 3px 0 0;
+  color: #71717a;
+  font-size: 12px;
+}
+
+.kit-card-body {
+  padding: 12px 16px 16px;
+}
+
+.kit-card-head + .kit-card-body {
+  padding-top: 8px;
+}
+
+.kit-markdown p {
+  margin: 6px 0;
+}
+
+.kit-markdown ul {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.kit-markdown code {
+  background: #f4f4f5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12.5px;
+}
+
+.kit-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.kit-stat {
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.kit-stat-label {
+  margin: 0;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #71717a;
+}
+
+.kit-stat-value {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.kit-stat-hint {
+  margin: 2px 0 0;
+  font-size: 10.5px;
+  color: #71717a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-table-wrap {
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+table.kit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.kit-table thead {
+  background: #fafafa;
+}
+
+.kit-table th {
+  text-align: left;
+  padding: 7px 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #71717a;
+  font-weight: 500;
+}
+
+.kit-table td {
+  padding: 7px 10px;
+  border-top: 1px solid #f0f0f1;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-muted {
+  color: #71717a;
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.kit-error {
+  color: #b91c1c;
+  font-size: 12.5px;
+  margin: 6px 0 0;
+}
+
+.kit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.kit-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #18181b;
+  background: #18181b;
+  color: #fff;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font: 600 12.5px/1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+button.kit-button:hover {
+  background: #27272a;
+}
+
+button.kit-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.kit-button.kit-secondary {
+  background: #fff;
+  color: #18181b;
+  border-color: #d4d4d8;
+  font-weight: 500;
+}
+
+button.kit-button.kit-secondary:hover {
+  background: #fafafa;
+}
+
+.kit-progress {
+  margin-top: 10px;
+}
+
+.kit-progress-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: #f0f0f1;
+  overflow: hidden;
+}
+
+.kit-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: #18181b;
+  transition: width 0.25s ease;
+}
+
+.kit-progress-meta {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  color: #71717a;
+}
+
+.kit-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: #f4f4f5;
+  color: #52525b;
+}
+
+.kit-badge.kit-running { background: #dbeafe; color: #1d4ed8; }
+.kit-badge.kit-paused { background: #fef3c7; color: #b45309; }
+.kit-badge.kit-completed { background: #d1fae5; color: #047857; }
+.kit-badge.kit-failed { background: #fee2e2; color: #b91c1c; }
+
+.kit-log {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  background: #fafafa;
+  padding: 8px 10px;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.kit-items {
+  margin: 8px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.kit-items-line {
+  margin: 2px 0;
+  display: flex;
+  gap: 6px;
+}
+
+.kit-items-line .kit-ok { color: #047857; }
+.kit-items-line .kit-bad { color: #b91c1c; }
+
+.kit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kit-field label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.kit-field input[type="text"],
+.kit-field input[type="number"],
+.kit-field input[type="password"],
+.kit-field textarea,
+.kit-field select {
+  width: 100%;
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  color: inherit;
+}
+
+.kit-field textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.kit-field .kit-help {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #71717a;
+}
+
+.kit-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.kit-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed #d4d4d8;
+  border-radius: 10px;
+  color: #71717a;
+  font-size: 12.5px;
+}

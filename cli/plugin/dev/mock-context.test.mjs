@@ -66,6 +66,33 @@ test("mock context: permission edits apply without restarting", async () => {
   assert.equal(await ctx.storage.get("x"), null)
 })
 
+test("mock context: job declaration edits apply without restarting", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "selldoes-mock-ctx-"))
+  const devDir = path.join(root, ".selldoes-dev")
+  let manifest = { slug: "demo-plugin", permissions: [], jobs: [] }
+  const db = new MockDb({ file: path.join(devDir, "db.json") })
+  const { ctx, pendingJobs } = createMockContext({
+    pluginDir: root,
+    manifest,
+    getManifest: () => manifest,
+    db,
+    storeId: 7,
+    config: {},
+    devDir,
+    log: () => {},
+  })
+
+  await assert.rejects(() => ctx.jobs.enqueue({ type: "import-batch" }), /not declared/)
+
+  // plugin.json is re-read per capability check — new jobs are enqueueable.
+  manifest = { slug: "demo-plugin", permissions: [], jobs: [{ type: "import-batch" }] }
+  const result = await ctx.jobs.enqueue({ type: "import-batch", input: { cursor: 3 } })
+  assert.equal(typeof result.jobId, "number")
+  assert.deepEqual(pendingJobs.map((job) => ({ type: job.type, input: job.input })), [
+    { type: "import-batch", input: { cursor: 3 } },
+  ])
+})
+
 test("mock context: products store categories and keep the first as primary", async () => {
   const { ctx, db } = setup(["products:read", "products:write"])
   db.ensureTable("products", { name: "varchar", sku: "varchar", price: "decimal", status: "varchar" }, 7)

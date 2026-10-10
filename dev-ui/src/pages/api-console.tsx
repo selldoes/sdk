@@ -112,11 +112,10 @@ export function ApiPage() {
         }
         const missing = parseMissingDeclaration(errorText)
         if (missing) {
-          const changed = await healMissingDeclaration(missing, { manifest, applyManifest, refresh, toast })
-          if (changed) {
-            await send(true)
-            return
-          }
+          await healMissingDeclaration(missing, { manifest, applyManifest, refresh, toast })
+          // Retry once regardless — the saved manifest can lag the client.
+          await send(true)
+          return
         }
       }
       let formatted = text

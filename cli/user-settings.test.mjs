@@ -107,6 +107,27 @@ test("migration lifts assistant credentials out of project folders", () => {
   assert.equal(plain.assistant, undefined)
 })
 
+test("migration is idempotent — a second pass reports nothing", () => {
+  applyUserSettingsPatch({ assistant: { provider: null, apiKey: null, model: null, baseUrl: null } })
+  const projectDir = fs.mkdtempSync(path.join(tempDir, "project3-"))
+  fs.writeFileSync(
+    path.join(projectDir, "selldoes.config.json"),
+    `${JSON.stringify({ assistant: { apiKey: "sk-once", model: "m" } })}\n`,
+  )
+
+  const first = migrateProjectAssistantConfigs([{ slug: "once", path: projectDir }])
+  assert.deepEqual(first.migrated, ["once"])
+  assert.equal(first.cleared, 1)
+
+  // The file now keeps only the model override — a second boot must not report
+  // (or rewrite) it again; that's what spammed the console on every restart.
+  const before = fs.readFileSync(path.join(projectDir, "selldoes.config.json"), "utf8")
+  const second = migrateProjectAssistantConfigs([{ slug: "once", path: projectDir }])
+  assert.deepEqual(second.migrated, [])
+  assert.equal(second.cleared, 0)
+  assert.equal(fs.readFileSync(path.join(projectDir, "selldoes.config.json"), "utf8"), before)
+})
+
 test("migration never overwrites an existing user credential", () => {
   applyUserSettingsPatch({ assistant: { provider: "openai", apiKey: "sk-user-already-here" } })
   const projectDir = fs.mkdtempSync(path.join(tempDir, "project2-"))

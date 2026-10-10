@@ -3,6 +3,7 @@ import path from "node:path"
 import { build } from "esbuild"
 import { zipSync } from "fflate"
 import { fileExists, readJson } from "../util.mjs"
+import { syncKitPages } from "./kit.mjs"
 import {
   checkSandboxBundle,
   collectExternalPackages,
@@ -168,6 +169,13 @@ export async function packPluginSource(pluginDir, { zipPath, bundlePath, nodeDir
  * Pass `zip: true` to also write `<slug>.zip` next to the output directory.
  */
 export async function buildPlugin(pluginDir, { outDir, zip = false, log = console.log } = {}) {
+  // Kit pages compile before the manifest is read, so the output manifest,
+  // the preview and the published zip all point at the generated entries.
+  const kit = syncKitPages(pluginDir)
+  if (kit.compiled.length > 0) {
+    log(`  kit: compiled ${kit.compiled.map((entry) => `${entry.path} → ${entry.entry}`).join(", ")}`)
+  }
+
   const manifestPath = path.join(pluginDir, "plugin.json")
   if (!fileExists(manifestPath)) throw new Error(`No plugin.json in ${pluginDir}`)
   const manifest = readJson(manifestPath)

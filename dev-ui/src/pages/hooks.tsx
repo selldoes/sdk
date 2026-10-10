@@ -104,12 +104,11 @@ function HookCard({ name, declaration }: { name: string; declaration: HookDeclar
       if (typeof data.error === "string" && data.error && !healed) {
         const missing = parseMissingDeclaration(data.error)
         if (missing) {
-          const changed = await healMissingDeclaration(missing, { manifest: bootstrap!.manifest, applyManifest, refresh, toast })
-          if (changed) {
-            setBusy(false)
-            await fire(true)
-            return
-          }
+          await healMissingDeclaration(missing, { manifest: bootstrap!.manifest, applyManifest, refresh, toast })
+          // Retry once regardless — the saved manifest can lag the client.
+          setBusy(false)
+          await fire(true)
+          return
         }
       }
       setResult(JSON.stringify(data.result ?? data, null, 2))

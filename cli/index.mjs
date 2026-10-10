@@ -271,7 +271,25 @@ async function workspaceCommand(args, flags) {
   console.log(`\n  Selldoes workspace → ${server.url}`)
   console.log(devMode ? "  SDK-dev mode — dev-ui served by Vite (hot reload)" : "  Web workspace — projects, previews, AI assistant")
   console.log("  Ctrl+C stops the server and any running previews\n")
-  if (flags["no-open"] !== true) openBrowser(server.url)
+  if (flags["no-open"] !== true) {
+    await waitForServer(server.url)
+    openBrowser(server.url)
+  }
+}
+
+/** Polls the workspace server until it responds (or times out after 10s). */
+async function waitForServer(url) {
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1000) })
+      if (response.ok) return
+    } catch {
+      // Server not ready yet — keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  // Proceed anyway — the frontend retry logic will handle slow bootstrap
 }
 
 async function runProjectCommand(command, args, flags) {
