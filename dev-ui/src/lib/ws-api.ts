@@ -201,8 +201,11 @@ export const ws = {
   /** Pings the assistant provider from the user settings (no project preview needed). */
   testUserAssistant: () => post<{ ok: boolean; provider?: string; model?: string }>("/__ws/user-settings/test", {}),
   /** Opens the native OS folder picker on the machine running the server. */
-  chooseFolder: (initialDir?: string) =>
-    post<{ path: string | null; cancelled: boolean }>("/__ws/choose-folder", initialDir ? { initialDir } : {}),
+  chooseFolder: (initialDir?: string, prompt?: string) =>
+    post<{ path: string | null; cancelled: boolean }>("/__ws/choose-folder", {
+      ...(initialDir ? { initialDir } : {}),
+      ...(prompt ? { prompt } : {}),
+    }),
   setColor: (projectId: string, color: string | null) =>
     post<{ ok: boolean; project: WsProject }>("/__ws/color", { projectId, color }),
   openEditor: (input: { projectId?: string; file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>

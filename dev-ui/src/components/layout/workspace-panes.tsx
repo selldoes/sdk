@@ -1,14 +1,17 @@
 import * as React from "react"
-import { AlertCircle, Eye, EyeOff, FolderOpen, KeyRound, Loader2, Package, RefreshCw } from "lucide-react"
+import { AlertCircle, Eye, EyeOff, FolderOpen, KeyRound, Loader2, Package, RefreshCw, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useApp } from "@/state/app"
 import { ws } from "@/lib/ws-api"
 import type { WsBootstrap, WsPackage, WsProject } from "@/lib/ws-api"
 
 /**
  * Import pane of the New-workspace dialog: point the workspace at a folder
- * (or .zip) that already contains a plugin.json / manifest.json.
+ * (or .zip) that already contains a plugin.json / manifest.json. The Browse
+ * button opens the native OS folder picker on the machine running the server;
+ * the text field stays as the fallback (and the only way to type a .zip path).
  */
 export function ImportPane({
   busy,
@@ -17,7 +20,23 @@ export function ImportPane({
   busy: boolean
   onImport: (folderPath: string) => void
 }) {
+  const { toast } = useApp()
   const [path, setPath] = React.useState("")
+  const [picking, setPicking] = React.useState(false)
+
+  const browse = async () => {
+    if (busy || picking) return
+    setPicking(true)
+    try {
+      const result = await ws.chooseFolder(undefined, "Choose a project folder to import")
+      if (result.cancelled || !result.path) return
+      onImport(result.path)
+    } catch (cause) {
+      toast(cause instanceof Error ? cause.message : String(cause), "error")
+    } finally {
+      setPicking(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-lg space-y-3">
@@ -27,6 +46,10 @@ export function ImportPane({
         </span>
         <p className="text-xs font-semibold">Import an existing project</p>
         <p className="text-[10.5px] text-muted-foreground">A folder with plugin.json / manifest.json — or a .zip of one</p>
+        <Button size="sm" variant="outline" className="mt-1" disabled={busy || picking} onClick={() => void browse()}>
+          {picking ? <Loader2 className="animate-spin" /> : <Search />}
+          Browse…
+        </Button>
       </div>
       <div className="flex gap-2">
         <Input
@@ -35,7 +58,7 @@ export function ImportPane({
           onKeyDown={(event) => {
             if (event.key === "Enter" && path.trim() && !busy) onImport(path)
           }}
-          placeholder="C:/dev/my-plugin"
+          placeholder="…or paste a path, e.g. C:/dev/my-plugin"
           className="h-9"
           autoFocus
         />

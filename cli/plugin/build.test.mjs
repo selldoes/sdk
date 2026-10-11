@@ -46,6 +46,25 @@ test("buildPlugin (js): multi-page entries land in dist/ui", async () => {
   assert.ok(fs.existsSync(path.join(built.outDir, "bundle.js")))
 })
 
+test("buildPlugin: a settings-dialog-only plugin still builds its ui/ folder", async () => {
+  // Regression: collectUiEntries used to ignore settingsDialog.entry, so a
+  // plugin whose only UI is the designed settings dialog got no dist/ui — and
+  // the dev preview answered its dialog iframe with the "no ui.entry" fallback.
+  const manifest = {
+    slug: "settings-only",
+    name: "Settings Only",
+    description: "test",
+    version: "0.1.0",
+    entry: "./index.js",
+    settingsDialog: { entry: "ui/settings-dialog.html" },
+  }
+  const root = tempPlugin(manifest, {
+    "ui/settings-dialog.html": "<html>settings dialog</html>",
+  })
+  const built = await buildPlugin(root, { outDir: path.join(root, "dist"), log: () => {} })
+  assert.ok(fs.existsSync(path.join(built.outDir, "ui", "settings-dialog.html")))
+})
+
 test("buildPlugin (bundled): ui/src/<name>.tsx → ui/assets/<name>.js + generated shells", async () => {
   const manifest = {
     slug: "react-plugin",

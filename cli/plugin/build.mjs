@@ -42,10 +42,11 @@ const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-loc
 
 /**
  * Collects every UI HTML entry declared by the manifest: `ui.entry`, each
- * `dashboardPages[].entry`, the storefront widget and every storefront page.
- * Entries are plugin-root-relative ("ui/index.html").
+ * `dashboardPages[].entry`, the designed settings dialog, the storefront
+ * widget and every storefront page. Entries are plugin-root-relative
+ * ("ui/index.html").
  */
-function collectUiEntries(manifest) {
+export function collectUiEntries(manifest) {
   const entries = new Set()
   const add = (value) => {
     const entry = String(value ?? "").replace(/^\.\//, "").replace(/\\/g, "/").trim()
@@ -53,6 +54,7 @@ function collectUiEntries(manifest) {
   }
   add(manifest.ui?.entry)
   for (const page of manifest.dashboardPages ?? []) add(page?.entry)
+  add(manifest.settingsDialog?.entry)
   add(manifest.storefrontWidget?.entry)
   for (const page of manifest.storefrontPages ?? []) add(page?.entry)
   return [...entries]

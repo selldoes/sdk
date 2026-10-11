@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { contentTypeFor, readJson } from "../../util.mjs"
 import { sendNotFound } from "../../not-found-page.mjs"
 import { openInEditor, openTerminal } from "../../open-editor.mjs"
-import { buildPlugin } from "../build.mjs"
+import { buildPlugin, collectUiEntries } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
 import { PluginRunner, cleanPath } from "./runner.mjs"
@@ -38,6 +38,22 @@ const UI_CSP = [
   "connect-src 'self'",
   "frame-ancestors 'self'",
 ].join("; ")
+
+/** Mirrors the platform's secret mask for `type: "secret"` config fields. */
+const SECRET_MASK = "••••••••"
+
+/**
+ * True when the manifest declares any UI: an HTML entry (dashboard pages, the
+ * designed settings dialog, storefront widget/pages) or kit-authored sections
+ * whose entry the kit compiler only writes during a build.
+ */
+function manifestHasUi(manifest) {
+  return (
+    collectUiEntries(manifest).length > 0 ||
+    (manifest.settingsDialog?.sections ?? []).length > 0 ||
+    (manifest.dashboardPages ?? []).some((page) => (page?.sections ?? []).length > 0)
+  )
+}
 
 function json(res, status, data) {
   const body = JSON.stringify(data)
@@ -184,7 +200,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       buildStatus.builtAt = new Date().toISOString()
       buildStatus.lastError = null
       buildStatus.errors = []
-      log(`rebuilt (bundle${manifestStore.read().ui?.entry ? " + ui" : ""})`)
+      log(`rebuilt (bundle${manifestHasUi(manifestStore.read()) ? " + ui" : ""})`)
       stream.broadcast("build", { ...buildStatus })
     } catch (error) {
       buildStatus.lastError = error.message
@@ -220,8 +236,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   let uiDir = null
   const buildUi = async () => {
     const manifest = manifestStore.read()
-    const wantsUi = Boolean(manifest.ui?.entry) || (manifest.dashboardPages ?? []).some((page) => page?.entry)
-    if (!wantsUi) {
+    if (!manifestHasUi(manifest)) {
       uiDir = null
       return
     }
@@ -1536,6 +1551,14 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         const kind = kitMatch[2]
         const tail = `${kitMatch[3] ?? ""}${kitMatch[4] ?? ""}`
         if (kind === "config") {
+          const secretKeys = new Set(
+            (manifest.configSchema ?? []).filter((field) => field?.type === "secret").map((field) => field.key),
+          )
+          const maskedConfig = () => {
+            const values = { ...state.settings() }
+            for (const key of secretKeys) if (values[key]) values[key] = SECRET_MASK
+            return values
+          }
           if (req.method === "GET") {
             return json(res, 200, {
               plugin: {
@@ -1546,14 +1569,21 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
                 jobs: manifest.jobs ?? [],
               },
               enabled: true,
-              config: state.settings(),
+              config: maskedConfig(),
             })
           }
           if (req.method === "PUT") {
             const body = await readBody(req)
-            applySettings(body?.config ?? {})
-            log("settings saved from the compiled kit page (merged into ctx.config)")
-            return json(res, 200, { config: state.settings() })
+            // Mirrors the platform: masked/blank secrets keep their stored
+            // value, everything else merges over the previous settings.
+            const next = { ...state.settings() }
+            for (const [key, value] of Object.entries(body?.config ?? {})) {
+              if (secretKeys.has(key) && (value === SECRET_MASK || value === "" || value === null || value === undefined)) continue
+              next[key] = value
+            }
+            applySettings(next)
+            log("settings saved (merged into ctx.config)")
+            return json(res, 200, { config: maskedConfig() })
           }
           return json(res, 405, { error: "Method not allowed" })
         }
@@ -1597,11 +1627,20 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         const manifest = manifestStore.read()
         if (slug !== manifest.slug) return json(res, 404, { error: `Only "${manifest.slug}" runs in this dev server` })
         const requested = decodeURIComponent(rest.join("/"))
+        // The Settings dialog preview appends ?dialog=settings — the fallback
+        // wording follows the surface the iframe is trying to render.
+        const context = url.searchParams.get("dialog") === "settings" ? "settings" : "dashboard"
         const fallback = (reason) =>
           html(
             res,
             404,
-            uiFallbackHtml({ title: manifest.ui?.title ?? manifest.name, entry: reason === "missing" ? requested : null, reason, slug: manifest.slug }),
+            uiFallbackHtml({
+              title: manifest.ui?.title ?? manifest.name,
+              entry: reason === "missing" ? requested : null,
+              reason,
+              slug: manifest.slug,
+              context,
+            }),
           )
         if (!uiDir) return fallback("no-ui")
         const file = resolveUiAsset(uiDir, requested)

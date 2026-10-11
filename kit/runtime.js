@@ -26,6 +26,8 @@
   var storeSlug = params.get("storeSlug") || String((DATA.store && DATA.store.slug) || "")
   var scope = "storeId=" + encodeURIComponent(storeId) + "&storeSlug=" + encodeURIComponent(storeSlug)
 
+  var TERMINAL = ["completed", "failed", "cancelled"]
+
   // ── tiny DOM helpers ───────────────────────────────────────────────────────
 
   function h(tag, className, text) {
@@ -35,14 +37,44 @@
     return node
   }
 
-  function card(title, description) {
+  /** Inline lucide-style icon (16px, inherits currentColor). */
+  function icon(name) {
+    var paths = {
+      play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+      refresh:
+        '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+      external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+      alert:
+        '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    }
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    svg.setAttribute("viewBox", "0 0 24 24")
+    svg.setAttribute("fill", "none")
+    svg.setAttribute("stroke", "currentColor")
+    svg.setAttribute("stroke-width", "2")
+    svg.setAttribute("stroke-linecap", "round")
+    svg.setAttribute("stroke-linejoin", "round")
+    svg.setAttribute("aria-hidden", "true")
+    svg.innerHTML = paths[name] || ""
+    return svg
+  }
+
+  function card(title, description, action) {
     var wrap = h("section", "kit-card")
     var body = h("div", "kit-card-body")
-    if (title || description) {
+    if (title || description || action) {
       var head = h("div", "kit-card-head")
-      if (title) head.appendChild(h("h2", "kit-card-title", title))
-      if (description) head.appendChild(h("p", "kit-card-desc", description))
+      var text = h("div", "kit-card-head-text")
+      if (title) text.appendChild(h("h2", "kit-card-title", title))
+      if (description) text.appendChild(h("p", "kit-card-desc", description))
+      head.appendChild(text)
+      if (action) {
+        head.classList.add("kit-row")
+        head.appendChild(action)
+      }
       wrap.appendChild(head)
+    } else {
+      body.classList.add("kit-standalone")
     }
     wrap.appendChild(body)
     return { root: wrap, body: body }
@@ -118,6 +150,7 @@
     var items = Array.isArray(settings.items) ? settings.items : []
     if (items.length === 0) return null
     var view = card()
+    view.body.classList.add("kit-standalone")
     var grid = h("div", "kit-stats")
     items.forEach(function (item) {
       var stat = h("div", "kit-stat")
@@ -132,14 +165,10 @@
 
   function renderTable(settings) {
     var route = str(settings.route)
-    var view = card(str(settings.title, "Data"), route ? route : undefined)
-    var head = view.root.querySelector(".kit-card-head")
-    var refresh = h("button", "kit-button kit-secondary", "Refresh")
-    var headRow = h("div", "kit-card-head kit-row")
-    headRow.appendChild(head ? head : h("div"))
-    headRow.appendChild(refresh)
-    view.root.insertBefore(headRow, view.body)
-    if (head) head.remove()
+    var refresh = h("button", "kit-button kit-outline")
+    refresh.appendChild(icon("refresh"))
+    refresh.appendChild(h("span", null, "Refresh"))
+    var view = card(str(settings.title, "Data"), route ? route : undefined, refresh)
 
     var container = h("div", null)
     view.body.appendChild(container)
@@ -161,9 +190,12 @@
             container.appendChild(h("p", "kit-muted", "No rows."))
             return
           }
-          var columns = Array.isArray(settings.columns)
+          var columns = Array.isArray(settings.columns) && settings.columns.length > 0
             ? settings.columns.map(String)
-            : Object.keys(rows[0] || {}).slice(0, 8)
+            : Object.keys(rows.reduce(function (all, row) {
+                Object.keys(row || {}).forEach(function (key) { all[key] = true })
+                return all
+              }, {})).slice(0, 8)
           var wrap = h("div", "kit-table-wrap")
           var table = h("table", "kit-table")
           var thead = h("thead")
@@ -200,75 +232,112 @@
     var type = str(settings.job)
     var definition = JOBS.find(function (job) { return job.type === type }) || {}
     var title = str(settings.title, type ? "Job: " + type : "Job")
-    var view = card(title)
+    var view = card(title, settings.description ? str(settings.description) : undefined)
     if (!type) {
       view.body.appendChild(h("p", "kit-muted", "This job runner needs a job type in its settings."))
       return view.root
     }
 
-    var actions = h("div", "kit-actions")
-    var run = h("button", "kit-button", "Run " + type)
-    actions.appendChild(run)
-    view.body.appendChild(actions)
+    var run = h("button", "kit-button")
+    run.appendChild(icon("play"))
+    var runLabel = h("span", null, "Run " + type)
+    run.appendChild(runLabel)
+    view.body.appendChild(run)
 
-    var progress = h("div", "kit-progress")
-    var bar = h("div", "kit-progress-bar")
-    var fill = h("div", "kit-progress-fill")
-    bar.appendChild(fill)
-    var meta = h("p", "kit-progress-meta")
+    var transcript = h("div", "kit-transcript")
+    transcript.style.display = "none"
+    var statusRow = h("div", "kit-status-row")
     var status = h("span", "kit-badge", "idle")
-    progress.appendChild(status)
-    progress.appendChild(bar)
-    progress.appendChild(meta)
-    progress.hidden = true
-    view.body.appendChild(progress)
-
+    var meta = h("span", "kit-meta", "")
+    statusRow.appendChild(status)
+    statusRow.appendChild(meta)
+    var progressWrap = h("div", "kit-progress")
+    var fill = h("div", "kit-progress-fill")
+    progressWrap.appendChild(fill)
     var itemsBox = h("div", "kit-items")
-    itemsBox.hidden = true
-    view.body.appendChild(itemsBox)
-    var logBox = h("pre", "kit-log")
-    logBox.hidden = true
-    view.body.appendChild(logBox)
+    var logsDetails = h("details", "kit-details")
+    logsDetails.style.display = "none"
+    var logsSummary = h("summary", null, "logs")
+    var logBox = h("pre", "kit-pre")
+    logsDetails.appendChild(logsSummary)
+    logsDetails.appendChild(logBox)
+    var resultBox = h("pre", "kit-pre kit-result")
+    resultBox.style.display = "none"
+    transcript.appendChild(statusRow)
+    transcript.appendChild(progressWrap)
+    transcript.appendChild(itemsBox)
+    transcript.appendChild(logsDetails)
+    transcript.appendChild(resultBox)
+    view.body.appendChild(transcript)
 
     function paint(job, detail) {
-      progress.hidden = false
-      status.textContent = job.status || "?"
+      transcript.style.display = ""
+      var statusText = job.status === "paused" ? "paused at tick limit" : job.status || "?"
+      status.textContent = statusText
       status.className = "kit-badge kit-" + (job.status || "pending")
       var total = Number(job.total) || 0
       var processed = Number(job.processed) || 0
-      fill.style.width = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) + "%" : "0"
-      var bits = [processed + (total ? "/" + total : "") + " processed"]
+      fill.style.width = total > 0
+        ? Math.min(100, Math.round((processed / total) * 100)) + "%"
+        : job.status === "completed" ? "100%" : "0"
+      var bits = []
+      if (processed || total) bits.push(processed + (total ? "/" + total : "") + " processed")
       if (job.failed) bits.push(job.failed + " failed")
       if (job.skipped) bits.push(job.skipped + " skipped")
       if (job.progress && job.progress.message) bits.push(job.progress.message)
       if (job.error) bits.push(job.error)
       meta.textContent = bits.join(" · ")
+
       if (detail && Array.isArray(detail.items) && detail.items.length > 0) {
-        itemsBox.hidden = false
         itemsBox.innerHTML = ""
-        detail.items.slice(-40).forEach(function (item) {
-          var line = h("p", "kit-items-line")
-          line.appendChild(h("span", item.status === "ok" ? "kit-ok" : "kit-bad", item.status === "ok" ? "✓" : "✕"))
-          line.appendChild(h("span", null, str(item.ref, "item") + (item.error ? " — " + item.error : "")))
-          itemsBox.appendChild(line)
+        var wrap = h("div", "kit-table-wrap")
+        var table = h("table", "kit-table")
+        var thead = h("thead")
+        var headTr = h("tr")
+        ;["Item", "Status", "Detail"].forEach(function (label) { headTr.appendChild(h("th", null, label)) })
+        thead.appendChild(headTr)
+        table.appendChild(thead)
+        var tbody = h("tbody")
+        detail.items.slice(-20).forEach(function (item) {
+          var tr = h("tr")
+          var refTd = h("td")
+          refTd.appendChild(h("code", null, str(item.ref, "item")))
+          tr.appendChild(refTd)
+          tr.appendChild(h("td", null, str(item.status, "")))
+          var detailText = item.error || (item.data ? JSON.stringify(item.data) : item.productId ? "#" + item.productId : "")
+          tr.appendChild(h("td", "kit-muted", detailText))
+          tbody.appendChild(tr)
         })
+        table.appendChild(tbody)
+        wrap.appendChild(table)
+        itemsBox.appendChild(wrap)
       }
+
       if (detail && Array.isArray(detail.logs) && detail.logs.length > 0) {
-        logBox.hidden = false
-        logBox.textContent = detail.logs.slice(-60).map(function (entry) {
+        logsDetails.style.display = ""
+        logsSummary.textContent = "Show " + detail.logs.length + " log line(s)"
+        logBox.textContent = detail.logs.map(function (entry) {
           return "[" + (entry.level || "info") + "] " + (entry.message || "")
         }).join("\n")
         logBox.scrollTop = logBox.scrollHeight
       }
+
+      if (TERMINAL.indexOf(job.status) !== -1) {
+        resultBox.style.display = ""
+        try {
+          resultBox.textContent = JSON.stringify(job.result !== undefined && job.result !== null ? job.result : { status: job.status }, null, 2)
+        } catch (_) {
+          resultBox.textContent = ""
+        }
+      }
     }
 
     function fetchDetail(jobId) {
-      return api("/jobs/" + jobId).then(function (body) { return body })
+      return api("/jobs/" + jobId)
     }
 
     function advance(job) {
-      var isNode = definition.runtime === "node"
-      if (isNode) {
+      if (definition.runtime === "node") {
         return fetchDetail(job.id).then(function (body) { return { job: body.job, detail: body } })
       }
       return api("/jobs/" + job.id + "/tick", { method: "POST", body: "{}" }).then(function (body) {
@@ -276,12 +345,11 @@
       })
     }
 
-    var TERMINAL = ["completed", "failed", "cancelled"]
-
     function loop(job) {
       paint(job)
       if (TERMINAL.indexOf(job.status) !== -1) {
         run.disabled = false
+        runLabel.textContent = "Run " + type
         return fetchDetail(job.id).then(function (body) { paint(body.job || job, body) }).catch(function () {})
       }
       return advance(job).then(function (result) {
@@ -294,11 +362,13 @@
 
     run.addEventListener("click", function () {
       run.disabled = true
+      runLabel.textContent = "Running…"
       api("/jobs", { method: "POST", body: JSON.stringify({ storeId: Number(storeId) || undefined, type: type, input: settings.input || {} }) })
         .then(function (body) { return loop(body.job) })
         .catch(function (error) {
           run.disabled = false
-          progress.hidden = false
+          runLabel.textContent = "Run " + type
+          transcript.style.display = ""
           status.textContent = "failed"
           status.className = "kit-badge kit-failed"
           meta.textContent = error.message
@@ -324,6 +394,10 @@
           var wrap = h("div", "kit-field")
           if (field.type !== "boolean") {
             var label = h("label", null, field.label || field.key)
+            if (field.required) {
+              var required = h("span", "kit-required", " *")
+              label.appendChild(required)
+            }
             label.setAttribute("for", "kit-" + field.key)
             wrap.appendChild(label)
           }
@@ -362,9 +436,12 @@
           form.appendChild(wrap)
         })
 
-        var save = h("button", "kit-button", "Save settings")
+        var save = h("button", "kit-button")
         save.type = "submit"
-        form.appendChild(save)
+        save.textContent = "Save settings"
+        var saveWrap = h("div", null)
+        saveWrap.appendChild(save)
+        form.appendChild(saveWrap)
         form.addEventListener("submit", function (event) {
           event.preventDefault()
           var payload = {}
@@ -375,9 +452,18 @@
             else payload[key] = entry.input.value
           })
           save.disabled = true
+          save.textContent = "Saving…"
           api("/config", { method: "PUT", body: JSON.stringify({ storeId: Number(storeId) || undefined, config: payload }) })
-            .then(function () { save.disabled = false; save.textContent = "Saved ✓"; setTimeout(function () { save.textContent = "Save settings" }, 1500) })
-            .catch(function (error) { save.disabled = false; form.appendChild(h("p", "kit-error", error.message)) })
+            .then(function () {
+              save.disabled = false
+              save.textContent = "Saved ✓"
+              setTimeout(function () { save.textContent = "Save settings" }, 1500)
+            })
+            .catch(function (error) {
+              save.disabled = false
+              save.textContent = "Save settings"
+              form.appendChild(h("p", "kit-error", error.message))
+            })
         })
       })
       .catch(function (error) {
@@ -388,7 +474,7 @@
 
   function renderLogs(settings) {
     var view = card(str(settings.title, "Recent activity"), "Latest job logs for this store.")
-    var box = h("pre", "kit-log")
+    var box = h("pre", "kit-pre")
     box.textContent = "Loading…"
     view.body.appendChild(box)
     var count = Number(settings.lines) || 20
@@ -414,12 +500,15 @@
     var items = Array.isArray(settings.items) ? settings.items : []
     if (items.length === 0) return null
     var view = card()
+    view.body.classList.add("kit-standalone")
     var actions = h("div", "kit-actions")
     items.forEach(function (item) {
-      var link = h("a", "kit-button kit-secondary", str(item.label, "link"))
+      var link = h("a", "kit-button kit-outline")
       link.href = str(item.href, "#")
       link.target = "_blank"
       link.rel = "noreferrer"
+      link.appendChild(h("span", null, str(item.label, "link")))
+      link.appendChild(icon("external"))
       actions.appendChild(link)
     })
     view.body.appendChild(actions)
@@ -438,7 +527,12 @@
       case "links": return renderLinks(settings)
       default:
         var view = card()
-        view.body.appendChild(h("p", "kit-note", "Unknown component type \"" + String(section.type) + "\" — this runtime doesn't know it yet."))
+        view.root.classList.add("kit-dashed")
+        view.body.classList.add("kit-standalone")
+        var note = h("div", "kit-note")
+        note.appendChild(icon("alert"))
+        note.appendChild(h("span", null, 'Unknown component type "' + String(section.type) + '" — this runtime doesn\'t know it yet.'))
+        view.body.appendChild(note)
         return view.root
     }
   }

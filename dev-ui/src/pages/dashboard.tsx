@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   Check,
   ExternalLink,
@@ -57,6 +57,7 @@ type PageMode = "components" | "html"
 export function DashboardPage() {
   const { bootstrap, setAssistantPage, applyManifest, refresh, toast } = useApp()
   useVisit("dashboard")
+  const navigate = useNavigate()
   const manifest = bootstrap!.manifest
   const store = bootstrap!.store
   const [params, setParams] = useSearchParams()
@@ -203,6 +204,7 @@ export function DashboardPage() {
   }, [setAssistantPage, hasUi, activePage?.label, activeSections.length])
 
   if (!hasUi) {
+    const hasSettingsDialog = Boolean(manifest.settingsDialog?.entry || (manifest.settingsDialog?.sections ?? []).length)
     return (
       <>
         <div className="space-y-4">
@@ -216,14 +218,33 @@ export function DashboardPage() {
             }
           />
           <CreatePageBar onPick={() => setCreateOpen(true)} />
-          <Callout kind="info">
-            Want your own UI instead? Scaffold the default notes example — it wires <code>ui.entry</code>,{" "}
-            <code>dashboardPages</code> and a working notes app you can build on.{" "}
-            <Button size="sm" variant="outline" className="ml-1" disabled={busy.isBusy("scaffold:*")} onClick={() => void scaffold()}>
-              {busy.isBusy("scaffold:*") ? <Loader2 className="animate-spin" /> : <Sparkles />}
-              Scaffold the notes dashboard UI
-            </Button>
-          </Callout>
+          {hasSettingsDialog ? (
+            <Callout kind="info">
+              <p>
+                This plugin has <strong>no dashboard UI</strong> — by design. Its designed{" "}
+                <strong>settings dialog</strong> lives on the{" "}
+                <button type="button" className="font-semibold underline" onClick={() => navigate("/settings-dialog")}>
+                  Design → Settings
+                </button>{" "}
+                page and opens from the plugin manager&apos;s Settings button in the Selldoes dashboard.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => navigate("/settings-dialog")}>
+                  <Sparkles />
+                  Open the settings dialog designer
+                </Button>
+              </div>
+            </Callout>
+          ) : (
+            <Callout kind="info">
+              Want your own UI instead? Scaffold the default notes example — it wires <code>ui.entry</code>,{" "}
+              <code>dashboardPages</code> and a working notes app you can build on.{" "}
+              <Button size="sm" variant="outline" className="ml-1" disabled={busy.isBusy("scaffold:*")} onClick={() => void scaffold()}>
+                {busy.isBusy("scaffold:*") ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                Scaffold the notes dashboard UI
+              </Button>
+            </Callout>
+          )}
 
           <HostPageReplica />
         </div>

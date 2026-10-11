@@ -182,16 +182,67 @@ function escapeHtml(value) {
 /**
  * Styled in-iframe fallback for missing UI assets. Includes a "Create" button
  * that postMessages the preview shell (same-origin) to scaffold the notes UI.
+ *
+ * `context: "settings"` words the page for the plugin manager's Settings
+ * dialog preview (the iframe URL carries `?dialog=settings`); the notes-UI
+ * scaffold button only makes sense in the dashboard context.
  */
-export function uiFallbackHtml({ title, entry, reason, slug }) {
+export function uiFallbackHtml({ title, entry, reason, slug, context = "dashboard" }) {
+  const isSettings = context === "settings"
   const name = escapeHtml(title ?? "Plugin")
   const shownEntry = entry ? escapeHtml(entry) : "ui/index.html"
   const isMissing = reason === "missing"
-  const headline = isMissing ? "Dashboard UI not found" : "No dashboard UI yet"
+  const headline = isMissing
+    ? isSettings
+      ? "Settings dialog not found"
+      : "Dashboard UI not found"
+    : isSettings
+      ? "No plugin settings menu yet"
+      : "No dashboard UI yet"
   const explanation = isMissing
     ? `The manifest declares <code>${shownEntry}</code>, but that file is not in the built UI output. It may have been deleted, never created, or <code>plugin.json</code> may point at the wrong path.`
-    : `This plugin has no <code>ui.entry</code>, so the host would render its standard settings + jobs page. You can scaffold the default notes example to get started.`
-  const scaffoldEntry = isMissing && entry ? escapeHtml(entry) : ""
+    : isSettings
+      ? "This plugin has no settings menu yet. Design one from the preview's <strong>Design → Settings</strong> page — the components you add compile into a UI entry the plugin manager opens in its Settings dialog."
+      : `This plugin has no <code>ui.entry</code>, so the host would render its standard settings + jobs page. You can scaffold the default notes example to get started.`
+  const steps = isSettings
+    ? isMissing
+      ? [
+          `Create <code>${shownEntry}</code> under <code>ui/</code>`,
+          "Or point <code>settingsDialog.entry</code> at a file that exists",
+          "Or design the dialog instead: <strong>Design → Settings</strong> → Create settings menu",
+        ]
+      : [
+          "Open <strong>Design → Settings</strong> and click <strong>Create settings menu</strong>",
+          "Or author <code>settingsDialog.sections</code> (or a hand-written <code>settingsDialog.entry</code>) in plugin.json",
+        ]
+    : [
+        `Create <code>${shownEntry}</code> (and any scripts it references) under <code>ui/</code>`,
+        "Or fix <code>plugin.json</code> so the entry points at a file that exists",
+        "Or use the button below to scaffold the default notes example",
+      ]
+  const badge = isMissing ? "missing asset" : isSettings ? "no settings menu" : "no ui.entry"
+  const scaffoldEntry = !isSettings && isMissing && entry ? escapeHtml(entry) : ""
+  const scaffoldButton = isSettings
+    ? ""
+    : `
+      <button id="scaffold" type="button">Create the notes dashboard UI</button>`
+  const scaffoldScript = isSettings
+    ? ""
+    : `
+    <script>
+      (function () {
+        var button = document.getElementById("scaffold")
+        var embedded = window.parent && window.parent !== window
+        if (!embedded) {
+          button.classList.add("hidden")
+          return
+        }
+        button.addEventListener("click", function () {
+          window.parent.postMessage({ type: "selldoes:ui-scaffold", slug: ${JSON.stringify(String(slug ?? ""))}, entry: ${JSON.stringify(scaffoldEntry)} }, window.location.origin)
+        })
+      })()
+    </script>
+`
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -216,30 +267,14 @@ export function uiFallbackHtml({ title, entry, reason, slug }) {
   </head>
   <body>
     <main>
-      <span class="badge">${isMissing ? "missing asset" : "no ui.entry"}</span>
+      <span class="badge">${badge}</span>
       <h1>${headline}</h1>
       <p>${explanation}</p>
       <ul>
-        <li>Create <code>${shownEntry}</code> (and any scripts it references) under <code>ui/</code></li>
-        <li>Or fix <code>plugin.json</code> so the entry points at a file that exists</li>
-        <li>Or use the button below to scaffold the default notes example</li>
-      </ul>
-      <button id="scaffold" type="button">Create the notes dashboard UI</button>
+        ${steps.map((step) => `<li>${step}</li>`).join("\n        ")}
+      </ul>${scaffoldButton}
       <p class="hint">This page replaces the raw "Asset not found" error in the preview.</p>
-    </main>
-    <script>
-      (function () {
-        var button = document.getElementById("scaffold")
-        var embedded = window.parent && window.parent !== window
-        if (!embedded) {
-          button.classList.add("hidden")
-          return
-        }
-        button.addEventListener("click", function () {
-          window.parent.postMessage({ type: "selldoes:ui-scaffold", slug: ${JSON.stringify(String(slug ?? ""))}, entry: ${JSON.stringify(scaffoldEntry)} }, window.location.origin)
-        })
-      })()
-    </script>
+    </main>${scaffoldScript}
   </body>
 </html>
 `

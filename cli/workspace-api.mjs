@@ -147,13 +147,15 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
       }
     }
 
-    // Native OS folder picker for Settings → "Choose folder". Runs on the
-    // machine hosting the server, so it's the developer's own dialog.
+    // Native OS folder picker for Settings → "Choose folder" and the workspace
+    // dialog's Import pane. Runs on the machine hosting the server, so it's
+    // the developer's own dialog.
     if (action === "choose-folder" && method === "POST") {
       const body = await readBody(req)
       const { chooseFolder } = await import("./folder-picker.mjs")
       const initialDir = body.initialDir ? String(body.initialDir) : ctx.defaultDir
-      const result = await chooseFolder({ initialDir })
+      const prompt = body.prompt ? String(body.prompt) : undefined
+      const result = await chooseFolder({ initialDir, prompt })
       if (result.error) return json(res, 501, { error: result.error })
       return json(res, 200, { path: result.path ?? null, cancelled: result.cancelled === true })
     }

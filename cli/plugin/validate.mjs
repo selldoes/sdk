@@ -42,6 +42,20 @@ export function validatePluginDir(pluginDir, { expectedSlug } = {}) {
     if (!UI_PATH.test(manifest.ui.entry)) errors.push(`ui.entry "${manifest.ui.entry}" contains invalid characters`)
     else if (!fileExists(path.join(pluginDir, manifest.ui.entry))) errors.push(`ui.entry "${manifest.ui.entry}" does not exist`)
   }
+  // Designed settings dialog: the kit compiler fills entry from sections, so a
+  // missing file is only an error when an entry is declared without sections.
+  if (manifest.settingsDialog?.entry) {
+    if (!UI_PATH.test(manifest.settingsDialog.entry)) {
+      errors.push(`settingsDialog.entry "${manifest.settingsDialog.entry}" contains invalid characters`)
+    } else if (
+      !fileExists(path.join(pluginDir, manifest.settingsDialog.entry)) &&
+      !(manifest.settingsDialog.sections ?? []).length
+    ) {
+      errors.push(
+        `settingsDialog.entry "${manifest.settingsDialog.entry}" does not exist (or add sections and let the kit compiler build it)`,
+      )
+    }
+  }
   if (manifest.storefrontWidget?.entry) {
     if (!fileExists(path.join(pluginDir, manifest.storefrontWidget.entry))) {
       errors.push(`storefrontWidget.entry "${manifest.storefrontWidget.entry}" does not exist`)

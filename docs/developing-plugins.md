@@ -190,6 +190,37 @@ scaffolds the notes example under `ui/` as before. You can also ask the AI
 assistant ("add a stats row", "show /stats as a table"), which rewrites
 `dashboardPages[].sections` through the normal manifest-edit pipeline.
 
+### Designed settings dialog
+
+`settingsDialog` declares a dialog the Selldoes plugin manager opens from the
+**Settings** button on the Plugins page — a focused, branded alternative to
+linking to the plugin's home page. It uses the same kit contract as pages:
+
+```json
+{
+  "settingsDialog": {
+    "sections": [
+      { "type": "text", "settings": { "title": "Powered by APIRaven", "body": "Grab a free key at **apiraven.com**." } },
+      { "type": "settings" }
+    ]
+  }
+}
+```
+
+On the next build the compiler writes `ui/kit/settings.html` and points
+`settingsDialog.entry` at it; the manager renders that entry in a
+self-resizing dialog. A hand-written `entry` (e.g. `ui/settings-dialog.html`)
+wins over the kit and is served as-is — it can call your API routes and the
+platform's `/api/plugins/{slug}/config` GET/PUT (secret values arrive masked;
+saving an untouched mask keeps the stored secret).
+
+The preview's **Settings** page (Design group) shows the exact dialog in an
+iframe. With no dialog declared it says **"No plugin settings menu yet"** —
+**Create settings menu** seeds a `settings` component (your `configSchema`
+form) and opens the components builder. The iframe requests entries with
+`?dialog=settings`, so server fallback pages use settings wording there
+("Settings dialog not found", never the dashboard's "no ui.entry" page).
+
 ### Creation buttons
 
 The Dashboard page has **New page / New job / New hook / New route** buttons.
@@ -217,6 +248,7 @@ Selldoes dashboard:
 | **Details & permissions** | Edit `plugin.json` from a form: name, description, icon (built-in picker or uploaded image), screenshots, category, tags and permissions (with the platform's risk/impact text). Saves are validated and undoable |
 | **In Selldoes** | Exactly what store owners see: marketplace card, listing page (with screenshots), the install dialog and where your dashboard pages land in the sidebar |
 | **Dashboard page** | Your dashboard UI in a sandboxed iframe, with a page rail for every `dashboardPages` entry; pages with `sections` render from the no-code kit and open in the visual components builder (palette, live canvas, inspector, templates, JSON tab); missing pages get a one-click "scaffold the notes example" button. Without a UI, a faithful replica of the host's settings + jobs page (plus the same scaffold button) |
+| **Settings (dialog)** | The plugin manager's Settings dialog in an iframe — the compiled kit dialog or your hand-written `settingsDialog.entry`; a **hand-written** badge marks entries the kit does not own. With no dialog declared: "No plugin settings menu yet" and a **Create settings menu** button that seeds a settings-form component and opens the components builder |
 | **Storefront** | A demo store with your `storefrontWidget` and every `storefrontPages` entry |
 | **Jobs** | Run a declared job — chunked (`{ init, step, finalize }`) or a legacy function — with progress, per-item results and logs |
 | **API console** | Pick a declared route, edit query/body, send and inspect JSON |
@@ -346,7 +378,9 @@ missing categories are created for the store, linked to the product and the
 first name becomes its primary `category`.
 
 Manifest extras: `ui` (dashboard iframe; `ui.entry` + per-page
-`dashboardPages[].entry`), `storefrontWidget` (bubble on every
+`dashboardPages[].entry`), `settingsDialog` (the dialog behind the plugin
+manager's Settings button — `sections` or a hand-written `entry`),
+`storefrontWidget` (bubble on every
 storefront page), `storefrontPages` (public pages such as `/kb`),
 `publicRoutes` (visitor-callable API, no session), `delivery` (order-detail
 sections), `jobs`, `schedules`, `hooks`, `configSchema`, `allowedTables`, plus listing

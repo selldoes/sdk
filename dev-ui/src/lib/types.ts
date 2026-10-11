@@ -25,6 +25,8 @@ export interface PluginConfigField {
   default?: string | number | boolean
   options?: { value: string; label: string }[]
   required?: boolean
+  /** "Learn more" link rendered under the field (e.g. where to get an API key). */
+  learnMoreUrl?: string
 }
 
 export interface PluginJobDefinition {
@@ -88,6 +90,13 @@ export interface PluginManifest {
   jobs?: PluginJobDefinition[]
   schedules?: PluginScheduleDefinition[]
   configSchema?: PluginConfigField[]
+  /**
+   * Designed settings dialog — authored on the Design → Settings page.
+   * The kit compiler turns `sections` into `entry` (`ui/kit/settings.html`);
+   * the platform's plugin manager renders it in a dialog instead of the
+   * plugin home page when present.
+   */
+  settingsDialog?: { entry?: string; sections?: PluginDashboardSection[] }
   sections?: { type: string; name: string; description?: string }[]
   tags?: string[]
   category?: string

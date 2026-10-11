@@ -352,13 +352,26 @@ export class PluginRunner {
   }
 
   async runHook(name, payload, ctx) {
+    const bundle = this.bundle()
+    // Mirrors the platform runtime's resolution order (quickjs-runner.cjs):
+    // hooks[hookName] map → default export → basename of the manifest handler
+    // path → first function export. Either convention works in dev and prod.
+    const fromMap = bundle.hooks?.[name] ?? bundle.default?.hooks?.[name]
+    if (typeof fromMap === "function") return fromMap(payload, ctx)
     const declared = this.manifest.hooks?.[name]
-    const bundled = this.bundle().hooks?.[name]
-    if (typeof bundled === "function") return bundled(payload, ctx)
+    if (typeof bundle.default === "function") return bundle.default(payload, ctx)
+    const basename = declared?.handler
+      ? String(declared.handler).split("/").pop().replace(/\.(js|ts|tsx|jsx)$/, "")
+      : ""
+    if (basename && typeof bundle[basename] === "function") return bundle[basename](payload, ctx)
+    for (const value of Object.values(bundle)) {
+      if (typeof value === "function") return value(payload, ctx)
+    }
     if (declared?.handler) {
       throw new Error(
-        `Hook "${name}" declares handler ${declared.handler}, which is not part of the bundle. ` +
-          `Export it from your entry as hooks["${name}"] to preview it here (the host loads handler files separately).`,
+        `Hook "${name}" declares handler ${declared.handler}, but no matching export was found in the bundle. ` +
+          `Export it as hooks["${name}"] (recommended), or as a named export matching the handler's file name ` +
+          `(e.g. export function ${basename || "handler"}), or as the default export.`,
       )
     }
     throw new Error(`Hook "${name}" is not exported as hooks["${name}"]`)

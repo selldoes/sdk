@@ -49,6 +49,11 @@ interface SectionBuilderProps {
   /** The page also has an iframe entry — it stays as fallback in plugin.json. */
   hasEntry: boolean
   sections: PluginDashboardSection[]
+  /**
+   * Where the sections are saved: a dashboard page (`dashboardPages[]`, the
+   * default) or the designed settings dialog (`settingsDialog.sections`).
+   */
+  scope?: "page" | "settings"
 }
 
 function cloneSections(sections: PluginDashboardSection[]): PluginDashboardSection[] {
@@ -95,6 +100,7 @@ export function SectionBuilder({
   pagePath,
   hasEntry,
   sections,
+  scope = "page",
 }: SectionBuilderProps) {
   const { applyManifest, refresh, setAssistantOpen, setAssistantPage, toast } = useApp()
   const [draft, setDraft] = React.useState<PluginDashboardSection[]>([])
@@ -243,17 +249,28 @@ export function SectionBuilder({
     setSaveError(null)
     try {
       const next = JSON.parse(JSON.stringify(manifest)) as PluginManifest
-      const list = Array.isArray(next.dashboardPages) ? next.dashboardPages : []
-      const target = list.find((page) => page.path === pagePath)
-      if (!target) throw new Error(`Page "${pagePath}" is not declared in dashboardPages`)
       const cleaned = cleanSections(draft)
-      target.sections = cleaned
-      next.dashboardPages = list
+      if (scope === "settings") {
+        // Designed settings dialog — the platform opens it from the plugin
+        // manager's Settings button; the kit compiler builds ui/kit/settings.html.
+        next.settingsDialog = { ...(next.settingsDialog ?? {}), sections: cleaned }
+      } else {
+        const list = Array.isArray(next.dashboardPages) ? next.dashboardPages : []
+        const target = list.find((page) => page.path === pagePath)
+        if (!target) throw new Error(`Page "${pagePath}" is not declared in dashboardPages`)
+        target.sections = cleaned
+        next.dashboardPages = list
+      }
       const response = await dev.saveManifest(next)
       baselineRef.current = JSON.stringify(cleaned)
       applyManifest(response.manifest, response.validation)
       await refresh()
-      toast("Components saved — this page now renders from sections", "success")
+      toast(
+        scope === "settings"
+          ? "Settings dialog components saved — it now opens from the plugin manager's Settings button"
+          : "Components saved — this page now renders from sections",
+        "success",
+      )
       onOpenChange(false)
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error))
@@ -276,12 +293,19 @@ export function SectionBuilder({
 
   const askAi = () => {
     setAssistantPage({
-      context: `The developer is building the components of dashboard page "${pageLabel}" (${pagePath}) in the visual builder. Current draft sections JSON:\n${JSON.stringify(draft).slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?}, job {job, title?, input?, maxTicks?}, settings (renders configSchema), logs {lines?}, links {items:[{label,href}]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new dashboardPages[].sections array (keep "entry" as fallback).`,
-      quick: [
-        "Add a stats row and a job runner to this page",
-        "Show my /stats API route as a table on this page",
-        "Replace these components with a settings form and links",
-      ],
+      context: scope === "settings"
+        ? `The developer is building the components of their plugin's settings dialog in the visual builder. Current draft sections JSON:\n${JSON.stringify(draft).slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?}, job {job, title?, input?, maxTicks?}, settings (renders configSchema), logs {lines?}, links {items:[{label,href}]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new settingsDialog.sections array.`
+        : `The developer is building the components of dashboard page "${pageLabel}" (${pagePath}) in the visual builder. Current draft sections JSON:\n${JSON.stringify(draft).slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?}, job {job, title?, input?, maxTicks?}, settings (renders configSchema), logs {lines?}, links {items:[{label,href}]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new dashboardPages[].sections array (keep "entry" as fallback).`,
+      quick: scope === "settings"
+        ? [
+            "Add my configSchema form and a docs link",
+            "Show a short intro explaining what this plugin does",
+          ]
+        : [
+            "Add a stats row and a job runner to this page",
+            "Show my /stats API route as a table on this page",
+            "Replace these components with a settings form and links",
+          ],
     })
     setAssistantOpen(true)
     onOpenChange(false)

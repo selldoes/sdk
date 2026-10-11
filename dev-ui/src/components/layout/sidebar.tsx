@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Mail,
   Package,
+  Paintbrush,
   Play,
   Puzzle,
   Radio,
@@ -59,6 +60,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/storefront", label: "Storefront", icon: ShoppingBag },
+      { to: "/settings-dialog", label: "Settings", icon: Paintbrush },
     ],
   },
   {

@@ -9,6 +9,7 @@ export const PAGE_TITLES: Record<string, string> = {
   "/listing": "Listing",
   "/dashboard": "Dashboard",
   "/storefront": "Storefront",
+  "/settings-dialog": "Settings dialog",
   "/api": "API routes",
   "/jobs": "Jobs",
   "/hooks": "Hooks",

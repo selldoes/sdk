@@ -48,6 +48,9 @@ function pageHtml({ title, slug, sections, jobs }) {
     '    <meta charset="utf-8" />',
     '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
     `    <title>${safeTitle}</title>`,
+    '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
+    '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
+    '    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />',
     '    <link rel="stylesheet" href="runtime.css" />',
     "  </head>",
     "  <body>",
@@ -124,6 +127,42 @@ export function syncKitPages(pluginDir) {
       changed = true
     }
     compiled.push({ path: page.path, entry })
+  }
+
+  // ── Designed settings dialog (settingsDialog.sections) ─────────────────────
+  // Same contract as kit pages: sections compile into a UI entry the platform
+  // renders in the plugin manager's Settings dialog. A hand-written entry wins.
+  const dialog = manifest.settingsDialog
+  const dialogSections = Array.isArray(dialog?.sections) ? dialog.sections : []
+  if (dialog && dialogSections.length > 0 && (!fs.existsSync(KIT_DIR))) {
+    throw new Error(`Kit runtime not found at ${KIT_DIR}`)
+  }
+  if (dialog && dialogSections.length > 0) {
+    if (!fs.existsSync(kitDir)) {
+      fs.mkdirSync(kitDir, { recursive: true })
+      for (const file of RUNTIME_FILES) {
+        fs.writeFileSync(path.join(kitDir, file), fs.readFileSync(path.join(KIT_DIR, file)))
+      }
+    }
+    const entry = "ui/kit/settings.html"
+    const normalizedEntry = dialog.entry ? String(dialog.entry).replace(/^\.\//, "").replace(/\\/g, "/") : null
+    if (!normalizedEntry || normalizedEntry === entry) {
+      const html = pageHtml({
+        title: `${manifest.name ?? manifest.slug} — Settings`,
+        slug: manifest.slug,
+        sections: dialogSections,
+        jobs,
+      })
+      const htmlPath = path.join(kitDir, "settings.html")
+      if (!fs.existsSync(htmlPath) || fs.readFileSync(htmlPath, "utf8") !== html) {
+        fs.writeFileSync(htmlPath, html)
+      }
+      if (dialog.entry !== entry) {
+        dialog.entry = entry
+        changed = true
+      }
+      compiled.push({ path: "/settings", entry })
+    }
   }
 
   if (changed) fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)

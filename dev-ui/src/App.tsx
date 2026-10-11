@@ -23,6 +23,7 @@ import { PermissionsPage } from "@/pages/permissions"
 import { ListingPage } from "@/pages/listing"
 import { DashboardPage } from "@/pages/dashboard"
 import { StorefrontPage } from "@/pages/storefront"
+import { SettingsDialogPage } from "@/pages/settings-dialog"
 import { ApiPage } from "@/pages/api-console"
 import { JobsPage } from "@/pages/jobs"
 import { HooksPage } from "@/pages/hooks"
@@ -138,6 +139,7 @@ function Shell() {
                       <Route path="/listing" element={<ListingPage />} />
                       <Route path="/dashboard" element={<DashboardPage />} />
                       <Route path="/storefront" element={<StorefrontPage />} />
+                      <Route path="/settings-dialog" element={<SettingsDialogPage />} />
                       <Route path="/api" element={<ApiPage />} />
                       <Route path="/jobs" element={<JobsPage />} />
                       <Route path="/hooks" element={<HooksPage />} />

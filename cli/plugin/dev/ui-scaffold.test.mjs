@@ -118,3 +118,20 @@ test("uiFallbackHtml: friendly page with a scaffold postMessage button", () => {
   const bare = uiFallbackHtml({ title: "Demo", entry: null, reason: "no-ui", slug: "demo-plugin" })
   assert.match(bare, /No dashboard UI yet/)
 })
+
+test("uiFallbackHtml: settings-dialog context uses settings wording, no notes scaffold", () => {
+  const bare = uiFallbackHtml({ title: "Demo", entry: null, reason: "no-ui", slug: "demo-plugin", context: "settings" })
+  assert.match(bare, /No plugin settings menu yet/)
+  assert.doesNotMatch(bare, /No dashboard UI yet/)
+  assert.doesNotMatch(bare, /selldoes:ui-scaffold/)
+  const missing = uiFallbackHtml({
+    title: "Demo",
+    entry: "ui/settings-dialog.html",
+    reason: "missing",
+    slug: "demo-plugin",
+    context: "settings",
+  })
+  assert.match(missing, /Settings dialog not found/)
+  assert.match(missing, /ui\/settings-dialog\.html/)
+  assert.doesNotMatch(missing, /selldoes:ui-scaffold/)
+})
