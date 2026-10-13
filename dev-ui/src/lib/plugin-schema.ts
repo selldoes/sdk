@@ -34,6 +34,9 @@ export const PLUGIN_SCHEMA = {
           "webhooks:register",
           "sections:register",
           "dashboard:pages",
+          "secrets:read",
+          "storage:read",
+          "storage:write",
         ],
       },
     },
@@ -152,5 +155,15 @@ export const PLUGIN_SCHEMA = {
     tags: { type: "array", items: { type: "string" } },
     category: { type: "string" },
     screenshots: { type: "array", items: { type: "string" } },
+    pricing: {
+      type: "object",
+      description: "Marketplace pricing — drives the listing card and is sent on publish when CLI flags are omitted.",
+      properties: {
+        amount: { type: "number", description: "Price per billing period (0 = free)." },
+        currency: { type: "string", description: "ISO 4217 code, e.g. USD, EUR (default USD)." },
+        billingPeriod: { type: "string", enum: ["one_time", "monthly", "yearly"], description: "How often the store is billed." },
+        trialDays: { type: "number", description: "Marketplace trial length in days (0-90)." },
+      },
+    },
   },
 } as const

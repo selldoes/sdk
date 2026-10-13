@@ -15,6 +15,9 @@ export type PluginPermission =
   | "webhooks:register"
   | "sections:register"
   | "dashboard:pages"
+  | "secrets:read"
+  | "storage:read"
+  | "storage:write"
 
 export interface PluginConfigField {
   key: string
@@ -66,6 +69,18 @@ export interface PluginDashboardSection {
   [key: string]: unknown
 }
 
+/** Marketplace pricing — what the listing card shows and publish sends. */
+export interface PluginPricing {
+  /** 0 (or absent) = free. */
+  amount: number
+  /** ISO 4217 code, default USD. */
+  currency?: string
+  /** How often the store is billed. */
+  billingPeriod?: "one_time" | "monthly" | "yearly"
+  /** Marketplace trial length in days (0–90). */
+  trialDays?: number
+}
+
 export interface PluginManifest {
   slug: string
   name: string
@@ -101,6 +116,8 @@ export interface PluginManifest {
   tags?: string[]
   category?: string
   screenshots?: string[]
+  /** Marketplace pricing — drives the listing card and publish defaults. */
+  pricing?: PluginPricing
   [key: string]: unknown
 }
 
@@ -351,6 +368,25 @@ export interface PublishConfig {
 export interface DevConfigResponse extends AssistantConfigResponse {
   server: DevServerConfig
   publish: PublishConfig
+  store: StoreConnectionView
+}
+
+/** Live store connection — ctx.products proxies to a real store when active. */
+export interface StoreConnectionView {
+  live: boolean
+  appUrl: string | null
+  storeId: number | null
+  storeSlug: string | null
+  apiKeySet: boolean
+  apiKeyMasked: string | null
+  /** True while the bridge is live (server-side resolved). */
+  active?: boolean
+}
+
+/** GET /__dev/store — connection state + whether the bridge is live. */
+export interface StoreStatusResponse extends StoreConnectionView {
+  connection?: { appUrl: string; storeId: number; storeSlug: string } | null
+  storeName?: string
 }
 
 /** Sections accepted by POST /__dev/config (all optional). */

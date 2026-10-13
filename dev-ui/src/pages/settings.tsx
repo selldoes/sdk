@@ -7,6 +7,7 @@ import {
   History,
   Loader2,
   Palette,
+  Plug,
   Puzzle,
   RefreshCw,
   Rocket,
@@ -14,6 +15,7 @@ import {
   SquarePen,
   SquareTerminal,
   Trash2,
+  Unplug,
 } from "lucide-react"
 import { PageHead } from "@/components/shared"
 import { SkeletonCard } from "@/components/skeletons"
@@ -28,7 +30,7 @@ import { ConfirmDialog, DeleteFilesDialog } from "@/components/settings-dialogs"
 import { dev } from "@/lib/api"
 import { useBusySet } from "@/lib/use-busy"
 import { ACCENTS, ACCENT_NAMES, accentFor, type AccentName } from "@/lib/project-colors"
-import type { BumpMode, DevConfigResponse } from "@/lib/types"
+import type { BumpMode, DevConfigResponse, StoreStatusResponse } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
 import { cn } from "@/lib/utils"
 import { ws } from "@/lib/ws-api"
@@ -116,6 +118,13 @@ export function SettingsPage() {
   const [releaseBump, setReleaseBump] = React.useState<BumpMode>("patch")
   const [modelOverride, setModelOverride] = React.useState("")
 
+  // ── Live store connection ─────────────────────────────────────────────────
+  const [store, setStore] = React.useState<StoreStatusResponse | null>(null)
+  const [storeError, setStoreError] = React.useState<string | null>(null)
+  const [liveAppUrl, setLiveAppUrl] = React.useState("")
+  const [liveApiKey, setLiveApiKey] = React.useState("")
+  const [liveStoreRef, setLiveStoreRef] = React.useState("")
+
   React.useEffect(() => {
     let active = true
     void dev
@@ -144,6 +153,59 @@ export function SettingsPage() {
       active = false
     }
   }, [])
+
+  // Store status loads on its own (not via /__dev/config) so an outdated dev
+  // server shows a clear hint instead of an endless skeleton.
+  React.useEffect(() => {
+    let active = true
+    void dev
+      .storeStatus()
+      .then((data) => {
+        if (!active) return
+        setStore(data)
+        setStoreError(null)
+        setLiveAppUrl(data.appUrl ?? "")
+        setLiveStoreRef(data.storeId ? String(data.storeId) : "")
+      })
+      .catch((cause) => {
+        if (!active) return
+        setStore(null)
+        setStoreError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const connectLiveStore = async () => {
+    await run(
+      "store-connect",
+      async () => {
+        const result = await dev.storeConnect({
+          appUrl: liveAppUrl.trim() || undefined,
+          apiKey: liveApiKey.trim(),
+          storeSlug: liveStoreRef.trim() || undefined,
+          storeId: /^\d+$/.test(liveStoreRef.trim()) ? liveStoreRef.trim() : undefined,
+        })
+        setStore(result)
+        setLiveApiKey("")
+        toast(`Connected to ${result.storeName || result.storeSlug || result.storeId} — ctx.products now writes to the real store`, "success")
+      },
+      configBusy,
+    )
+  }
+
+  const disconnectLiveStore = async () => {
+    await run(
+      "store-disconnect",
+      async () => {
+        const result = await dev.storeDisconnect()
+        setStore(result)
+        toast("Live store disconnected — ctx.products back on the local mock", "success")
+      },
+      configBusy,
+    )
+  }
 
   const saveServerConfig = async () => {
     let parsedSampleJobs: Record<string, unknown> | null = null
@@ -496,6 +558,106 @@ export function SettingsPage() {
                 Saved as <code className="font-mono">assistant.model</code> in this project's selldoes.config.json — safe to commit, no
                 credentials involved.
               </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Live store connection ──────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Plug className="h-4 w-4" />
+            Store
+          </CardTitle>
+          <CardDescription>
+            Connect a real store to test against live catalog data — no publish needed. When connected,{" "}
+            <code className="font-mono">ctx.products</code> (and image re-hosting) proxy to the store through the merchant API; everything
+            else (plugin tables, AI, email) stays on the local mock.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {store === null && storeError === null ? (
+            <SkeletonCard rows={2} className="border-0 bg-transparent p-0" />
+          ) : store === null && storeError !== null ? (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5">
+              <p className="text-xs font-semibold text-amber-600">The running dev server does not know /__dev/store</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Restart <code className="font-mono">selldoes dev</code> (and the workspace shell if you use it) so the preview picks up
+                the SDK update — the Store card talks to a dev server that is older than the UI.
+              </p>
+            </div>
+          ) : store.active ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 px-3 py-2.5">
+                <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="text-xs font-semibold">
+                  Live — {store.connection?.storeSlug || store.connection?.storeId} @ {store.connection?.appUrl}
+                </span>
+                <span className="ml-auto flex gap-2">
+                  <Button size="sm" variant="outline" disabled={configBusy.anyBusy} onClick={() => void disconnectLiveStore()}>
+                    {configBusy.isBusy("store-disconnect") ? <Loader2 className="animate-spin" /> : <Unplug />}
+                    Disconnect
+                  </Button>
+                </span>
+              </div>
+              <p className="text-[10.5px] leading-snug text-muted-foreground">
+                Jobs and API routes you run now read and write the real store catalog. Disconnect to go back to the mock.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="live-app-url" className="text-xs">
+                    App URL
+                  </Label>
+                  <Input
+                    id="live-app-url"
+                    value={liveAppUrl}
+                    onChange={(event) => setLiveAppUrl(event.target.value)}
+                    placeholder="https://selldoes.com"
+                    className="h-9 font-mono text-xs"
+                    disabled={configBusy.anyBusy}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="live-api-key" className="text-xs">
+                    Merchant API key
+                  </Label>
+                  <Input
+                    id="live-api-key"
+                    type="password"
+                    value={liveApiKey}
+                    onChange={(event) => setLiveApiKey(event.target.value)}
+                    placeholder={store.apiKeySet ? store.apiKeyMasked ?? "sk_…" : "sk_… (Dashboard → Settings → API Keys)"}
+                    className="h-9 font-mono text-xs"
+                    disabled={configBusy.anyBusy}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="live-store" className="text-xs">
+                    Store <span className="font-normal text-muted-foreground">(id or slug — blank = first)</span>
+                  </Label>
+                  <Input
+                    id="live-store"
+                    value={liveStoreRef}
+                    onChange={(event) => setLiveStoreRef(event.target.value)}
+                    placeholder={store.storeSlug ?? "6"}
+                    className="h-9 font-mono text-xs"
+                    disabled={configBusy.anyBusy}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" disabled={configBusy.anyBusy || !liveApiKey.trim()} onClick={() => void connectLiveStore()}>
+                  {configBusy.isBusy("store-connect") ? <Loader2 className="animate-spin" /> : <Plug />}
+                  Connect store
+                </Button>
+                <span className="text-[10.5px] text-muted-foreground">
+                  Applies immediately — no restart. The key is saved in this project&apos;s selldoes.config.json.
+                </span>
+              </div>
             </>
           )}
         </CardContent>

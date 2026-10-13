@@ -200,7 +200,12 @@ export function uiFallbackHtml({ title, entry, reason, slug, context = "dashboar
       ? "No plugin settings menu yet"
       : "No dashboard UI yet"
   const explanation = isMissing
-    ? `The manifest declares <code>${shownEntry}</code>, but that file is not in the built UI output. It may have been deleted, never created, or <code>plugin.json</code> may point at the wrong path.`
+    ? // A `…/kit/ui/…` path is the signature of an outdated kit runtime: an
+      // old runtime resolved a `component` embed relative to ui/kit/ instead
+      // of the ui/ directory — rebuilding/restarting the preview fixes it.
+      /\/kit\/ui\//.test(String(entry ?? ""))
+      ? `The page requested <code>${shownEntry}</code> — a stale kit runtime resolves embedded <code>component</code> entries relative to <code>ui/kit/</code> instead of <code>ui/</code>. Rebuild (or restart <code>selldoes dev</code>) so the preview picks up the current kit runtime, then reload.`
+      : `The requested UI entry <code>${shownEntry}</code> is not in the built UI output. It may have been deleted, never created, or <code>plugin.json</code> may point at the wrong path.`
     : isSettings
       ? "This plugin has no settings menu yet. Design one from the preview's <strong>Design → Settings</strong> page — the components you add compile into a UI entry the plugin manager opens in its Settings dialog."
       : `This plugin has no <code>ui.entry</code>, so the host would render its standard settings + jobs page. You can scaffold the default notes example to get started.`
@@ -215,18 +220,26 @@ export function uiFallbackHtml({ title, entry, reason, slug, context = "dashboar
           "Open <strong>Design → Settings</strong> and click <strong>Create settings menu</strong>",
           "Or author <code>settingsDialog.sections</code> (or a hand-written <code>settingsDialog.entry</code>) in plugin.json",
         ]
-    : [
-        `Create <code>${shownEntry}</code> (and any scripts it references) under <code>ui/</code>`,
-        "Or fix <code>plugin.json</code> so the entry points at a file that exists",
-        "Or use the button below to scaffold the default notes example",
-      ]
+    : /\/kit\/ui\//.test(String(entry ?? ""))
+      ? [
+          "Click <strong>Rebuild</strong> in the preview (or restart <code>selldoes dev</code>) so the current kit runtime is copied in",
+          "Then reload this page — the embedded component resolves against <code>ui/</code>",
+        ]
+      : [
+          `Create <code>${shownEntry}</code> (and any scripts it references) under <code>ui/</code>`,
+          "Or fix <code>plugin.json</code> so the entry points at a file that exists",
+          "Or use the button below to scaffold the default notes example",
+        ]
   const badge = isMissing ? "missing asset" : isSettings ? "no settings menu" : "no ui.entry"
   const scaffoldEntry = !isSettings && isMissing && entry ? escapeHtml(entry) : ""
-  const scaffoldButton = isSettings
+  // Never offer the notes scaffold for a stale-kit-runtime 404 — the fix is a
+  // rebuild, and scaffolding would overwrite the page the user built.
+  const isStaleKitPath = isMissing && /\/kit\/ui\//.test(String(entry ?? ""))
+  const scaffoldButton = isSettings || isStaleKitPath
     ? ""
     : `
       <button id="scaffold" type="button">Create the notes dashboard UI</button>`
-  const scaffoldScript = isSettings
+  const scaffoldScript = isSettings || isStaleKitPath
     ? ""
     : `
     <script>

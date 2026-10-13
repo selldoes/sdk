@@ -12,13 +12,13 @@ import {
 } from "lucide-react"
 import { AppIcon } from "@/components/app-icon"
 import { PermissionList } from "@/components/permission-list"
-import { PageHead, Stars, SectionTitle } from "@/components/shared"
+import { PageHead, PriceBadge, Stars, SectionTitle } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { permissionInfo, sortByRisk } from "@/lib/permissions"
-import { mediaUrl } from "@/lib/utils"
+import { billingLabel, mediaUrl, priceBadge } from "@/lib/utils"
 import { useVisit } from "@/lib/use-visit"
 import { useApp } from "@/state/app"
 
@@ -29,6 +29,9 @@ export function ListingPage() {
   const store = bootstrap!.store
   const permissions = (manifest.permissions ?? []) as string[]
   const screenshots = manifest.screenshots ?? []
+  const pricing = manifest.pricing
+  const rawAmount = Number(pricing?.amount ?? 0)
+  const isFree = !Number.isFinite(rawAmount) || rawAmount <= 0
   const [acknowledged, setAcknowledged] = React.useState(false)
   const pages = manifest.dashboardPages ?? []
 
@@ -63,7 +66,7 @@ export function ListingPage() {
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-bold">
                     {manifest.name}
-                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">FREE</span>
+                    <PriceBadge pricing={pricing} />
                   </p>
                   <p className="mt-0.5 line-clamp-2 text-[11.5px] text-muted-foreground">{manifest.description}</p>
                 </div>
@@ -161,7 +164,18 @@ export function ListingPage() {
               </div>
             </div>
           </div>
-          <Button className="px-6">Install</Button>
+          <div className="flex flex-col items-end gap-1.5">
+            {isFree ? (
+              <Badge variant="secondary">Free</Badge>
+            ) : (
+              <>
+                <p className="text-lg font-extrabold tracking-tight">{priceBadge(pricing)}</p>
+                <p className="text-[11px] text-muted-foreground">per store, {billingLabel(pricing?.billingPeriod)}</p>
+                {Number(pricing?.trialDays) > 0 ? <Badge variant="outline">{pricing?.trialDays}-day trial</Badge> : null}
+              </>
+            )}
+            <Button className="px-6">Install</Button>
+          </div>
         </div>
 
         <p className="mt-4 max-w-3xl whitespace-pre-wrap text-sm text-muted-foreground">{manifest.description}</p>

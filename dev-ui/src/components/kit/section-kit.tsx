@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AlertTriangle, ExternalLink, Play, RefreshCw } from "lucide-react"
+import { AlertTriangle, ExternalLink, Frame, Play, RefreshCw } from "lucide-react"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -83,6 +83,8 @@ function SectionView({ slug, store, section }: { slug: string; store: KitProps["
       return <LogsSection settings={settings} />
     case "links":
       return <LinksSection settings={settings} />
+    case "component":
+      return <ComponentSection settings={settings} />
     default:
       return (
         <Card className="border-dashed">
@@ -284,6 +286,31 @@ function LinksSection({ settings }: { settings: Record<string, unknown> }) {
             </a>
           </Button>
         ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Embedded plugin UI — the builder canvas shows a placeholder; the compiled
+ * page (the live preview iframe and the store) renders the real file with the
+ * kit runtime's self-resizing frame.
+ */
+function ComponentSection({ settings }: { settings: Record<string, unknown> }) {
+  const entry = str(settings.entry)
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Frame className="h-4 w-4" />
+          {str(settings.title, "Embedded UI")}
+        </CardTitle>
+        {entry ? <CardDescription className="font-mono text-xs">{entry}</CardDescription> : null}
+      </CardHeader>
+      <CardContent>
+        <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 text-xs text-muted-foreground">
+          {entry ? "Renders in the compiled page — self-resizing iframe" : "No entry set — point at a file under ui/"}
+        </div>
       </CardContent>
     </Card>
   )

@@ -93,6 +93,21 @@ test("route scaffold: declares GET and wires apiRoutes", () => {
   assert.ok(fs.existsSync(path.join(root, "routes", "stats.js")))
 })
 
+test("route scaffold: honors the requested methods (upper-cased, deduped, validated)", () => {
+  const root = tempPlugin(BASE)
+  const plan = planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "stats", methods: ["get", "POST", "post", "BOGUS"] })
+  assert.deepEqual(plan.manifest.apiRoutes[plan.manifest.apiRoutes.length - 1], { path: "/stats", methods: ["GET", "POST"] })
+  applyCodePlan(root, plan)
+  const module = fs.readFileSync(path.join(root, plan.file), "utf8")
+  assert.match(module, /async GET\(ctx, request\)/)
+  assert.match(module, /async POST\(ctx, request\)/)
+  assert.doesNotMatch(module, /BOGUS/)
+
+  // Unknown/empty lists fall back to GET.
+  const fallback = planCodeScaffold({ pluginDir: root, manifest: plan.manifest, kind: "route", name: "other", methods: ["NOPE"] })
+  assert.deepEqual(fallback.manifest.apiRoutes[fallback.manifest.apiRoutes.length - 1], { path: "/other", methods: ["GET"] })
+})
+
 test("scaffolds reject duplicates and bad names", () => {
   const root = tempPlugin(BASE)
   assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "notes" }), /already declared/)

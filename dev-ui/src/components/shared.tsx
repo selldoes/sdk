@@ -2,7 +2,8 @@ import * as React from "react"
 import { AlertCircle, AlertTriangle, Check, Copy, Info, Star, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
+import { cn, priceBadge } from "@/lib/utils"
+import type { PluginPricing } from "@/lib/types"
 
 export function PageHead({
   title,
@@ -111,6 +112,28 @@ export function Stars({ rating = 0, count = 0, className }: { rating?: number; c
         ))}
       </span>
       <span className="text-muted-foreground">{rating > 0 ? rating.toFixed(1) : "New"}{count ? ` (${count})` : ""}</span>
+    </span>
+  )
+}
+
+/** Marketplace-card price badge: green "FREE", blue "$9.99/mo", plus a trial chip. */
+export function PriceBadge({ pricing, className }: { pricing?: PluginPricing | null; className?: string }) {
+  const amount = Number(pricing?.amount ?? 0)
+  const free = !Number.isFinite(amount) || amount <= 0
+  const trial = Math.max(0, Math.min(Number(pricing?.trialDays ?? 0) || 0, 90))
+  return (
+    <span className={cn("inline-flex items-center gap-1", className)}>
+      <span
+        className={cn(
+          "rounded px-1.5 py-0.5 text-[10px] font-semibold",
+          free ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700",
+        )}
+      >
+        {priceBadge(pricing)}
+      </span>
+      {trial > 0 ? (
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">{trial}-day trial</span>
+      ) : null}
     </span>
   )
 }

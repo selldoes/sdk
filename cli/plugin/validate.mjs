@@ -10,6 +10,8 @@ const VERSION = /^\d+\.\d+\.\d+$/
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 const UI_PATH = /^[a-zA-Z0-9_\-./]+$/
 const JOB_RUNTIMES = new Set(["quickjs", "node"])
+const BILLING_PERIODS = new Set(["one_time", "monthly", "yearly"])
+const CURRENCY_CODE = /^[A-Za-z]{3}$/
 
 /**
  * Validates one plugin directory the way the host will validate it on upload.
@@ -109,6 +111,28 @@ export function validatePluginDir(pluginDir, { expectedSlug } = {}) {
   if (manifest.permissions?.includes("db:read") && !(manifest.allowedTables ?? []).length) {
     warnings.push("db:read without allowedTables — the plugin can only read its own plugin_<slug>_* tables")
   }
+
+  if (manifest.pricing !== undefined) {
+    if (typeof manifest.pricing !== "object" || manifest.pricing === null || Array.isArray(manifest.pricing)) {
+      errors.push('pricing must be an object, e.g. { "amount": 9.99, "billingPeriod": "monthly" }')
+    } else {
+      const amount = manifest.pricing.amount
+      if (amount !== undefined && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
+        errors.push(`pricing.amount "${amount}" must be a number >= 0 (0 = free)`)
+      }
+      if (manifest.pricing.billingPeriod !== undefined && !BILLING_PERIODS.has(manifest.pricing.billingPeriod)) {
+        warnings.push(`pricing.billingPeriod "${manifest.pricing.billingPeriod}" is unknown — use one_time, monthly or yearly`)
+      }
+      if (manifest.pricing.currency !== undefined && !CURRENCY_CODE.test(String(manifest.pricing.currency))) {
+        warnings.push(`pricing.currency "${manifest.pricing.currency}" should be a 3-letter ISO code (USD, EUR, …)`)
+      }
+      const trial = manifest.pricing.trialDays
+      if (trial !== undefined && (!Number.isInteger(Number(trial)) || Number(trial) < 0 || Number(trial) > 90)) {
+        warnings.push(`pricing.trialDays "${trial}" must be a whole number between 0 and 90`)
+      }
+    }
+  }
+
   if (manifest.dependencies) {
     const dependencyCheck = validateDependencies(manifest.dependencies)
     for (const error of dependencyCheck.errors) errors.push(error)

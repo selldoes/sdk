@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  Throwaway visual mock — NOT part of the app.
+  Shows the Permissions page right-hand column ("sidebar") as it looked
+  originally vs. the new layout. Open directly in a browser.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Permissions page — before / after preview</title>
+<style>
+  :root {
+    --bg: hsl(220 20% 97%);
+    --card: #fff;
+    --border: hsl(220 15% 88%);
+    --fg: hsl(220 25% 14%);
+    --muted: hsl(220 10% 45%);
+    --primary: hsl(255 70% 55%);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+  h1 { font-size: 18px; margin: 24px 24px 4px; }
+  p.sub { margin: 0 24px 16px; color: var(--muted); }
+  .cols { display: flex; gap: 24px; padding: 0 24px 48px; align-items: flex-start; flex-wrap: wrap; }
+  .pane { flex: 1 1 480px; min-width: 380px; }
+  .pane h2 { font-size: 14px; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--primary); display: inline-block; }
+  .layout { display: grid; grid-template-columns: 1fr 280px; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .card + .card { margin-top: 16px; }
+  .card h3 { margin: 0 0 2px; font-size: 13.5px; }
+  .card .desc { color: var(--muted); font-size: 11.5px; margin: 0 0 10px; }
+  .row { display: flex; justify-content: space-between; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; font-size: 12px; }
+  .row b { font-weight: 600; }
+  .perm { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 11.5px; }
+  .perm .name { font-weight: 600; font-size: 12px; }
+  .perm .code { color: var(--muted); font-family: ui-monospace, monospace; font-size: 10px; }
+  .badge { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-size: 10px; color: var(--muted); }
+  .savebar { position: sticky; bottom: 16px; margin-top: 16px; background: var(--card); border: 1px solid hsla(255,70%,55%,.4); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 16px hsla(220,25%,14%,.12); }
+  .btn { background: var(--primary); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 12.5px; }
+  .btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .btn.small { padding: 5px 12px; font-size: 12px; }
+  .savebar .status { margin-left: auto; color: var(--muted); font-size: 11px; }
+  .arrow { text-align: center; color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>Permissions page — right column ("sidebar") layout</h1>
+<p class="sub">Static mock of the two layouts. In the real page the left card holds ~14 scrollable permission rows, so the page is much taller than shown.</p>
+
+<div class="cols">
+
+  <!-- ═══════════ BEFORE ═══════════ -->
+  <div class="pane">
+    <h2>① Before (original)</h2>
+    <div class="layout">
+      <div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <h3>🛡 Permissions</h3>
+              <p class="desc">Tick what the plugin genuinely needs…</p>
+            </div>
+            <span class="badge">2 selected · high</span>
+          </div>
+          <div class="perm"><span class="name">Read store data</span> <span class="code">db:read</span> — medium risk</div>
+          <div class="perm"><span class="name">Modify store data</span> <span class="code">db:write</span> — high risk</div>
+          <div class="perm"><span class="name">… 12 more rows …</span></div>
+        </div>
+        <div class="savebar">
+          <button class="btn">Save permissions</button>
+          <button class="btn ghost">Undo last save</button>
+          <span class="status">Valid</span>
+        </div>
+      </div>
+      <div>
+        <!-- BEFORE: summary at top, static, scrolls away. no scan button. -->
+        <div class="card">
+          <h3>Summary</h3>
+          <p class="desc">What store owners will be asked to approve.</p>
+          <div class="row"><span>Permissions</span><b>2</b></div>
+          <div class="row"><span>Highest risk</span><b>high</b></div>
+          <div class="row"><span>Allowed tables</span><b>1</b></div>
+        </div>
+      </div>
+    </div>
+    <p class="arrow">Summary sits at the top-right and scrolls out of view as you go down the list. No scan feature. Save bar says “Valid” when idle.</p>
+  </div>
+
+  <!-- ═══════════ AFTER ═══════════ -->
+  <div class="pane">
+    <h2>② New version (requested)</h2>
+    <div class="layout">
+      <div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <h3>🛡 Permissions</h3>
+              <p class="desc">Tick what the plugin genuinely needs…</p>
+            </div>
+            <span class="badge">2 selected · high</span>
+          </div>
+          <div class="perm"><span class="name">Read store data</span> <span class="code">db:read</span> — medium risk</div>
+          <div class="perm"><span class="name">Modify store data</span> <span class="code">db:write</span> — high risk</div>
+          <div class="perm"><span class="name">… 12 more rows …</span></div>
+        </div>
+        <div class="savebar">
+          <button class="btn">Save permissions</button>
+          <button class="btn ghost">Undo last save</button>
+          <!-- "Valid" removed -->
+          <span class="status"></span>
+        </div>
+      </div>
+      <div>
+        <!-- AFTER: Summary on top, Scan card underneath, column scrolls with the page -->
+        <div class="card">
+          <h3>Summary</h3>
+          <p class="desc">What store owners will be asked to approve.</p>
+          <div class="row"><span>Permissions</span><b>2</b></div>
+          <div class="row"><span>Highest risk</span><b>high</b></div>
+          <div class="row"><span>Allowed tables</span><b>1</b></div>
+        </div>
+        <div class="card">
+          <h3>🔍 Scan code</h3>
+          <p class="desc">Greps your source for ctx.* capability calls and reports permissions the code needs but plugin.json doesn’t declare yet.</p>
+          <button class="btn ghost small" style="width:100%;">Scan for permissions</button>
+        </div>
+      </div>
+    </div>
+    <p class="arrow">Summary stays on top of the right column, the Scan card sits directly under it, and the whole column scrolls normally with the page (no sticky). Scan opens a dialog listing missing permissions with a yes/no to add them.</p>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -35,7 +35,10 @@ Assistant (the same brain as the preview's right panel)
                             confirmation) applied. --dry-run never writes.
 
 Plugin projects (a directory with plugin.json)
-  dev                       Local preview server (dashboard UI, storefront, API console, jobs)
+  dev                       Local preview server (dashboard UI, storefront, API console, jobs).
+                            Project settings → Store connects a real store (merchant API
+                            key) so ctx.products writes to live catalog data — no publish
+                            needed to test against real products.
   add <pkg>[@version]       Install an npm package and declare it in plugin.json
   build                     Bundle the plugin into dist/ (--zip to also write <slug>.zip)
   pack                      Bundle + zip without publishing
@@ -87,10 +90,10 @@ Options
   --token <token>           Developer token sk_dev_… (or SELLDOES_DEV_TOKEN; saved by login)
   --store <id|slug>         Store id (plugin publish) or store slug (theme dev/apply)
   --notes <text>            Publish: release notes
-  --currency <code>         Publish: price currency (default USD)
-  --trial-days <n>          Publish: marketplace trial days (0-90)
-  --price <amount>          Marketplace price (default 0 = free)
-  --billing <period>        one_time | monthly | yearly (default one_time)
+  --currency <code>         Publish: price currency (default: plugin.json pricing, else USD)
+  --trial-days <n>          Publish: marketplace trial days (0-90; default: plugin.json pricing)
+  --price <amount>          Marketplace price (default: plugin.json pricing, else 0 = free)
+  --billing <period>        one_time | monthly | yearly (default: plugin.json pricing)
   --base <url>              SellDesk base URL for themes (or SELLDOES_BASE)
   --api-key <key>           Theme API key (or SELLDOES_API_KEY)
   --check                   update: report only, never install (exit 1 when outdated)
@@ -423,10 +426,12 @@ async function runProjectCommand(command, args, flags) {
         appUrl: flags["app-url"] ? String(flags["app-url"]) : auth.appUrl,
         token: flags.token ? String(flags.token) : auth.token ?? undefined,
         notes: flags.notes ? String(flags.notes) : undefined,
-        price: Number(flags.price ?? 0) || 0,
-        currency: flags.currency ? String(flags.currency) : "USD",
-        billingPeriod: String(flags.billing ?? "one_time"),
-        trialDays: Number(flags["trial-days"] ?? 0) || 0,
+        // Pricing flags override plugin.json's `pricing` block; omitted flags
+        // fall back to the manifest (then to free/USD/one_time).
+        price: flags.price !== undefined ? Number(flags.price) || 0 : undefined,
+        currency: flags.currency ? String(flags.currency) : undefined,
+        billingPeriod: flags.billing ? String(flags.billing) : undefined,
+        trialDays: flags["trial-days"] !== undefined ? Number(flags["trial-days"]) || 0 : undefined,
       })
       if (!result.ok) process.exit(1)
       return

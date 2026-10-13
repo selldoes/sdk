@@ -89,7 +89,7 @@ UI and never touch Vite.
 | `selldoes create [dir] --ai "…"` | Scaffold with AI — validated before a single file is written |
 | `selldoes ask ["…"]` | Terminal assistant: chat about the current plugin, apply edits with `--yes` |
 | `selldoes add <pkg>` | Install an npm package and declare it in `plugin.json` |
-| `selldoes dev` | Preview server for a project (`:4590`, or spawned by the workspace) |
+| `selldoes dev` | Preview server for a project (`:4590`, or spawned by the workspace). Project settings → **Store** connects a real store (merchant API key) so `ctx.products` writes to live catalog data — no publish needed to test against real products |
 | `selldoes build` / `pack` / `validate` | Bundle / zip / validate |
 | `selldoes bump [patch\|minor\|major]` | Increase `plugin.json` version (the Ship page can do it as part of publish) |
 | `selldoes publish` | Publish through your developer account (`sk_dev_…`) |

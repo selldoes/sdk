@@ -172,7 +172,12 @@ untouched.
 Kit types: `text` (markdown), `stats`, `table` (your `apiRoutes` path — the
 handler returns an array or `{ rows: [...] }` / `{ items: [...] }`), `job`
 (run button + live transcript), `settings` (renders `configSchema`), `logs`,
-`links`.
+`links`, `component` (embed another of your own `ui/*.html` files inside the
+kit page — a sandboxed iframe that resizes itself: the embedded page posts
+`parent.postMessage({ type: "selldesk:kit-resize", height }, "*")` whenever
+its content height changes, e.g. via a `ResizeObserver` on its body). The
+`entry` is `ui/`-relative (`"ui/review.html"`), and the host appends the
+store scope so the embedded page's API calls hit the right store.
 
 **Add/Edit components** on the Dashboard page opens the visual builder:
 component palette on the left (click or drag onto the canvas), a live preview
@@ -245,13 +250,13 @@ Selldoes dashboard:
 | **Code** | The built-in editor: file tree, tabs, Monaco with the SDK's own types (IntelliSense for `definePlugin`, routes, jobs), save → rebuild, git changes with diffs and commit, quick open |
 | **Packages** | Search npm, add/remove dependencies (installs + writes `plugin.json`), and rate each package against the sandbox — ✅ works, ⚠️ works with care, ❌ not allowed, with the reason |
 | **Console** | Live dev-server logs and build errors — click a `file:line` error to open it in the editor |
-| **Details & permissions** | Edit `plugin.json` from a form: name, description, icon (built-in picker or uploaded image), screenshots, category, tags and permissions (with the platform's risk/impact text). Saves are validated and undoable |
+| **Details & permissions** | Edit `plugin.json` from a form: name, description, icon (built-in picker or uploaded image), screenshots, category, tags, pricing (amount, currency, one-time/monthly/yearly billing, trial days — reflected live on the marketplace card and used as the default price on publish) and permissions (with the platform's risk/impact text). Saves are validated and undoable |
 | **In Selldoes** | Exactly what store owners see: marketplace card, listing page (with screenshots), the install dialog and where your dashboard pages land in the sidebar |
 | **Dashboard page** | Your dashboard UI in a sandboxed iframe, with a page rail for every `dashboardPages` entry; pages with `sections` render from the no-code kit and open in the visual components builder (palette, live canvas, inspector, templates, JSON tab); missing pages get a one-click "scaffold the notes example" button. Without a UI, a faithful replica of the host's settings + jobs page (plus the same scaffold button) |
 | **Settings (dialog)** | The plugin manager's Settings dialog in an iframe — the compiled kit dialog or your hand-written `settingsDialog.entry`; a **hand-written** badge marks entries the kit does not own. With no dialog declared: "No plugin settings menu yet" and a **Create settings menu** button that seeds a settings-form component and opens the components builder |
 | **Storefront** | A demo store with your `storefrontWidget` and every `storefrontPages` entry |
 | **Jobs** | Run a declared job — chunked (`{ init, step, finalize }`) or a legacy function — with progress, per-item results and logs |
-| **API console** | Pick a declared route, edit query/body, send and inspect JSON |
+| **API console** | Click a route's method to run it in place (query/body are remembered per route); or edit any method/path/query/body and send manually |
 | **Hooks** | Fire `hooks[name]` with a payload |
 | **Store data** | Inspect/reset the mock database (`.selldoes-dev/db.json`) |
 | **Email / Realtime** | Calls made through `ctx.email.send` / `ctx.realtime.publish` |
@@ -350,6 +355,32 @@ store-scoped, and condition operators (`like`, `in`, `ne`, `gt/gte/lt/lte`,
 code in Node, while production uses a QuickJS sandbox — avoid Node globals
 (`process`, `Buffer`, `require`, `fs`) in plugin code.
 
+### Connect a real store (live mode)
+
+The mock store is great until you need real catalog data. **Project
+settings → Store** connects a real Selldoes store to the preview:
+
+- Enter the app URL, a **merchant API key** (Dashboard → Settings → API
+  Keys — the same `sk_…` key the theme lane uses) and optionally the store
+  id/slug (blank = the account's first store). The key is verified against
+  `/api/templates/me` and saved in the project's `selldoes.config.json`
+  (`store` block — treat the folder like a secret store, or set
+  `SELLDOES_STORE_API_KEY` to keep the key out of the file).
+- When connected, `ctx.products` (`findBySku`, `upsertBySku`, `list`,
+  `get`, `create`, `update`) proxies to the real store through the
+  platform's external products API, and `ctx.files.importFromUrl` becomes a
+  passthrough — the platform re-hosts the image into store media when the
+  product is written.
+- Everything else stays on the local mock: plugin-owned tables (`ctx.db`),
+  `ctx.ai`, `ctx.email`, `ctx.storage`, `ctx.realtime`. So an importer can
+  stage drafts locally and only push approved products to the real catalog.
+- The connection applies immediately (no restart) and can be toggled from
+  the same card. Logs are prefixed `[live]` so you can see every real-store
+  call the preview makes.
+
+This is the fastest loop for import/sync plugins: run the real job against
+real SKUs, inspect results, iterate — and only publish when it behaves.
+
 ## Runtime capabilities
 
 | Permission | Grants |
@@ -385,8 +416,10 @@ storefront page), `storefrontPages` (public pages such as `/kb`),
 `publicRoutes` (visitor-callable API, no session), `delivery` (order-detail
 sections), `jobs`, `schedules`, `hooks`, `configSchema`, `allowedTables`, plus listing
 metadata: `icon` (a built-in icon name), `iconUrl` (a custom image inside the
-plugin, e.g. `assets/icon.png`), `screenshots`, `tags` and `category`. The
-Details editor in `selldoes dev` writes these for you.
+plugin, e.g. `assets/icon.png`), `screenshots`, `tags`, `category` and
+`pricing` (`{ amount, currency, billingPeriod: one_time | monthly | yearly,
+trialDays }` — what the marketplace card shows and the default price at
+publish time). The Details editor in `selldoes dev` writes these for you.
 
 ## Background jobs
 
@@ -673,6 +706,10 @@ selldoes pack             # dist/<slug>.zip for manual upload
 selldoes login --token sk_dev_…
 selldoes publish --price 9.99 --billing monthly   # optional marketplace listing fields
 ```
+
+The listing price comes from the manifest's `pricing` block (edited on the
+Details page) when you omit the flags — `--price`, `--billing`, `--currency`
+and `--trial-days` always override it.
 
 In the dev shell, **Validate & publish → Publish** does all of it in one click:
 it optionally bumps the version (default patch/minor/major from Settings →

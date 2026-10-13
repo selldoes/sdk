@@ -8,6 +8,7 @@ import { openInEditor, openTerminal } from "../../open-editor.mjs"
 import { buildPlugin, collectUiEntries } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
+import { connectStore, createLiveProductsBridge, readStoreBlock, storeView, writeStoreBlock } from "./live-store.mjs"
 import { PluginRunner, cleanPath } from "./runner.mjs"
 import { ManifestStore } from "./manifest-store.mjs"
 import { DevState } from "./dev-state.mjs"
@@ -257,6 +258,33 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     state.setSettings(values ?? {})
   }
 
+  /**
+   * Live store connection (Project settings → Store). When connected,
+   * ctx.products proxies to the real store through the merchant API — see
+   * cli/plugin/dev/live-store.mjs. The bridge object is swapped in place so
+   * connect/disconnect applies to running jobs immediately.
+   */
+  const liveStore = { bridge: null, connection: null }
+  const applyLiveStore = () => {
+    const block = readStoreBlock(readConfig())
+    if (block.live && block.appUrl && block.apiKey && block.storeId) {
+      liveStore.connection = {
+        appUrl: block.appUrl,
+        apiKey: block.apiKey,
+        storeId: block.storeId,
+        storeSlug: block.storeSlug,
+      }
+      liveStore.bridge = createLiveProductsBridge(liveStore.connection, log)
+      log(`live store connected — ctx.products → ${block.appUrl} (store ${block.storeSlug || block.storeId})`)
+      return true
+    }
+    if (liveStore.bridge) log("live store disconnected — ctx.products back on the local mock")
+    liveStore.bridge = null
+    liveStore.connection = null
+    return false
+  }
+  applyLiveStore()
+
   const { ctx, outbox, events, jobEvents, pendingJobs } = createMockContext({
     pluginDir,
     manifest: manifestStore.read(),
@@ -268,6 +296,9 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     config: ctxConfig,
     devDir,
     log,
+    // Live store bridge — mutated by /__dev/store connect/disconnect, so
+    // switching between the mock and a real store needs no restart.
+    liveStore,
   })
 
   const resetJobEvents = () => {
@@ -586,10 +617,12 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             appUrl: auth.appUrl,
             token: auth.token,
             notes: typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : undefined,
-            price: Number(body?.price ?? 0) || 0,
-            currency: typeof body?.currency === "string" ? body.currency : "USD",
-            billingPeriod: typeof body?.billingPeriod === "string" ? body.billingPeriod : "one_time",
-            trialDays: Number(body?.trialDays ?? 0) || 0,
+            // Pricing falls back to the manifest's `pricing` block when the
+            // request omits it (publishPlugin resolves the defaults).
+            price: body?.price !== undefined ? Number(body.price) || 0 : undefined,
+            currency: typeof body?.currency === "string" ? body.currency : undefined,
+            billingPeriod: typeof body?.billingPeriod === "string" ? body.billingPeriod : undefined,
+            trialDays: body?.trialDays !== undefined ? Number(body.trialDays) || 0 : undefined,
             log: collect,
           })
           if (!result.ok) {
@@ -643,6 +676,51 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         const account = await import("../../account.mjs")
         const had = account.disconnectDeveloper()
         return json(res, 200, { connected: false, had })
+      }
+
+      // ── Live store connection (ctx.products → a real store) ───────────────
+      if (req.method === "GET" && pathname === "/__dev/store") {
+        return json(res, 200, {
+          ...storeView(readConfig()),
+          active: Boolean(liveStore.bridge),
+          connection: liveStore.connection
+            ? { appUrl: liveStore.connection.appUrl, storeId: liveStore.connection.storeId, storeSlug: liveStore.connection.storeSlug }
+            : null,
+        })
+      }
+      if (req.method === "POST" && pathname === "/__dev/store/connect") {
+        const body = await readBody(req)
+        try {
+          const connected = await connectStore({
+            appUrl: body?.appUrl,
+            apiKey: body?.apiKey,
+            storeId: body?.storeId,
+            storeSlug: body?.storeSlug,
+          })
+          writeStoreBlock(pluginDir, {
+            live: true,
+            appUrl: connected.appUrl,
+            apiKey: connected.apiKey,
+            storeId: connected.storeId,
+            storeSlug: connected.storeSlug,
+          })
+          ctxConfig.store = readStoreBlock(readConfig())
+          applyLiveStore()
+          return json(res, 200, {
+            ok: true,
+            ...storeView(readConfig()),
+            active: Boolean(liveStore.bridge),
+            storeName: connected.storeName,
+          })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
+      if (req.method === "POST" && pathname === "/__dev/store/disconnect") {
+        writeStoreBlock(pluginDir, { live: false })
+        delete ctxConfig.store
+        applyLiveStore()
+        return json(res, 200, { ok: true, active: false, ...storeView(readConfig()) })
       }
 
       // ── Dashboard UI: entry status + one-click notes scaffold ─────────────
@@ -771,6 +849,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             name: body?.type ?? body?.name ?? body?.path,
             description: body?.description,
             runtime: body?.runtime,
+            methods: body?.methods,
           })
           // One snapshot covers module + wiring + manifest — one undo reverts it.
           manifestStore.snapshots.create({
@@ -987,6 +1066,10 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             ai: { mockReply: fileConfig.ai?.mockReply ?? null },
             email: { disabled: Boolean(fileConfig.email?.disabled) },
             sampleJobs: fileConfig.sampleJobs ?? null,
+          },
+          store: {
+            ...storeView(fileConfig),
+            active: Boolean(liveStore.bridge),
           },
           publish: {
             // Per-project override wins; otherwise the user-level default
@@ -1664,10 +1747,15 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         if (slug !== manifest.slug) return json(res, 404, { error: `Only "${manifest.slug}" runs in this dev server` })
         const requestPath = cleanPath(tail ?? "/")
         const declaredList = kind === "public" ? manifest.publicRoutes ?? [] : manifest.apiRoutes ?? []
-        const match = declaredList.find((route) => {
+        // An exact path match wins, then the longest declared prefix (so a
+        // short route never swallows its own sub-paths).
+        const candidates = declaredList.filter((route) => {
           const declared = cleanPath(route.path)
           return requestPath === declared || requestPath.startsWith(`${declared}/`)
         })
+        const match =
+          candidates.find((route) => cleanPath(route.path) === requestPath) ??
+          candidates.slice().sort((a, b) => b.path.length - a.path.length)[0]
         if (!match) return json(res, 404, { error: `No ${kind} route "${requestPath}" declared in plugin.json` })
         const methods = (match.methods ?? ["GET"]).map((method) => method.toUpperCase())
         if (!methods.includes(req.method)) {

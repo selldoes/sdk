@@ -25,7 +25,7 @@ export function ManifestSaveBar({ draft, saveLabel = "Save plugin.json" }: { dra
               ? `Saved ${savedAt} ✓`
               : validation.errors.length
                 ? `${validation.errors.length} validation error(s)`
-                : "Valid"}
+                : ""}
         </span>
       </div>
       {validation.errors.length > 0 ? (

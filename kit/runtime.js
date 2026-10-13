@@ -515,6 +515,48 @@
     return view.root
   }
 
+  /**
+   * Embedded plugin UI — another of the plugin's own UI files (a hand-written
+   * page under ui/) rendered in a sandboxed iframe inside this kit page. The
+   * embed auto-resizes: the embedded page posts
+   *   parent.postMessage({ type: "selldesk:kit-resize", height }, "*")
+   * whenever its content height changes (see ResizeObserver in plugin UIs).
+   */
+  function renderComponent(settings) {
+    var entry = str(settings.entry)
+    var view = card(str(settings.title, null), str(settings.description, null))
+    if (!entry) {
+      var note = h("div", "kit-note")
+      note.appendChild(icon("alert"))
+      note.appendChild(h("span", null, "No entry set — point `entry` at a file under ui/, e.g. ui/review.html."))
+      view.body.appendChild(note)
+      return view.root
+    }
+    var src = entry.replace(/^\.\//, "")
+    // Resolve against the ui/ directory, not the kit page's folder: the kit
+    // page lives at ui/kit/<name>.html while entries are ui/-relative
+    // ("ui/review.html" → sibling "review.html").
+    var kitBase = window.location.pathname.replace(/kit\/[^/]*$/, "")
+    src = kitBase + src.replace(/^ui\//, "")
+    src += (src.indexOf("?") === -1 ? "?" : "&") + scope
+    var frame = document.createElement("iframe")
+    frame.className = "kit-frame"
+    frame.title = str(settings.title, entry)
+    frame.src = src
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups")
+    frame.setAttribute("loading", "lazy")
+    frame.style.height = (Number(settings.height) > 0 ? Number(settings.height) : 640) + "px"
+    window.addEventListener("message", function (event) {
+      if (event.source !== frame.contentWindow) return
+      var data = event.data
+      if (!data || data.type !== "selldesk:kit-resize") return
+      var height = Math.max(160, Math.min(Number(data.height) || 0, 12000))
+      frame.style.height = height + "px"
+    })
+    view.body.appendChild(frame)
+    return view.root
+  }
+
   function renderSection(section) {
     var settings = section.settings || {}
     switch (section.type) {
@@ -525,6 +567,7 @@
       case "settings": return renderSettings()
       case "logs": return renderLogs(settings)
       case "links": return renderLinks(settings)
+      case "component": return renderComponent(settings)
       default:
         var view = card()
         view.root.classList.add("kit-dashed")

@@ -30,6 +30,9 @@ export const PERMISSION_ORDER: PluginPermission[] = [
   "webhooks:register",
   "sections:register",
   "dashboard:pages",
+  "secrets:read",
+  "storage:read",
+  "storage:write",
 ]
 
 export const PERMISSION_INFO: Record<PluginPermission, PermissionInfo> = {
@@ -115,6 +118,24 @@ export const PERMISSION_INFO: Record<PluginPermission, PermissionInfo> = {
     label: "Dashboard pages",
     description: "Add pages to your store dashboard.",
     impact: "Can render its own UI inside your dashboard.",
+    risk: "low",
+  },
+  "secrets:read": {
+    label: "Read plugin secrets",
+    description: "Read secrets configured for this store (e.g. API keys) via ctx.secrets.get().",
+    impact: "Can read API keys and tokens you configure for the plugin — values are never bundled or logged.",
+    risk: "medium",
+  },
+  "storage:read": {
+    label: "Read plugin storage",
+    description: "Read the plugin's own key/value JSON store via ctx.storage.get()/list().",
+    impact: "Can read data the plugin itself previously stored — scoped to this store only.",
+    risk: "low",
+  },
+  "storage:write": {
+    label: "Write plugin storage",
+    description: "Write or delete keys in the plugin's own key/value JSON store via ctx.storage.set()/delete().",
+    impact: "Can store and remove its own data — scoped to this store only.",
     risk: "low",
   },
 }

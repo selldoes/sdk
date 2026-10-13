@@ -10,7 +10,14 @@ import path from "node:path"
  * the runtime executes in Node (not QuickJS), and outbound integrations are
  * mocked unless configured in `selldoes.config.json`.
  */
-export function createMockContext({ pluginDir, manifest, getManifest, db, storeId, config = {}, devDir, log = () => {} }) {
+export function createMockContext({ pluginDir, manifest, getManifest, db, storeId, config = {}, devDir, log = () => {}, liveStore = null }) {
+  /**
+   * Live store bridge (`{ bridge }` — mutated by the dev server's /__dev/store
+   * connect/disconnect so switching modes needs no restart). When `bridge` is
+   * set, ctx.products proxies to the real store through the merchant API.
+   */
+  const live = liveStore ?? { bridge: null }
+  const liveProducts = () => live.bridge
   const tablePrefix = `plugin_${String(manifest.slug).replace(/-/g, "_")}_`
   /**
    * plugin.json is re-read on every capability check: the dev server keeps
@@ -195,6 +202,13 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
       },
       async importFromUrl({ url, name, folder }) {
         requirePermission("files:write", "ctx.files.importFromUrl")
+        // Live store mode: keep the source URL — the platform re-hosts it
+        // into store media when the product is written; a localhost dev URL
+        // would be unreachable from there.
+        if (liveProducts()) {
+          log(`[live] files.importFromUrl → passthrough ${url}`)
+          return { url, key: null, size: 0, passthrough: true }
+        }
         const response = await fetch(url)
         const buffer = Buffer.from(await response.arrayBuffer())
         fs.mkdirSync(filesDir, { recursive: true })
@@ -233,18 +247,23 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
     products: {
       async list(opts = {}) {
         requirePermission("products:read", "ctx.products.list")
-        const conditions = opts.status ? { status: String(opts.status) } : {}
-        const rows = db.select(
-          "products",
-          conditions,
-          {
-            limit: opts.limit ?? 50,
-            offset: opts.offset ?? 0,
-            orderBy: opts.orderBy ?? "id",
-            orderDir: opts.orderDir ?? "desc",
-          },
-          storeId,
-        )
+        let rows
+        if (liveProducts()) {
+          rows = await liveProducts().list(opts)
+        } else {
+          const conditions = opts.status ? { status: String(opts.status) } : {}
+          rows = db.select(
+            "products",
+            conditions,
+            {
+              limit: opts.limit ?? 50,
+              offset: opts.offset ?? 0,
+              orderBy: opts.orderBy ?? "id",
+              orderDir: opts.orderDir ?? "desc",
+            },
+            storeId,
+          )
+        }
         if (Array.isArray(opts.fields) && opts.fields.length > 0) {
           return rows.map((row) => {
             const projected = {}
@@ -257,10 +276,15 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
       async create(input = {}) {
         requirePermission("products:write", "ctx.products.create")
         if (!input?.name) throw new Error("products.create requires a name")
+        if (liveProducts()) {
+          const result = await liveProducts().create(withCategories(input))
+          return { id: result.id }
+        }
         return { id: db.insert("products", withCategories(input), storeId).id }
       },
       async update(id, input = {}) {
         requirePermission("products:write", "ctx.products.update")
+        if (liveProducts()) return liveProducts().update(id, withCategories(input))
         const existing = db.select("products", { id: Number(id) }, { limit: 1 }, storeId)[0]
         if (!existing) throw new Error(`Product ${id} not found in this store`)
         db.update("products", { id: Number(id) }, withCategories(input), storeId)
@@ -268,15 +292,18 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
       },
       async get(id) {
         requirePermission("products:read", "ctx.products.get")
+        if (liveProducts()) return liveProducts().get(id)
         return db.select("products", { id: Number(id) }, { limit: 1 }, storeId)[0] ?? null
       },
       async findBySku(sku) {
         requirePermission("products:read", "ctx.products.findBySku")
+        if (liveProducts()) return liveProducts().findBySku(sku)
         return db.select("products", { sku: String(sku) }, { limit: 1 }, storeId)[0] ?? null
       },
       async upsertBySku(input) {
         requirePermission("products:write", "ctx.products.upsertBySku")
         const data = withCategories(input)
+        if (liveProducts()) return liveProducts().upsertBySku(data)
         const existing = db.select("products", { sku: input.sku }, { limit: 1 }, storeId)[0]
         if (existing) {
           db.update("products", { id: existing.id }, data, storeId)

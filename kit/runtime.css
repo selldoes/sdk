@@ -540,3 +540,13 @@ a.kit-button.kit-outline:active {
 .kit-card.kit-dashed {
   border-style: dashed;
 }
+
+/* Embedded plugin UI (component section) — a sandboxed iframe that resizes
+   itself via postMessage({ type: "selldesk:kit-resize", height }). */
+.kit-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  transition: height 0.15s ease;
+}

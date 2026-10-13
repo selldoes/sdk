@@ -14,6 +14,7 @@ import path from "node:path"
  */
 
 const UNSAFE = /[^a-z0-9:_-]+/i
+const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 
 function safeFileStem(value) {
   return String(value)
@@ -101,8 +102,17 @@ module.exports = {
 `
 }
 
-function routeModule(routePath) {
+function routeModule(routePath, methods) {
   const key = routePath.replace(/^\//, "")
+  const handlers = methods
+    .map((method) => {
+      const body =
+        method === "GET"
+          ? "return { ok: true, path: request.path, query: request.query }"
+          : "return { ok: true, path: request.path, body: request.body }"
+      return `    /** ${method} — session + store ownership enforced by the host. */\n    async ${method}(ctx, request) {\n      ${body}\n    },`
+    })
+    .join("\n")
   return `/**
  * /${key} — dashboard API route (session + store ownership enforced by the host).
  * @param {import("selldoes").PluginContext} ctx
@@ -110,12 +120,17 @@ function routeModule(routePath) {
  */
 module.exports = {
   "${key}": {
-    async GET(ctx, request) {
-      return { ok: true, path: request.path, query: request.query }
-    },
+${handlers}
   },
 }
 `
+}
+
+/** Upper-cases, dedupes and validates the caller's method list; falls back to GET. */
+function normalizeRouteMethods(methods) {
+  const wanted = [...new Set((Array.isArray(methods) ? methods : []).map((method) => String(method).toUpperCase()))]
+  const valid = wanted.filter((method) => ROUTE_METHODS.includes(method))
+  return valid.length > 0 ? valid : ["GET"]
 }
 
 /**
@@ -123,7 +138,7 @@ module.exports = {
  * Returns { kind, file, manifest, targets, wiring } — the server snapshots
  * `files` before applying.
  */
-export function planCodeScaffold({ pluginDir, manifest, kind, name, description, runtime }) {
+export function planCodeScaffold({ pluginDir, manifest, kind, name, description, runtime, methods }) {
   const current = JSON.parse(JSON.stringify(manifest ?? {}))
   const label = String(name ?? "").trim()
   if (!label) throw new Error("A name is required")
@@ -158,9 +173,10 @@ export function planCodeScaffold({ pluginDir, manifest, kind, name, description,
     const routePath = label.startsWith("/") ? label : `/${label}`
     if (!/^\/[a-z0-9/_-]*$/i.test(routePath)) throw new Error(`Routes are lowercase paths like /stats (got "${label}")`)
     if ((current.apiRoutes ?? []).some((route) => route?.path === routePath)) throw new Error(`Route "${routePath}" is already declared in plugin.json`)
+    const routeMethods = normalizeRouteMethods(methods)
     file = `routes/${safeFileStem(routePath)}.js`
-    content = routeModule(routePath)
-    current.apiRoutes = [...(current.apiRoutes ?? []), { path: routePath, methods: ["GET"] }]
+    content = routeModule(routePath, routeMethods)
+    current.apiRoutes = [...(current.apiRoutes ?? []), { path: routePath, methods: routeMethods }]
   } else {
     throw new Error(`Unknown scaffold kind "${kind}"`)
   }

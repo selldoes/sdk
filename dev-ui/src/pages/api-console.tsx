@@ -1,13 +1,15 @@
 import * as React from "react"
-import { Loader2, Plug, Plus, Send } from "lucide-react"
+import { Link } from "react-router-dom"
+import { Loader2, Pencil, Play, Plug, Plus, Send } from "lucide-react"
 import { CreateRouteDialog } from "@/components/create-dialogs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { EmptyState, PageHead } from "@/components/shared"
+import { dev } from "@/lib/api"
+import { routeFileHint } from "@/lib/route-scaffold"
 import { healMissingDeclaration, parseMissingDeclaration } from "@/lib/self-heal"
 import type { PluginManifest, Validation } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
@@ -15,6 +17,8 @@ import { cn } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
 interface RouteRow {
+  /** Stable key: kind + declared path. */
+  key: string
   path: string
   methods: string[]
   kind: "dashboard" | "public"
@@ -24,15 +28,33 @@ interface RouteRow {
   file: string
 }
 
-function routeFileHint(routePath: string) {
-  const stem =
-    routePath
-      .replace(/^\//, "")
-      .replace(/:/g, "-")
-      .replace(/[^a-z0-9:_-]+/i, "-")
-      .replace(/^-+|-+$/g, "")
-      .toLowerCase() || "item"
-  return `routes/${stem}.js`
+interface Draft {
+  method: string
+  path: string
+  query: string
+  body: string
+}
+
+/** Per-route query/body memory — `METHOD /full/url`. */
+const paramsKey = (method: string, path: string) => `selldoes-dev:route-params:${method} ${path}`
+
+function loadParams(method: string, path: string): { query: string; body: string } | null {
+  try {
+    const raw = localStorage.getItem(paramsKey(method, path))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { query?: unknown; body?: unknown }
+    return { query: String(parsed.query ?? ""), body: String(parsed.body ?? "{}") }
+  } catch {
+    return null
+  }
+}
+
+function saveParams(method: string, path: string, params: { query: string; body: string }) {
+  try {
+    localStorage.setItem(paramsKey(method, path), JSON.stringify(params))
+  } catch {
+    /* private mode — params just won't persist */
+  }
 }
 
 export function ApiPage() {
@@ -43,6 +65,7 @@ export function ApiPage() {
     ...(manifest.apiRoutes ?? []).map((route) => {
       const base = `/api/plugin-api/${manifest.slug}`
       return {
+        key: `dashboard:${route.path}`,
         path: route.path,
         methods: route.methods,
         kind: "dashboard" as const,
@@ -54,6 +77,7 @@ export function ApiPage() {
     ...(manifest.publicRoutes ?? []).map((route) => {
       const base = `/api/plugin-public/${manifest.slug}`
       return {
+        key: `public:${route.path}`,
         path: route.path,
         methods: route.methods,
         kind: "public" as const,
@@ -63,13 +87,29 @@ export function ApiPage() {
       }
     }),
   ]
+
   const first = routes[0]
-  const [method, setMethod] = React.useState(first?.methods?.[0] ?? "GET")
+  const firstMethod = first?.methods?.[0] ?? "GET"
+  const firstSaved = loadParams(firstMethod, first?.full ?? "")
+
+  const [method, setMethod] = React.useState(firstMethod)
   const [path, setPath] = React.useState(first?.full ?? "")
-  const [query, setQuery] = React.useState("")
-  const [body, setBody] = React.useState("")
+  const [query, setQuery] = React.useState(firstSaved?.query ?? "")
+  const [body, setBody] = React.useState(firstSaved?.body ?? "{}")
+  const [selectedKey, setSelectedKey] = React.useState(first ? `${first.key}:${firstMethod}` : "")
+  const [runningChip, setRunningChip] = React.useState<string | null>(null)
   const [result, setResult] = React.useState("—")
   const [busy, setBusy] = React.useState(false)
+
+  /** Source files on disk — each route row gets an Edit link when a file matches. */
+  const [filePaths, setFilePaths] = React.useState<Set<string> | null>(null)
+  React.useEffect(() => {
+    dev
+      .files()
+      .then((tree) => setFilePaths(new Set(tree.entries.filter((entry) => entry.type === "file").map((entry) => entry.path))))
+      .catch(() => setFilePaths(null))
+  }, [])
+  const entryFile = String(manifest.entry ?? "index.js").replace(/^\.\//, "").replace(/\\/g, "/")
 
   // ── Creation: New route (scaffold into routes/ + plugin.json + entry) ────
   const [createOpen, setCreateOpen] = React.useState(false)
@@ -92,14 +132,20 @@ export function ApiPage() {
     })
   }, [setAssistantPage]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const send = async (healed = false) => {
+  const send = async (draft?: Draft, healed = false) => {
+    const m = draft?.method ?? method
+    const p = draft?.path ?? path
+    const q = draft?.query ?? query
+    const b = draft?.body ?? body
+    if (!p) return
+    saveParams(m, p, { query: q, body: b })
     setBusy(true)
     setResult("…")
     try {
-      const response = await fetch(path + (query.trim() ? `?${query.trim()}` : ""), {
-        method,
+      const response = await fetch(p + (q.trim() ? `?${q.trim()}` : ""), {
+        method: m,
         headers: { "Content-Type": "application/json" },
-        body: method === "GET" ? undefined : body || "{}",
+        body: m === "GET" ? undefined : b || "{}",
       })
       const text = await response.text()
       // Missing plugin.json declaration (permission / allowedTables) — declare it and retry once.
@@ -114,7 +160,7 @@ export function ApiPage() {
         if (missing) {
           await healMissingDeclaration(missing, { manifest, applyManifest, refresh, toast })
           // Retry once regardless — the saved manifest can lag the client.
-          await send(true)
+          await send(draft, true)
           return
         }
       }
@@ -125,8 +171,8 @@ export function ApiPage() {
         // keep raw text
       }
       setResult(`${response.status} ${response.statusText}\n\n${formatted}`)
-      if (response.ok) toast(`${method} ${path} → ${response.status}`, "success")
-      else toast(`${method} ${path} → ${response.status}`, "error")
+      if (response.ok) toast(`${m} ${p} → ${response.status}`, "success")
+      else toast(`${m} ${p} → ${response.status}`, "error")
     } catch (error) {
       setResult(String(error))
       toast(error instanceof Error ? error.message : String(error), "error")
@@ -135,11 +181,27 @@ export function ApiPage() {
     }
   }
 
+  /** Method chip = run now, with the params this route last used. */
+  const runRoute = async (route: RouteRow, entry: string) => {
+    const saved = loadParams(entry, route.full) ?? { query: "", body: "{}" }
+    setSelectedKey(`${route.key}:${entry}`)
+    setMethod(entry)
+    setPath(route.full)
+    setQuery(saved.query)
+    setBody(saved.body)
+    setRunningChip(`${route.key}:${entry}`)
+    try {
+      await send({ method: entry, path: route.full, query: saved.query, body: saved.body })
+    } finally {
+      setRunningChip(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHead
         title="API routes"
-        description="Endpoints your plugin exposes — dashboard (apiRoutes) and public (publicRoutes). Click a method to load it into the tester; requests run with the same permission checks as production."
+        description="Endpoints your plugin exposes — dashboard (apiRoutes) and public (publicRoutes). Click a method to run it; the tester below keeps your last request to tweak and resend."
         action={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus />
@@ -166,45 +228,69 @@ export function ApiPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
           <Card className="h-fit">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Declared routes</CardTitle>
-              <CardDescription>Click a method to load it into the tester.</CardDescription>
+              <CardDescription>Click a method to run the request.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {routes.map((route) => (
-                <div key={`${route.kind}-${route.path}`} className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase",
-                        route.kind === "dashboard" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700",
-                      )}
-                    >
-                      {route.kind}
-                    </span>
-                    <code className="truncate text-[10.5px] text-muted-foreground">{route.base + route.path}</code>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {route.methods.map((entry) => (
-                      <Button
-                        key={entry}
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-[11px]"
-                        onClick={() => {
-                          setMethod(entry)
-                          setPath(route.full)
-                        }}
+            <CardContent className="space-y-2.5">
+              {routes.map((route) => {
+                const editTargets = [route.file, entryFile].filter(Boolean)
+                const editTarget = filePaths ? editTargets.find((candidate) => filePaths.has(candidate)) : undefined
+                const routeSelected = selectedKey.startsWith(`${route.key}:`)
+                return (
+                  <div
+                    key={route.key}
+                    className={cn(
+                      "space-y-2 rounded-lg border p-2.5 transition-colors",
+                      routeSelected ? "border-primary/40 bg-primary/5" : "border-border",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase",
+                          route.kind === "dashboard" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700",
+                        )}
                       >
-                        {entry}
-                      </Button>
-                    ))}
-                    <code className="text-[9.5px] text-muted-foreground">{route.file}</code>
+                        {route.kind}
+                      </span>
+                      <code className="min-w-0 flex-1 truncate text-[11px] font-semibold">{route.path}</code>
+                      {editTarget ? (
+                        <Link
+                          to={`/code?file=${encodeURIComponent(editTarget)}`}
+                          className="inline-flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-primary hover:underline"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Edit
+                        </Link>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {route.methods.map((entry) => {
+                        const chipKey = `${route.key}:${entry}`
+                        const running = runningChip === chipKey
+                        return (
+                          <Button
+                            key={entry}
+                            size="sm"
+                            variant={selectedKey === chipKey ? "default" : "outline"}
+                            className="h-7 gap-1.5 px-2 font-mono text-[11px]"
+                            disabled={busy}
+                            title={`Run ${entry} ${route.path}`}
+                            onClick={() => void runRoute(route, entry)}
+                          >
+                            {running ? <Loader2 className="animate-spin" /> : <Play className="h-3 w-3" />}
+                            {entry}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                    {editTarget ? <code className="block truncate text-[9.5px] text-muted-foreground">{editTarget}</code> : null}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </CardContent>
           </Card>
 
@@ -214,21 +300,34 @@ export function ApiPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex gap-2">
-                <Select value={method} onValueChange={setMethod}>
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["GET", "POST", "PUT", "PATCH", "DELETE"].map((entry) => (
-                      <SelectItem key={entry} value={entry}>
-                        {entry}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input value={path} onChange={(event) => setPath(event.target.value)} className="flex-1" />
+                <div className="flex items-center gap-1 rounded-md border border-border px-1.5">
+                  {["GET", "POST", "PUT", "PATCH", "DELETE"].map((entry) => (
+                    <button
+                      key={entry}
+                      type="button"
+                      onClick={() => {
+                        setMethod(entry)
+                        setSelectedKey("")
+                      }}
+                      className={cn(
+                        "rounded px-1.5 py-1 font-mono text-[10.5px] font-semibold transition-colors",
+                        method === entry ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {entry}
+                    </button>
+                  ))}
+                </div>
+                <Input
+                  value={path}
+                  onChange={(event) => {
+                    setPath(event.target.value)
+                    setSelectedKey("")
+                  }}
+                  className="flex-1 font-mono text-xs"
+                />
                 <Button onClick={() => void send()} disabled={busy || !path}>
-                  {busy ? <Loader2 className="animate-spin" /> : <Send />}
+                  {busy && !runningChip ? <Loader2 className="animate-spin" /> : <Send />}
                   Send
                 </Button>
               </div>
@@ -236,8 +335,8 @@ export function ApiPage() {
                 <Label htmlFor="query">Query string</Label>
                 <Input
                   id="query"
-                  className="mt-1.5"
-                  placeholder="storeSlug=dev-store&since=0"
+                  className="mt-1.5 font-mono text-xs"
+                  placeholder="ids=1,2,3"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                 />

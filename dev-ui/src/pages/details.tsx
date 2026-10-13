@@ -1,9 +1,9 @@
 import * as React from "react"
-import { ChevronDown, ChevronUp, FileText, ImageIcon, Info, Trash2, Upload } from "lucide-react"
+import { ChevronDown, ChevronUp, CreditCard, FileText, ImageIcon, Store, Trash2, Upload } from "lucide-react"
 import { Link } from "react-router-dom"
 import { AppIcon, PLUGIN_ICON_CHOICES } from "@/components/app-icon"
 import { ManifestSaveBar } from "@/components/manifest-save-bar"
-import { PageHead, Callout } from "@/components/shared"
+import { PageHead, Callout, PriceBadge } from "@/components/shared"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,8 +15,17 @@ import { ICON_ACCEPT, ICON_GUIDE, prepareIconFile } from "@/lib/icon-upload"
 import { CATEGORIES } from "@/lib/permissions"
 import { useManifestDraft } from "@/lib/use-manifest-draft"
 import { useVisit } from "@/lib/use-visit"
-import { cn, mediaUrl } from "@/lib/utils"
+import { cn, mediaUrl, priceBadge } from "@/lib/utils"
+import type { PluginPricing } from "@/lib/types"
 import { useApp } from "@/state/app"
+
+const CURRENCIES = ["USD", "EUR", "GBP", "INR"] as const
+
+const BILLING_PERIODS: { value: NonNullable<PluginPricing["billingPeriod"]>; label: string }[] = [
+  { value: "one_time", label: "One-time" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+]
 
 /** Identity, icon and screenshots — the marketplace-facing metadata. Permissions live on their own page. */
 export function DetailsPage() {
@@ -30,11 +39,23 @@ export function DetailsPage() {
 
   const tagsText = (manifest.tags ?? []).join(", ")
 
+  const pricing = manifest.pricing
+  const rawAmount = Number(pricing?.amount ?? 0)
+  const isFree = !Number.isFinite(rawAmount) || rawAmount <= 0
+  const setPricing = (patch: Partial<PluginPricing>) => {
+    const next: PluginPricing = { amount: 0, currency: "USD", billingPeriod: "one_time", ...pricing, ...patch }
+    if (!Number(next.amount) || Number(next.amount) <= 0) next.amount = 0
+    set({ pricing: next })
+  }
+  // Free-form text while typing ("0.5", "9.") — the draft only sees numbers;
+  // blur snaps the field back to the normalized value.
+  const [amountText, setAmountText] = React.useState<string | null>(null)
+
   React.useEffect(() => {
     setAssistantPage({
-      context: `The developer is editing plugin.json metadata (name, description, icon, screenshots). Current name: "${manifest.name}"; ${
+      context: `The developer is editing plugin.json metadata (name, description, icon, screenshots, pricing). Current name: "${manifest.name}"; ${
         (manifest.screenshots ?? []).length
-      } screenshot(s).`,
+      } screenshot(s); pricing: ${isFree ? "free" : `${priceBadge(pricing)} (${pricing?.billingPeriod ?? "one_time"})`}.`,
       quick: ["Improve my marketplace description", "Suggest a better icon for this plugin"],
     })
   }, [setAssistantPage]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -216,6 +237,97 @@ export function DetailsPage() {
             </CardContent>
           </Card>
 
+          {/* Pricing */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CreditCard className="h-4 w-4" />
+                Pricing
+              </CardTitle>
+              <CardDescription>
+                What store owners pay for your plugin. Written to <code>plugin.json</code> and used as the default price when you
+                publish — the marketplace card preview updates live.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <Label htmlFor="price-amount">Amount</Label>
+                  <Input
+                    id="price-amount"
+                    type="text"
+                    inputMode="decimal"
+                    className="mt-1.5"
+                    placeholder="0 = free"
+                    value={amountText ?? (Number(pricing?.amount ?? 0) ? String(pricing?.amount) : "")}
+                    onChange={(event) => {
+                      const text = event.target.value
+                      setAmountText(text)
+                      const parsed = Number(text)
+                      if (text === "" || (!Number.isNaN(parsed) && parsed >= 0)) {
+                        setPricing({ amount: Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : 0 })
+                      }
+                    }}
+                    onBlur={() => setAmountText(null)}
+                  />
+                </div>
+                <div>
+                  <Label>Currency</Label>
+                  <Select value={pricing?.currency ?? "USD"} onValueChange={(value) => setPricing({ currency: value })}>
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((code) => (
+                        <SelectItem key={code} value={code}>
+                          {code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Billing</Label>
+                  <Select
+                    value={pricing?.billingPeriod ?? "one_time"}
+                    onValueChange={(value) => setPricing({ billingPeriod: value as PluginPricing["billingPeriod"] })}
+                  >
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BILLING_PERIODS.map((period) => (
+                        <SelectItem key={period.value} value={period.value}>
+                          {period.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="max-w-[180px]">
+                <Label htmlFor="price-trial">Trial days</Label>
+                <Input
+                  id="price-trial"
+                  type="number"
+                  min={0}
+                  max={90}
+                  step={1}
+                  className="mt-1.5"
+                  value={String(Math.max(0, Math.min(Number(pricing?.trialDays ?? 0) || 0, 90)) || "")}
+                  onChange={(event) => {
+                    const parsed = Number(event.target.value)
+                    setPricing({ trialDays: Number.isFinite(parsed) ? Math.max(0, Math.min(Math.round(parsed), 90)) : 0 })
+                  }}
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">0–90 days, shown as a chip on the card.</p>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Amount 0 (or an empty block) means the plugin is free — exactly what the card shows today.
+              </p>
+            </CardContent>
+          </Card>
+
           {/* Icon */}
           <Card>
             <CardHeader className="pb-3">
@@ -361,11 +473,14 @@ export function DetailsPage() {
           </Card>
         </div>
 
-        {/* Rail */}
-        <div className="space-y-4">
+        {/* Rail — sticks beside the long form so the live card stays in view. */}
+        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Marketplace card</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Store className="h-4 w-4" />
+                Marketplace card
+              </CardTitle>
               <CardDescription>Live preview of the listing card.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -375,7 +490,7 @@ export function DetailsPage() {
                   <div className="min-w-0">
                     <p className="flex flex-wrap items-center gap-1.5 text-[13px] font-bold">
                       {manifest.name || "Untitled plugin"}
-                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">FREE</span>
+                      <PriceBadge pricing={pricing} />
                     </p>
                     <p className="mt-0.5 line-clamp-2 text-[11.5px] text-muted-foreground">
                       {manifest.description || "No description yet."}
@@ -394,39 +509,6 @@ export function DetailsPage() {
                 </Link>{" "}
                 page.
               </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Info className="h-4 w-4" />
-                What's editable here?
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-[12.5px] text-muted-foreground">
-              <p>
-                This form writes to <code>plugin.json</code> directly (with undo). Permissions live on the{" "}
-                <Link to="/permissions" className="text-primary hover:underline">
-                  Permissions
-                </Link>{" "}
-                page.
-              </p>
-              <div className="border-t border-border pt-3">
-                <p className="mb-2 font-semibold text-foreground">Edit in code:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {["entry", "ui", "apiRoutes", "publicRoutes", "jobs", "hooks", "configSchema", "storefrontWidget", "storefrontPages", "dashboardPages", "delivery", "dependencies"].map(
-                    (key) => (
-                      <code key={key} className="rounded bg-muted px-1.5 py-0.5 text-[10.5px]">
-                        {key}
-                      </code>
-                    ),
-                  )}
-                </div>
-                <p className="mt-2.5 text-[11px]">
-                  Ask the AI rightbar to change those for you, or edit the file in your editor — the preview picks changes up automatically.
-                </p>
-              </div>
             </CardContent>
           </Card>
 

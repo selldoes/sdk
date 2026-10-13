@@ -13,7 +13,7 @@ import {
   Rocket,
   Terminal,
 } from "lucide-react"
-import { Callout, CopyButton, PageHead } from "@/components/shared"
+import { Callout, CopyButton, PageHead, PriceBadge } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -134,6 +134,8 @@ export function ShipPage() {
   const manifest = bootstrap!.manifest
   const validation = bootstrap!.validation
   const status = bootstrap!.status
+  const manifestAmount = Number(manifest.pricing?.amount ?? 0)
+  const isFree = !Number.isFinite(manifestAmount) || manifestAmount <= 0
 
   // Account state: the workspace shell caches it in bootstrap; standalone dev
   // reads /__dev/account (same ~/.selldoes.json).
@@ -299,6 +301,21 @@ export function ShipPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Listing price</p>
+                <PriceBadge pricing={manifest.pricing} />
+                <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
+                  {isFree
+                    ? "Free — this is what the marketplace card shows."
+                    : "From plugin.json — this is what publish sends."}
+                </p>
+                {isFree ? null : (
+                  <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                    <Link to="/details">Edit on Details</Link>
+                  </Button>
+                )}
               </div>
               <p className="text-[10.5px] leading-snug text-muted-foreground">
                 The default comes from Settings → Releases. Publishing the same version again is rejected by the platform — keep this

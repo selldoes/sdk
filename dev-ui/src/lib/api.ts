@@ -24,6 +24,7 @@ import type {
   SnapshotInfo,
   ScaffoldCodeResult,
   ScaffoldUiResult,
+  StoreStatusResponse,
   UiEntriesResponse,
   UserSettingsPatch,
   UserSettingsResponse,
@@ -68,6 +69,13 @@ export const dev = {
   connectAccount: (token: string, appUrl?: string) =>
     post<DevAccount>("/__dev/account/connect", { token, ...(appUrl ? { appUrl } : {}) }),
   disconnectAccount: () => post<{ connected: false; had: boolean }>("/__dev/account/disconnect", {}),
+
+  // ── Live store connection (ctx.products → a real store) ───────────────────
+  storeStatus: () => request<StoreStatusResponse>("/__dev/store"),
+  /** Verifies the merchant API key and points ctx.products at the real store. */
+  storeConnect: (input: { appUrl?: string; apiKey: string; storeId?: number | string; storeSlug?: string }) =>
+    post<StoreStatusResponse>("/__dev/store/connect", input),
+  storeDisconnect: () => post<StoreStatusResponse>("/__dev/store/disconnect", {}),
   uploadAsset: (input: { folder: "assets" | "screenshots"; name: string; data: string }) =>
     post<{ path: string; url: string }>("/__dev/assets", input),
   deleteAsset: (path: string) => post<{ ok: boolean }>("/__dev/assets/delete", { path }),
@@ -87,7 +95,7 @@ export const dev = {
   scaffoldJob: (input: { type: string; name?: string; description?: string; runtime?: "quickjs" | "node" }) =>
     post<ScaffoldCodeResult>("/__dev/scaffold/job", input),
   scaffoldHook: (input: { name: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/hook", input),
-  scaffoldRoute: (input: { path: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/route", input),
+  scaffoldRoute: (input: { path: string; methods?: string[] }) => post<ScaffoldCodeResult>("/__dev/scaffold/route", input),
 
   // ── Code editor ───────────────────────────────────────────────────────────
   files: () => request<FileTree>("/__dev/files"),
