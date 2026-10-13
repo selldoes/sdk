@@ -8,8 +8,8 @@ import { openInEditor, openTerminal } from "../../open-editor.mjs"
 import { buildPlugin, collectUiEntries } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
-import { connectStore, createLiveProductsBridge, readStoreBlock, storeView, writeStoreBlock } from "./live-store.mjs"
-import { PluginRunner, cleanPath } from "./runner.mjs"
+import { connectStore, createLiveProductsBridge, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import { PluginRunner, cleanPath, matchDeclaredRoute } from "./runner.mjs"
 import { ManifestStore } from "./manifest-store.mjs"
 import { DevState } from "./dev-state.mjs"
 import { deleteAsset, resolveAsset, saveAsset } from "./assets.mjs"
@@ -688,12 +688,40 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             : null,
         })
       }
+      if (req.method === "POST" && pathname === "/__dev/store/verify") {
+        const body = await readBody(req)
+        const stored = readStoreBlock(readConfig())
+        const apiKey = body?.useStoredKey ? stored.apiKey : body?.apiKey
+        if (body?.useStoredKey && !apiKey) {
+          return json(res, 400, { error: "No stored merchant API key for this project — enter the key first." })
+        }
+        try {
+          const verified = await verifyStoreKey({
+            appUrl: body?.appUrl || stored.appUrl || undefined,
+            apiKey,
+          })
+          return json(res, 200, {
+            ok: true,
+            appUrl: verified.appUrl,
+            userId: verified.userId,
+            apiKeySet: Boolean(verified.apiKey),
+            stores: verified.stores,
+          })
+        } catch (error) {
+          return json(res, 400, { error: error.message })
+        }
+      }
       if (req.method === "POST" && pathname === "/__dev/store/connect") {
         const body = await readBody(req)
+        const stored = readStoreBlock(readConfig())
+        const apiKey = body?.useStoredKey ? stored.apiKey : body?.apiKey
+        if (body?.useStoredKey && !apiKey) {
+          return json(res, 400, { error: "No stored merchant API key for this project — enter the key first." })
+        }
         try {
           const connected = await connectStore({
-            appUrl: body?.appUrl,
-            apiKey: body?.apiKey,
+            appUrl: body?.appUrl || stored.appUrl || undefined,
+            apiKey,
             storeId: body?.storeId,
             storeSlug: body?.storeSlug,
           })
@@ -850,6 +878,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             description: body?.description,
             runtime: body?.runtime,
             methods: body?.methods,
+            routeKind: body?.routeKind,
           })
           // One snapshot covers module + wiring + manifest — one undo reverts it.
           manifestStore.snapshots.create({
@@ -1747,16 +1776,11 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         if (slug !== manifest.slug) return json(res, 404, { error: `Only "${manifest.slug}" runs in this dev server` })
         const requestPath = cleanPath(tail ?? "/")
         const declaredList = kind === "public" ? manifest.publicRoutes ?? [] : manifest.apiRoutes ?? []
-        // An exact path match wins, then the longest declared prefix (so a
-        // short route never swallows its own sub-paths).
-        const candidates = declaredList.filter((route) => {
-          const declared = cleanPath(route.path)
-          return requestPath === declared || requestPath.startsWith(`${declared}/`)
-        })
-        const match =
-          candidates.find((route) => cleanPath(route.path) === requestPath) ??
-          candidates.slice().sort((a, b) => b.path.length - a.path.length)[0]
-        if (!match) return json(res, 404, { error: `No ${kind} route "${requestPath}" declared in plugin.json` })
+        // Exact path wins, then `:param` patterns, then the longest declared
+        // prefix (so a short route never swallows its own sub-paths).
+        const matched = matchDeclaredRoute(declaredList, requestPath)
+        if (!matched) return json(res, 404, { error: `No ${kind} route "${requestPath}" declared in plugin.json` })
+        const { route: match, params } = matched
         const methods = (match.methods ?? ["GET"]).map((method) => method.toUpperCase())
         if (!methods.includes(req.method)) {
           return json(res, 405, { error: `Method ${req.method} not allowed for ${match.path}` })
@@ -1765,7 +1789,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         const query = Object.fromEntries(url.searchParams.entries())
         try {
           const started = Date.now()
-          const result = await runner.invokeRoute(match.path, { method: req.method, path: requestPath, query, body }, ctx)
+          const result = await runner.invokeRoute(match.path, { method: req.method, path: requestPath, params, query, body }, ctx, kind)
           state.record("routes", { path: requestPath })
           log(`${req.method} ${requestPath} → ${Date.now() - started}ms`)
           if (result && typeof result === "object" && "status" in result && "body" in result) {

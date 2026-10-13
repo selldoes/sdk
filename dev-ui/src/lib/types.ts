@@ -389,6 +389,15 @@ export interface StoreStatusResponse extends StoreConnectionView {
   storeName?: string
 }
 
+/** POST /__dev/store/verify — key checked against the platform, nothing saved. */
+export interface StoreVerifyResponse {
+  ok: boolean
+  appUrl: string
+  userId: number | null
+  apiKeySet: boolean
+  stores: Array<{ id: number; slug: string; name: string }>
+}
+
 /** Sections accepted by POST /__dev/config (all optional). */
 export interface SaveFileConfigInput {
   assistant?: Record<string, unknown>

@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { dev } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -869,6 +870,38 @@ function SectionSettings({
           Renders the plugin's <code>configSchema</code> form ({manifest.configSchema?.length ?? 0} field
           {manifest.configSchema?.length === 1 ? "" : "s"}) — values are saved per store. No options to configure here.
         </Callout>
+      )
+    case "group":
+      return (
+        <>
+          <Field label="Title">
+            <Input value={str(settings.title)} placeholder="Review imports" onChange={(event) => onChange({ title: event.target.value })} />
+          </Field>
+          <Field label="Description">
+            <Input
+              value={str(settings.description)}
+              placeholder="Optional helper text under the title"
+              onChange={(event) => onChange({ description: event.target.value })}
+            />
+          </Field>
+          <Field label="Collapsible" hint="The header toggles the whole group.">
+            <Switch
+              checked={settings.collapsible !== false}
+              onCheckedChange={(checked) => onChange({ collapsible: checked, ...(checked ? {} : { defaultOpen: true }) })}
+            />
+          </Field>
+          <Field label="Open by default" hint="The collapsed state is remembered per group title in localStorage.">
+            <Switch checked={settings.defaultOpen !== false} onCheckedChange={(checked) => onChange({ defaultOpen: checked })} />
+          </Field>
+          <Field label="Nested sections (JSON)" hint="Same shape as the page's sections array — they render flat inside the group.">
+            <JsonField
+              value={settings.sections ?? []}
+              onChange={(value) => onChange({ sections: value })}
+              placeholder='[{ "type": "job", "settings": { "job": "import-products" } }]'
+              rows={8}
+            />
+          </Field>
+        </>
       )
     default:
       return <RawSectionEditor section={section} onReplace={onReplace} />

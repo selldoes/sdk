@@ -178,6 +178,11 @@ kit page — a sandboxed iframe that resizes itself: the embedded page posts
 its content height changes, e.g. via a `ResizeObserver` on its body). The
 `entry` is `ui/`-relative (`"ui/review.html"`), and the host appends the
 store scope so the embedded page's API calls hit the right store.
+`group` (container: nests other sections inside one card — settings
+`{ title, description?, collapsible? = true, defaultOpen? = true,
+sections: [...] }`; children render flat, and clicking the header
+collapses/expands the whole group, remembering the state in
+localStorage per group title).
 
 **Add/Edit components** on the Dashboard page opens the visual builder:
 component palette on the left (click or drag onto the canvas), a live preview
@@ -194,6 +199,65 @@ with `sections: []` and no `entry`) and opens the builder; **New page → HTML**
 scaffolds the notes example under `ui/` as before. You can also ask the AI
 assistant ("add a stats row", "show /stats as a table"), which rewrites
 `dashboardPages[].sections` through the normal manifest-edit pipeline.
+
+### Dialogs & toasts in sandboxed frames
+
+The host renders every plugin UI — kit pages, embedded `component` iframes,
+dashboard hook slots, storefront widgets — inside **sandboxed iframes without
+`allow-modals`**. That means `window.confirm()`, `window.alert()`,
+`window.prompt()` and `print()` are **silently blocked** (they resolve
+`false`/do nothing). A confirm button wired to `window.confirm` looks broken:
+the click does nothing at all.
+
+`<dialog>.showModal()` is *not* gated by the sandbox, so the sanctioned
+replacement is the shared kit helper — the kit compiler ships it as
+`ui/kit/dialog.js` next to `runtime.js`:
+
+```html
+<!-- from ui/kit/* or any page that has ui/kit as a sibling folder -->
+<script src="kit/dialog.js"></script>
+<script>
+  // Plain confirm — resolves null on cancel, {} on confirm.
+  const ok = await SelldoesDialog.confirm({
+    title: "Discard these drafts?",
+    body: "They move to the Discarded list — you can restore them anytime.",
+    confirmLabel: "Discard",
+    danger: true,              // red confirm button for destructive actions
+  });
+  if (!ok) return;
+
+  // Confirm with a field — resolved values come back as an object.
+  const values = await SelldoesDialog.confirm({
+    title: "Add to store?",
+    body: "An existing SKU is updated in place.",
+    confirmLabel: "Add to store",
+    select: {
+      name: "status",
+      label: "Status",
+      value: "draft",
+      options: [
+        { value: "draft", label: "Draft (hidden until you publish)" },
+        { value: "active", label: "Active (visible in the store)" },
+      ],
+    },
+  });
+  if (!values) return;            // cancelled
+  await addProducts(values.status);
+
+  // Toasts (window.console is fine, but there is no window.toast either).
+  SelldoesDialog.toast("Added 12 products", { variant: "default" });
+  SelldoesDialog.toast("Import failed", { variant: "error" });
+</script>
+```
+
+The helper injects its own `<dialog>` + styles on first use — no CSS file to
+link, no dependencies, and it works in kit pages, embedded components and
+standalone UI pages alike. Never stack dialogs: calling `confirm` while one
+is open cancels the previous one (its promise resolves `null`).
+
+Manual alternative (no helper): build your own `<form method="dialog">` and
+call `dialog.showModal()` — but do not reach for `window.confirm` anywhere in
+plugin UI; it cannot work in the host's frames.
 
 ### Designed settings dialog
 
@@ -420,6 +484,17 @@ plugin, e.g. `assets/icon.png`), `screenshots`, `tags`, `category` and
 `pricing` (`{ amount, currency, billingPeriod: one_time | monthly | yearly,
 trialDays }` — what the marketplace card shows and the default price at
 publish time). The Details editor in `selldoes dev` writes these for you.
+
+## API routes
+
+Export `apiRoutes[path][METHOD]` for dashboard endpoints (session + store
+ownership enforced by the host) and `publicRoutes[path][METHOD]` for
+visitor-callable endpoints. The handler signature is `async (ctx, request)`
+with `request = { method, path, params, query, body }` — `params` carries the
+`:name` segments of the declared path (`/products/:id` → `{ id: "42" }`).
+Return JSON directly or `{ status, body }`. Permission and `allowedTables`
+checks run exactly like production, and the API console fires the same
+requests against the local server.
 
 ## Background jobs
 

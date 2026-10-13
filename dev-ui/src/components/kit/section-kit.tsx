@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AlertTriangle, ExternalLink, Frame, Play, RefreshCw } from "lucide-react"
+import { AlertTriangle, ChevronDown, ExternalLink, Frame, Play, RefreshCw } from "lucide-react"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -85,6 +85,8 @@ function SectionView({ slug, store, section }: { slug: string; store: KitProps["
       return <LinksSection settings={settings} />
     case "component":
       return <ComponentSection settings={settings} />
+    case "group":
+      return <GroupSection slug={slug} store={store} settings={settings} />
     default:
       return (
         <Card className="border-dashed">
@@ -312,6 +314,56 @@ function ComponentSection({ settings }: { settings: Record<string, unknown> }) {
           {entry ? "Renders in the compiled page — self-resizing iframe" : "No entry set — point at a file under ui/"}
         </div>
       </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Group — nests other sections inside one collapsible card. Mirrors the kit
+ * runtime's `group` type: the header (title + chevron) toggles the body, and
+ * children render recursively. The compiled page additionally remembers the
+ * collapsed state in localStorage.
+ */
+function GroupSection({ slug, store, settings }: { slug: string; store: KitProps["store"]; settings: Record<string, unknown> }) {
+  const collapsible = settings.collapsible !== false
+  const [open, setOpen] = React.useState(settings.defaultOpen !== false)
+  const children = (Array.isArray(settings.sections) ? settings.sections : []) as PluginDashboardSection[]
+  return (
+    <Card>
+      <CardHeader
+        className={`relative pb-2${collapsible ? " cursor-pointer" : ""}`}
+        onClick={collapsible ? () => setOpen((value) => !value) : undefined}
+      >
+        <CardTitle className="text-base">{str(settings.title, "Group")}</CardTitle>
+        {settings.description ? <CardDescription>{str(settings.description)}</CardDescription> : null}
+        {collapsible ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-expanded={open}
+            aria-label="Collapse / expand group"
+            className="absolute right-4 top-4 h-7 w-7 p-0"
+            onClick={(event) => {
+              event.stopPropagation()
+              setOpen((value) => !value)
+            }}
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform${open ? "" : " -rotate-90"}`} />
+          </Button>
+        ) : null}
+      </CardHeader>
+      {open ? (
+        <CardContent className="space-y-4 border-t border-border pt-4">
+          {children.length === 0 ? (
+            <p className="text-sm text-muted-foreground">This group has no sections yet — add nested components to it.</p>
+          ) : (
+            children.map((child, index) => (
+              <SectionView key={str(child.id) || `${child.type}-${index}`} slug={slug} store={store} section={child} />
+            ))
+          )}
+        </CardContent>
+      ) : null}
     </Card>
   )
 }

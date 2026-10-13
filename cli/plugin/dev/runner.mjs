@@ -14,6 +14,52 @@ export function cleanPath(value) {
 }
 
 /**
+ * Compiles a declared route with `:param` segments into a matcher:
+ * `/products/:id/restock` → /^\/products\/([^/]+)\/restock\/?$/ with names ["id"].
+ */
+export function compileRoutePattern(declared) {
+  const names = []
+  const pattern = cleanPath(declared)
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => {
+      if (segment.startsWith(":")) {
+        names.push(segment.slice(1))
+        return "([^/]+)"
+      }
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    })
+    .join("/")
+  return { regex: new RegExp(`^/${pattern}/?$`), names }
+}
+
+/**
+ * Matches a request path against declared routes: exact match wins, then
+ * `:param` patterns, then the longest declared prefix. Returns
+ * `{ route, params }` or null.
+ */
+export function matchDeclaredRoute(declaredList, requestPath) {
+  const exact = declaredList.find((route) => cleanPath(route.path) === requestPath)
+  if (exact) return { route: exact, params: {} }
+  for (const route of declaredList) {
+    const declared = cleanPath(route.path)
+    if (!declared.includes(":")) continue
+    const { regex, names } = compileRoutePattern(declared)
+    const found = regex.exec(requestPath)
+    if (found) {
+      const params = {}
+      names.forEach((name, index) => {
+        params[name] = decodeURIComponent(found[index + 1] ?? "")
+      })
+      return { route, params }
+    }
+  }
+  const candidates = declaredList.filter((route) => requestPath.startsWith(`${cleanPath(route.path)}/`))
+  const match = candidates.slice().sort((a, b) => b.path.length - a.path.length)[0]
+  return match ? { route: match, params: {} } : null
+}
+
+/**
  * Loads the plugin's runtime bundle locally, mirroring how the host calls
  * `apiRoutes`, `jobs`, `hooks` and `deliveryProvider`.
  *
@@ -230,13 +276,16 @@ export class PluginRunner {
     return this.exports
   }
 
-  routes() {
-    return this.bundle().apiRoutes ?? {}
+  routes(scope = "authenticated") {
+    const bundle = this.bundle()
+    // Dashboard (`apiRoutes`) and visitor (`publicRoutes`) maps are separate —
+    // a path declared in both must never resolve across kinds.
+    return scope === "public" ? bundle.publicRoutes ?? {} : bundle.apiRoutes ?? {}
   }
 
   /** Mirrors the host's handler lookup (leading slash optional, trailing slash tolerated). */
-  resolveHandler(declaredPath, method) {
-    const routes = this.routes()
+  resolveHandler(declaredPath, method, scope = "authenticated") {
+    const routes = this.routes(scope)
     const clean = cleanPath(declaredPath)
     const candidates = [clean, clean.replace(/^\//, ""), `${clean}/`]
     for (const key of candidates) {
@@ -250,8 +299,8 @@ export class PluginRunner {
     return null
   }
 
-  async invokeRoute(declaredPath, request, ctx) {
-    const handler = this.resolveHandler(declaredPath, request.method)
+  async invokeRoute(declaredPath, request, ctx, scope = "authenticated") {
+    const handler = this.resolveHandler(declaredPath, request.method, scope)
     if (!handler) throw new Error(`No handler for ${request.method} ${declaredPath}`)
     return handler(ctx, request)
   }

@@ -550,3 +550,78 @@ a.kit-button.kit-outline:active {
   background: transparent;
   transition: height 0.15s ease;
 }
+
+/* ── Group (collapsible container) ────────────────────────────────────────────
+   A group card's header toggles the whole body (children render flat inside).
+   The collapsed state is remembered in localStorage by the runtime. */
+.kit-card-group .kit-card-head.kit-card-head-toggle {
+  position: relative;
+  cursor: pointer;
+  padding-top: 20px;
+  padding-right: 52px;
+  padding-bottom: 10px;
+}
+
+.kit-collapse-toggle {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--kit-border);
+  border-radius: var(--kit-radius-md);
+  background: transparent;
+  color: var(--kit-muted-fg);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.kit-collapse-toggle:hover {
+  background: var(--kit-muted);
+  color: var(--kit-fg);
+}
+
+.kit-collapse-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--kit-ring);
+}
+
+.kit-collapse-toggle svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+
+.kit-card-group.kit-collapsed .kit-collapse-toggle svg {
+  transform: rotate(-90deg);
+}
+
+.kit-card-group .kit-card-body[hidden] {
+  display: none;
+}
+
+/* Sections nested inside a group render flat — no card-in-card. */
+.kit-card.kit-card-flat {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.kit-card-group > .kit-card-body > .kit-card.kit-card-flat + .kit-card.kit-card-flat {
+  border-top: 1px solid var(--kit-border);
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+.kit-card-group > .kit-card-body > .kit-card.kit-card-flat > .kit-card-head {
+  padding: 12px 0 6px;
+}
+
+.kit-card-group > .kit-card-body > .kit-card.kit-card-flat > .kit-card-body,
+.kit-card-group > .kit-card-body > .kit-card.kit-card-flat > .kit-card-body.kit-standalone {
+  padding: 0 0 12px;
+}

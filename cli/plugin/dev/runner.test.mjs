@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { PluginRunner } from "./runner.mjs"
+import { compileRoutePattern, matchDeclaredRoute, PluginRunner } from "./runner.mjs"
 
 function tempPlugin(manifest, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "selldoes-runner-"))
@@ -62,4 +62,32 @@ test("PluginRunner: a Node entry without a handler reports a clear error", async
     log: () => {},
   })
   await assert.rejects(() => runner.runJob("write-file", {}, {}, 5), /no loaded handler/)
+})
+
+test("route matching: exact beats params beats longest prefix", () => {
+  const routes = [
+    { path: "/products" },
+    { path: "/products/:id" },
+    { path: "/products/:id/restock" },
+    { path: "/catalog/:category/items" },
+  ]
+
+  assert.deepEqual(matchDeclaredRoute(routes, "/products"), { route: routes[0], params: {} })
+  assert.deepEqual(matchDeclaredRoute(routes, "/products/42"), { route: routes[1], params: { id: "42" } })
+  assert.deepEqual(matchDeclaredRoute(routes, "/products/42/restock"), { route: routes[2], params: { id: "42" } })
+  assert.deepEqual(matchDeclaredRoute(routes, "/catalog/shoes/items"), { route: routes[3], params: { category: "shoes" } })
+  // Param values are URL-decoded.
+  assert.deepEqual(matchDeclaredRoute(routes, "/products/a%20b").params, { id: "a b" })
+  // Prefix fallback for nested paths under a static route.
+  const withSub = [{ path: "/notes" }]
+  assert.deepEqual(matchDeclaredRoute(withSub, "/notes/42/comments"), { route: withSub[0], params: {} })
+  assert.equal(matchDeclaredRoute(routes, "/elsewhere"), null)
+})
+
+test("route matching: compileRoutePattern tolerates a trailing slash", () => {
+  const { regex, names } = compileRoutePattern("/products/:id")
+  assert.deepEqual(names, ["id"])
+  assert.match("/products/7", regex)
+  assert.match("/products/7/", regex)
+  assert.doesNotMatch("/products/7/restock", regex)
 })

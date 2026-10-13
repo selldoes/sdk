@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { dev } from "@/lib/api"
 import { handlerPathFor, HOOK_CATALOG, hookModuleTemplate, normalizeHandlerPath } from "@/lib/hooks-catalog"
-import { ROUTE_METHODS, routeFileHint, routeModuleTemplate } from "@/lib/route-scaffold"
+import { ROUTE_METHODS, routeFileHint, routeModuleTemplate, routeParamNames } from "@/lib/route-scaffold"
 import type { PluginManifest, Validation } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/state/app"
@@ -373,21 +373,28 @@ export function CreateRouteDialog({
   onScaffolded: ScaffoldedHandler
 }) {
   const { toast, bootstrap } = useApp()
+  const [routeKind, setRouteKind] = React.useState<"api" | "public">("api")
   const [path, setPath] = React.useState("")
   const [methods, setMethods] = React.useState<string[]>(["GET"])
   const [busy, setBusy] = React.useState(false)
   const [existingFiles, setExistingFiles] = React.useState<Set<string>>(new Set())
 
-  const declaredRoutes = (bootstrap?.manifest.apiRoutes ?? []) as { path: string; methods?: string[] }[]
-  const slug = bootstrap?.manifest.slug ?? ""
+  const manifest = bootstrap?.manifest
+  const declaredRoutes = ((routeKind === "api" ? manifest?.apiRoutes : manifest?.publicRoutes) ?? []) as {
+    path: string
+    methods?: string[]
+  }[]
+  const slug = manifest?.slug ?? ""
   const routePath = path.trim() ? (path.trim().startsWith("/") ? path.trim() : `/${path.trim()}`) : ""
   const handlerPath = routePath ? routeFileHint(routePath) : null
   const declaredRoute = routePath ? declaredRoutes.find((route) => route.path === routePath) : undefined
   const handlerExists = Boolean(handlerPath && existingFiles.has(handlerPath))
   const ready = routePath.length > 0 && !declaredRoute
+  const paramNames = routeParamNames(routePath)
 
   React.useEffect(() => {
     if (!open) return
+    setRouteKind("api")
     setPath("")
     setMethods(["GET"])
     let cancelled = false
@@ -412,7 +419,11 @@ export function CreateRouteDialog({
     if (!ready || busy) return
     setBusy(true)
     try {
-      const result = await dev.scaffoldRoute({ path: routePath, methods: methods.length > 0 ? methods : ["GET"] })
+      const result = await dev.scaffoldRoute({
+        path: routePath,
+        methods: methods.length > 0 ? methods : ["GET"],
+        ...(routeKind === "public" ? { routeKind: "public" as const } : {}),
+      })
       onScaffolded(result.manifest, result.validation, `Route scaffolded: ${result.file}`)
       onOpenChange(false)
     } catch (error) {
@@ -428,7 +439,7 @@ export function CreateRouteDialog({
     setBusy(true)
     try {
       await dev.createFile(handlerPath, "file")
-      await dev.writeFile(handlerPath, routeModuleTemplate(routePath, declaredRoute?.methods ?? methods))
+      await dev.writeFile(handlerPath, routeModuleTemplate(routePath, declaredRoute?.methods ?? methods, routeKind))
       toast(`Created ${handlerPath}`, "success")
       onOpenChange(false)
     } catch (error) {
@@ -444,22 +455,39 @@ export function CreateRouteDialog({
         <DialogHeader>
           <DialogTitle>New API route</DialogTitle>
           <DialogDescription>
-            {"Creates routes/<path>.js, declares it in apiRoutes and wires it into the entry."}
+            {"Creates routes/<path>.js, declares it in plugin.json and wires it into the entry. Use :name segments for path parameters."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Kind</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <ChoiceTile
+                selected={routeKind === "api"}
+                onSelect={() => setRouteKind("api")}
+                title="Dashboard"
+                blurb="apiRoutes — session + store ownership enforced"
+              />
+              <ChoiceTile
+                selected={routeKind === "public"}
+                onSelect={() => setRouteKind("public")}
+                title="Public"
+                blurb="publicRoutes — visitors, no session"
+              />
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="create-route-path">Route path</Label>
             <Input
               id="create-route-path"
               value={path}
               onChange={(event) => setPath(event.target.value)}
-              placeholder="/stats"
+              placeholder="/stats or /products/:id"
               autoFocus
             />
             {routePath ? (
               <p className="truncate font-mono text-[10.5px] text-muted-foreground">
-                {`/api/plugin-api/${slug}${routePath}`}
+                {`/api/${routeKind === "public" ? "plugin-public" : "plugin-api"}/${slug}${routePath}`}
               </p>
             ) : null}
           </div>
@@ -485,15 +513,22 @@ export function CreateRouteDialog({
           </div>
           {routePath ? (
             <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2">
-              <span className="text-[11px] font-medium text-muted-foreground">Handler</span>
-              <div className="flex min-w-0 items-center gap-2">
-                <code className="truncate text-[11px]">{handlerPath}</code>
+              <div className="min-w-0">
+                <span className="text-[11px] font-medium text-muted-foreground">Handler</span>
+                <code className="mt-0.5 block truncate text-[11px]">{handlerPath}</code>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {paramNames.length > 0 ? (
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {paramNames.map((name) => `:${name}`).join(" ")}
+                  </span>
+                ) : null}
                 {declaredRoute ? (
-                  <Badge variant="secondary" className="shrink-0 text-[10px]">
+                  <Badge variant="secondary" className="text-[10px]">
                     Declared
                   </Badge>
                 ) : handlerExists ? (
-                  <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
                     Exists
                   </Badge>
                 ) : null}

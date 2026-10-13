@@ -333,6 +333,8 @@ export interface PluginContext {
 export interface PluginApiRequest {
   method: string
   path: string
+  /** Values of `:param` segments in the declared route path, e.g. `{ id: "42" }` for `/products/:id`. */
+  params: Record<string, string>
   query: Record<string, string>
   body: unknown
 }

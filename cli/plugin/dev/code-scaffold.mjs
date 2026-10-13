@@ -13,7 +13,7 @@ import path from "node:path"
  *   // </selldoes-scaffold:jobs>
  */
 
-const UNSAFE = /[^a-z0-9:_-]+/i
+const UNSAFE = /[^a-z0-9:_-]+/gi
 const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 
 function safeFileStem(value) {
@@ -21,6 +21,7 @@ function safeFileStem(value) {
     .replace(/^\//, "")
     .replace(/:/g, "-")
     .replace(UNSAFE, "-")
+    .replace(/-{2,}/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase() || "item"
 }
@@ -38,9 +39,10 @@ const WIRING = {
   jobs: (file) => `module.exports.jobs = { ...module.exports.jobs, ...require("./${file}") }`,
   hooks: (file) => `module.exports.hooks = { ...module.exports.hooks, ...require("./${file}") }`,
   apiRoutes: (file) => `module.exports.apiRoutes = { ...module.exports.apiRoutes, ...require("./${file}") }`,
+  publicRoutes: (file) => `module.exports.publicRoutes = { ...module.exports.publicRoutes, ...require("./${file}") }`,
 }
 
-const BLOCK_FOR = { job: "jobs", hook: "hooks", route: "apiRoutes" }
+const BLOCK_FOR = { job: "jobs", hook: "hooks" }
 
 function jobModule(type) {
   return `/**
@@ -102,20 +104,26 @@ module.exports = {
 `
 }
 
-function routeModule(routePath, methods) {
+function routeModule(routePath, methods, isPublic) {
   const key = routePath.replace(/^\//, "")
+  const scope = isPublic
+    ? ` * /${key} — public API route (visitors; no session — the store is resolved by the host).`
+    : ` * /${key} — dashboard API route (session + store ownership enforced by the host).`
+  const paramNote = /(^|\/):[A-Za-z0-9_]+/.test(routePath)
+    ? ` * Path parameters arrive as request.params, e.g. request.params.id for "/:id" segments.\n`
+    : ""
   const handlers = methods
     .map((method) => {
       const body =
         method === "GET"
-          ? "return { ok: true, path: request.path, query: request.query }"
-          : "return { ok: true, path: request.path, body: request.body }"
+          ? "return { ok: true, path: request.path, params: request.params, query: request.query }"
+          : "return { ok: true, path: request.path, params: request.params, body: request.body }"
       return `    /** ${method} — session + store ownership enforced by the host. */\n    async ${method}(ctx, request) {\n      ${body}\n    },`
     })
     .join("\n")
   return `/**
- * /${key} — dashboard API route (session + store ownership enforced by the host).
- * @param {import("selldoes").PluginContext} ctx
+${scope}
+${paramNote} * @param {import("selldoes").PluginContext} ctx
  * @param {import("selldoes").PluginApiRequest} request
  */
 module.exports = {
@@ -138,14 +146,16 @@ function normalizeRouteMethods(methods) {
  * Returns { kind, file, manifest, targets, wiring } — the server snapshots
  * `files` before applying.
  */
-export function planCodeScaffold({ pluginDir, manifest, kind, name, description, runtime, methods }) {
+export function planCodeScaffold({ pluginDir, manifest, kind, name, description, runtime, methods, routeKind }) {
   const current = JSON.parse(JSON.stringify(manifest ?? {}))
   const label = String(name ?? "").trim()
   if (!label) throw new Error("A name is required")
 
   const nodeJob = kind === "job" && runtime === "node"
+  const isPublicRoute = kind === "route" && routeKind === "public"
   let file
   let content
+  let blockName = BLOCK_FOR[kind]
   if (kind === "job") {
     const type = label.replace(/^\//, "").replace(/\s+/g, "-").toLowerCase()
     if (!/^[a-z0-9][a-z0-9_-]*$/.test(type)) throw new Error(`Job types use lowercase letters, digits and dashes (got "${label}")`)
@@ -171,12 +181,16 @@ export function planCodeScaffold({ pluginDir, manifest, kind, name, description,
     current.hooks = { ...(current.hooks ?? {}), [name2]: { handler: file } }
   } else if (kind === "route") {
     const routePath = label.startsWith("/") ? label : `/${label}`
-    if (!/^\/[a-z0-9/_-]*$/i.test(routePath)) throw new Error(`Routes are lowercase paths like /stats (got "${label}")`)
-    if ((current.apiRoutes ?? []).some((route) => route?.path === routePath)) throw new Error(`Route "${routePath}" is already declared in plugin.json`)
+    // Static segments and `:params` — lowercase, digits, dashes, slashes, colons.
+    if (!/^\/[a-z0-9/_:-]*$/i.test(routePath)) throw new Error(`Routes are lowercase paths like /stats or /products/:id (got "${label}")`)
+    const listKey = isPublicRoute ? "publicRoutes" : "apiRoutes"
+    const list = current[listKey] ?? []
+    if (list.some((route) => route?.path === routePath)) throw new Error(`Route "${routePath}" is already declared in plugin.json`)
     const routeMethods = normalizeRouteMethods(methods)
     file = `routes/${safeFileStem(routePath)}.js`
-    content = routeModule(routePath, routeMethods)
-    current.apiRoutes = [...(current.apiRoutes ?? []), { path: routePath, methods: routeMethods }]
+    content = routeModule(routePath, routeMethods, isPublicRoute)
+    current[listKey] = [...list, { path: routePath, methods: routeMethods }]
+    blockName = listKey
   } else {
     throw new Error(`Unknown scaffold kind "${kind}"`)
   }
@@ -185,7 +199,6 @@ export function planCodeScaffold({ pluginDir, manifest, kind, name, description,
   let wiring = null
   // Node jobs are standalone entry files — nothing to wire into index.js.
   if (!nodeJob) {
-    const blockName = BLOCK_FOR[kind]
     const marker = `// <selldoes-scaffold:${blockName}>`
     let entryContent = null
     try {

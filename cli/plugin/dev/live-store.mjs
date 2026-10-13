@@ -79,10 +79,12 @@ export function maskKey(value) {
 }
 
 /**
- * Verifies a merchant API key + resolves the target store.
+ * Verifies a merchant API key + returns EVERY store on the account (the
+ * settings UI shows this list in the "which store?" picker dialog).
  * `GET {appUrl}/api/templates/me` with `x-api-key` returns the user + stores.
+ * Nothing is written here — use connectStore to commit a selection.
  */
-export async function connectStore({ appUrl, apiKey, storeId, storeSlug }) {
+export async function verifyStoreKey({ appUrl, apiKey }) {
   const base = String(appUrl ?? "").replace(/\/+$/, "")
   const key = String(apiKey ?? "").trim()
   if (!base) throw new Error("Provide the Selldoes app URL, e.g. https://selldoes.com")
@@ -110,20 +112,38 @@ export async function connectStore({ appUrl, apiKey, storeId, storeSlug }) {
 
   const stores = Array.isArray(me?.stores) ? me.stores : []
   if (stores.length === 0) throw new Error("This API key's account has no stores.")
-  const wanted = String(storeId ?? "").trim()
-  const wantedSlug = String(storeSlug ?? "").trim()
-  const store =
-    (wanted ? stores.find((entry) => String(entry.id) === wanted) : null) ||
-    (wantedSlug ? stores.find((entry) => String(entry.slug) === wantedSlug) : null) ||
-    stores[0]
-
   return {
     appUrl: base,
     apiKey: key,
-    storeId: Number(store.id),
-    storeSlug: String(store.slug ?? ""),
-    storeName: String(store.name ?? ""),
     userId: me?.userId ?? null,
+    stores: stores.map((entry) => ({
+      id: Number(entry.id),
+      slug: String(entry.slug ?? ""),
+      name: String(entry.name ?? ""),
+    })),
+  }
+}
+
+/**
+ * Verifies a merchant API key + resolves the target store.
+ * Picks the store matching storeId/storeSlug, else the account's first one.
+ */
+export async function connectStore({ appUrl, apiKey, storeId, storeSlug }) {
+  const verified = await verifyStoreKey({ appUrl, apiKey })
+  const wanted = String(storeId ?? "").trim()
+  const wantedSlug = String(storeSlug ?? "").trim()
+  const store =
+    (wanted ? verified.stores.find((entry) => String(entry.id) === wanted) : null) ||
+    (wantedSlug ? verified.stores.find((entry) => String(entry.slug) === wantedSlug) : null) ||
+    verified.stores[0]
+
+  return {
+    appUrl: verified.appUrl,
+    apiKey: verified.apiKey,
+    storeId: store.id,
+    storeSlug: store.slug,
+    storeName: store.name,
+    userId: verified.userId,
   }
 }
 

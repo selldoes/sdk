@@ -156,7 +156,8 @@ export function handlerPathFor(hookName: string): string {
     String(hookName)
       .replace(/^\//, "")
       .replace(/:/g, "-")
-      .replace(/[^a-z0-9:_-]+/i, "-")
+      .replace(/[^a-z0-9:_-]+/gi, "-")
+      .replace(/-{2,}/g, "-")
       .replace(/^-+|-+$/g, "")
       .toLowerCase() || "item"
   return `hooks/${stem}.js`

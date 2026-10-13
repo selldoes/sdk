@@ -46,6 +46,7 @@
       external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
       alert:
         '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+      chevron: '<path d="m6 9 6 6 6-6"/>',
     }
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
     svg.setAttribute("viewBox", "0 0 24 24")
@@ -59,8 +60,16 @@
     return svg
   }
 
+  /**
+   * Nesting depth while rendering a `group` section's children: inside a group
+   * every card renders "flat" (no border/background/shadow) so a job runner or
+   * embedded UI sits directly in the group's card instead of card-in-card.
+   */
+  var NESTED = 0
+
   function card(title, description, action) {
     var wrap = h("section", "kit-card")
+    if (NESTED > 0) wrap.classList.add("kit-card-flat")
     var body = h("div", "kit-card-body")
     if (title || description || action) {
       var head = h("div", "kit-card-head")
@@ -543,17 +552,103 @@
     frame.className = "kit-frame"
     frame.title = str(settings.title, entry)
     frame.src = src
-    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups")
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals")
     frame.setAttribute("loading", "lazy")
     frame.style.height = (Number(settings.height) > 0 ? Number(settings.height) : 640) + "px"
     window.addEventListener("message", function (event) {
       if (event.source !== frame.contentWindow) return
       var data = event.data
-      if (!data || data.type !== "selldesk:kit-resize") return
-      var height = Math.max(160, Math.min(Number(data.height) || 0, 12000))
-      frame.style.height = height + "px"
+      if (!data) return
+      if (data.type === "selldesk:kit-resize") {
+        var height = Math.max(160, Math.min(Number(data.height) || 0, 12000))
+        frame.style.height = height + "px"
+        return
+      }
+      // The embedded page opened a dialog (kit/dialog.js) — bring the frame
+      // into view so the modal isn't centered inside an off-screen frame.
+      if (data.type === "selldesk:kit-scroll") {
+        if (typeof frame.scrollIntoView === "function") {
+          try {
+            frame.scrollIntoView({ behavior: "smooth", block: "center" })
+          } catch (_) {
+            frame.scrollIntoView()
+          }
+        }
+      }
     })
     view.body.appendChild(frame)
+    return view.root
+  }
+
+  /**
+   * Group — a container that nests other sections inside one card. Supports
+   * collapse: the header (title + chevron) toggles the whole body, and the
+   * state is remembered per group title in localStorage (falling back to the
+   * `defaultOpen` setting). Children render flat (no card-in-card) and keep
+   * working while collapsed — running jobs keep ticking, embedded iframes keep
+   * auto-resizing; they're just hidden.
+   *
+   * Settings: { title?, description?, collapsible? = true, defaultOpen? = true,
+   *             sections: [ …same shape as the page's sections… ] }
+   */
+  function renderGroup(settings) {
+    var title = str(settings.title, "Group")
+    var collapsible = settings.collapsible !== false
+    var children = Array.isArray(settings.sections) ? settings.sections : []
+    var view = card(title, str(settings.description, null) || undefined)
+    var body = view.body
+    var storageKey = "selldoes:kit-group:" + SLUG + ":" + title
+    var open = settings.defaultOpen !== false
+    var toggle = null
+    try {
+      var stored = window.localStorage.getItem(storageKey)
+      if (stored === "open") open = true
+      else if (stored === "closed") open = false
+    } catch (_) {}
+
+    function apply() {
+      body.hidden = !open
+      view.root.classList.toggle("kit-collapsed", !open)
+      if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false")
+    }
+
+    if (collapsible) {
+      view.root.classList.add("kit-card-group")
+      var head = view.root.querySelector(".kit-card-head")
+      if (head) {
+        head.classList.add("kit-card-head-toggle")
+        toggle = h("button", "kit-collapse-toggle")
+        toggle.type = "button"
+        toggle.setAttribute("aria-label", "Collapse / expand " + title)
+        toggle.appendChild(icon("chevron"))
+        head.appendChild(toggle)
+        // Clicking anywhere on the header toggles; the button keeps it
+        // keyboard-accessible (Enter/Space click bubbles up).
+        head.addEventListener("click", function () {
+          open = !open
+          apply()
+          try {
+            window.localStorage.setItem(storageKey, open ? "open" : "closed")
+          } catch (_) {}
+        })
+      }
+    }
+
+    apply()
+    NESTED++
+    try {
+      children.forEach(function (section) {
+        var node = renderSection(section || {})
+        if (node) body.appendChild(node)
+      })
+    } finally {
+      NESTED--
+    }
+    if (children.length === 0) {
+      body.appendChild(
+        h("p", "kit-muted", "This group has no sections yet — add nested components in the manifest or the visual builder."),
+      )
+    }
     return view.root
   }
 
@@ -568,6 +663,7 @@
       case "logs": return renderLogs(settings)
       case "links": return renderLinks(settings)
       case "component": return renderComponent(settings)
+      case "group": return renderGroup(settings)
       default:
         var view = card()
         view.root.classList.add("kit-dashed")

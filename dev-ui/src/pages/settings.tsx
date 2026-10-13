@@ -14,6 +14,7 @@ import {
   Sparkles,
   SquarePen,
   SquareTerminal,
+  Store,
   Trash2,
   Unplug,
 } from "lucide-react"
@@ -22,6 +23,7 @@ import { SkeletonCard } from "@/components/skeletons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -30,7 +32,7 @@ import { ConfirmDialog, DeleteFilesDialog } from "@/components/settings-dialogs"
 import { dev } from "@/lib/api"
 import { useBusySet } from "@/lib/use-busy"
 import { ACCENTS, ACCENT_NAMES, accentFor, type AccentName } from "@/lib/project-colors"
-import type { BumpMode, DevConfigResponse, StoreStatusResponse } from "@/lib/types"
+import type { BumpMode, DevConfigResponse, StoreStatusResponse, StoreVerifyResponse } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
 import { cn } from "@/lib/utils"
 import { ws } from "@/lib/ws-api"
@@ -123,7 +125,10 @@ export function SettingsPage() {
   const [storeError, setStoreError] = React.useState<string | null>(null)
   const [liveAppUrl, setLiveAppUrl] = React.useState("")
   const [liveApiKey, setLiveApiKey] = React.useState("")
-  const [liveStoreRef, setLiveStoreRef] = React.useState("")
+  // Store-picker dialog — filled by storeVerify (key → list of stores).
+  const [storePicker, setStorePicker] = React.useState<StoreVerifyResponse | null>(null)
+  const [storePickerUsingStoredKey, setStorePickerUsingStoredKey] = React.useState(false)
+  const [storePickId, setStorePickId] = React.useState<number | null>(null)
 
   React.useEffect(() => {
     let active = true
@@ -165,7 +170,6 @@ export function SettingsPage() {
         setStore(data)
         setStoreError(null)
         setLiveAppUrl(data.appUrl ?? "")
-        setLiveStoreRef(data.storeId ? String(data.storeId) : "")
       })
       .catch((cause) => {
         if (!active) return
@@ -177,18 +181,47 @@ export function SettingsPage() {
     }
   }, [])
 
-  const connectLiveStore = async () => {
+  /**
+   * Step 1 — verify the merchant API key (or reuse the stored one when
+   * changing store) and open the picker dialog with the account's stores.
+   */
+  const openStorePicker = async (usingStoredKey: boolean) => {
+    await run(
+      "store-verify",
+      async () => {
+        const result = await dev.storeVerify(
+          usingStoredKey
+            ? { useStoredKey: true }
+            : { appUrl: liveAppUrl.trim() || "https://selldoes.com", apiKey: liveApiKey.trim() },
+        )
+        setStorePicker(result)
+        setStorePickerUsingStoredKey(usingStoredKey)
+        setStorePickId(result.stores.length === 1 ? result.stores[0].id : (store?.storeId ?? result.stores[0]?.id ?? null))
+      },
+      configBusy,
+    )
+  }
+
+  const closeStorePicker = () => {
+    setStorePicker(null)
+    setStorePickId(null)
+  }
+
+  /** Step 2 — connect the picked store. */
+  const connectPickedStore = async () => {
+    if (storePicker === null || storePickId === null) return
     await run(
       "store-connect",
       async () => {
         const result = await dev.storeConnect({
-          appUrl: liveAppUrl.trim() || undefined,
-          apiKey: liveApiKey.trim(),
-          storeSlug: liveStoreRef.trim() || undefined,
-          storeId: /^\d+$/.test(liveStoreRef.trim()) ? liveStoreRef.trim() : undefined,
+          ...(storePickerUsingStoredKey
+            ? { useStoredKey: true }
+            : { appUrl: liveAppUrl.trim() || "https://selldoes.com", apiKey: liveApiKey.trim() }),
+          storeId: storePickId,
         })
         setStore(result)
         setLiveApiKey("")
+        closeStorePicker()
         toast(`Connected to ${result.storeName || result.storeSlug || result.storeId} — ctx.products now writes to the real store`, "success")
       },
       configBusy,
@@ -577,16 +610,18 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {store === null && storeError === null ? (
-            <SkeletonCard rows={2} className="border-0 bg-transparent p-0" />
-          ) : store === null && storeError !== null ? (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5">
-              <p className="text-xs font-semibold text-amber-600">The running dev server does not know /__dev/store</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Restart <code className="font-mono">selldoes dev</code> (and the workspace shell if you use it) so the preview picks up
-                the SDK update — the Store card talks to a dev server that is older than the UI.
-              </p>
-            </div>
+          {store === null ? (
+            storeError === null ? (
+              <SkeletonCard rows={2} className="border-0 bg-transparent p-0" />
+            ) : (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5">
+                <p className="text-xs font-semibold text-amber-600">The running dev server does not know /__dev/store</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Restart <code className="font-mono">selldoes dev</code> (and the workspace shell if you use it) so the preview picks up
+                  the SDK update — the Store card talks to a dev server that is older than the UI.
+                </p>
+              </div>
+            )
           ) : store.active ? (
             <>
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 px-3 py-2.5">
@@ -595,6 +630,10 @@ export function SettingsPage() {
                   Live — {store.connection?.storeSlug || store.connection?.storeId} @ {store.connection?.appUrl}
                 </span>
                 <span className="ml-auto flex gap-2">
+                  <Button size="sm" variant="outline" disabled={configBusy.anyBusy} onClick={() => void openStorePicker(true)}>
+                    {configBusy.isBusy("store-verify") ? <Loader2 className="animate-spin" /> : <Store />}
+                    Change store
+                  </Button>
                   <Button size="sm" variant="outline" disabled={configBusy.anyBusy} onClick={() => void disconnectLiveStore()}>
                     {configBusy.isBusy("store-disconnect") ? <Loader2 className="animate-spin" /> : <Unplug />}
                     Disconnect
@@ -607,7 +646,7 @@ export function SettingsPage() {
             </>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="live-app-url" className="text-xs">
                     App URL
@@ -635,27 +674,15 @@ export function SettingsPage() {
                     disabled={configBusy.anyBusy}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="live-store" className="text-xs">
-                    Store <span className="font-normal text-muted-foreground">(id or slug — blank = first)</span>
-                  </Label>
-                  <Input
-                    id="live-store"
-                    value={liveStoreRef}
-                    onChange={(event) => setLiveStoreRef(event.target.value)}
-                    placeholder={store.storeSlug ?? "6"}
-                    className="h-9 font-mono text-xs"
-                    disabled={configBusy.anyBusy}
-                  />
-                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" disabled={configBusy.anyBusy || !liveApiKey.trim()} onClick={() => void connectLiveStore()}>
-                  {configBusy.isBusy("store-connect") ? <Loader2 className="animate-spin" /> : <Plug />}
+                <Button size="sm" disabled={configBusy.anyBusy || !liveApiKey.trim()} onClick={() => void openStorePicker(false)}>
+                  {configBusy.isBusy("store-verify") ? <Loader2 className="animate-spin" /> : <Plug />}
                   Connect store
                 </Button>
                 <span className="text-[10.5px] text-muted-foreground">
-                  Applies immediately — no restart. The key is saved in this project&apos;s selldoes.config.json.
+                  Paste your key, pick a store from your account — applies immediately, no restart. The key is saved in this
+                  project&apos;s selldoes.config.json.
                 </span>
               </div>
             </>
@@ -792,6 +819,61 @@ export function SettingsPage() {
       </Card>
 
       {/* ── Dialogs ─────────────────────────────────────────────────────── */}
+      <Dialog
+        open={storePicker !== null}
+        onOpenChange={(open) => {
+          if (!open) closeStorePicker()
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Which store to connect?</DialogTitle>
+            <DialogDescription>
+              {storePickerUsingStoredKey ? "Stores on your saved API key" : `Stores on the account at ${storePicker?.appUrl ?? "https://selldoes.com"}`} —{" "}
+              <code className="font-mono">ctx.products</code> will proxy to the one you pick.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 space-y-1.5 overflow-y-auto">
+            {storePicker?.stores.map((option, index) => (
+              <button
+                key={option.id}
+                type="button"
+                disabled={configBusy.anyBusy}
+                onClick={() => setStorePickId(option.id)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                  storePickId === option.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 rounded-full border",
+                    storePickId === option.id ? "border-primary bg-primary" : "border-muted-foreground/40",
+                  )}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold">
+                    {option.name || option.slug || `Store #${option.id}`}
+                    {index === 0 ? <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(first)</span> : null}
+                  </span>
+                  <span className="block truncate font-mono text-[10.5px] text-muted-foreground">
+                    {option.slug ? `${option.slug} · ` : ""}id {option.id}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" disabled={configBusy.anyBusy} onClick={closeStorePicker}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={configBusy.anyBusy || storePickId === null} onClick={() => void connectPickedStore()}>
+              {configBusy.isBusy("store-connect") ? <Loader2 className="animate-spin" /> : <Plug />}
+              Connect
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DeleteFilesDialog project={deleteFilesFor} onClose={() => setDeleteFilesFor(null)} onDone={() => void refreshWorkspace()} />
       <ConfirmDialog
         open={confirmAction !== null}

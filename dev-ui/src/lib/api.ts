@@ -25,6 +25,7 @@ import type {
   ScaffoldCodeResult,
   ScaffoldUiResult,
   StoreStatusResponse,
+  StoreVerifyResponse,
   UiEntriesResponse,
   UserSettingsPatch,
   UserSettingsResponse,
@@ -72,9 +73,18 @@ export const dev = {
 
   // ── Live store connection (ctx.products → a real store) ───────────────────
   storeStatus: () => request<StoreStatusResponse>("/__dev/store"),
-  /** Verifies the merchant API key and points ctx.products at the real store. */
-  storeConnect: (input: { appUrl?: string; apiKey: string; storeId?: number | string; storeSlug?: string }) =>
-    post<StoreStatusResponse>("/__dev/store/connect", input),
+  /** Verifies the merchant API key and lists the account's stores (picker dialog). */
+  storeVerify: (input: { appUrl?: string; apiKey?: string; useStoredKey?: boolean }) =>
+    post<StoreVerifyResponse>("/__dev/store/verify", input),
+  /** Verifies the merchant API key and points ctx.products at the chosen store. */
+  storeConnect: (input: {
+    appUrl?: string
+    apiKey?: string
+    storeId?: number | string
+    storeSlug?: string
+    /** Reuse the API key already saved in selldoes.config.json (change store without re-paste). */
+    useStoredKey?: boolean
+  }) => post<StoreStatusResponse>("/__dev/store/connect", input),
   storeDisconnect: () => post<StoreStatusResponse>("/__dev/store/disconnect", {}),
   uploadAsset: (input: { folder: "assets" | "screenshots"; name: string; data: string }) =>
     post<{ path: string; url: string }>("/__dev/assets", input),
@@ -95,7 +105,8 @@ export const dev = {
   scaffoldJob: (input: { type: string; name?: string; description?: string; runtime?: "quickjs" | "node" }) =>
     post<ScaffoldCodeResult>("/__dev/scaffold/job", input),
   scaffoldHook: (input: { name: string }) => post<ScaffoldCodeResult>("/__dev/scaffold/hook", input),
-  scaffoldRoute: (input: { path: string; methods?: string[] }) => post<ScaffoldCodeResult>("/__dev/scaffold/route", input),
+  scaffoldRoute: (input: { path: string; methods?: string[]; routeKind?: "api" | "public" }) =>
+    post<ScaffoldCodeResult>("/__dev/scaffold/route", input),
 
   // ── Code editor ───────────────────────────────────────────────────────────
   files: () => request<FileTree>("/__dev/files"),

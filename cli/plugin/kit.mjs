@@ -21,7 +21,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** Shared runtime shipped into every plugin that uses kit sections. */
 const KIT_DIR = path.resolve(HERE, "..", "..", "kit")
 
-const RUNTIME_FILES = ["runtime.js", "runtime.css"]
+const RUNTIME_FILES = ["runtime.js", "runtime.css", "dialog.js"]
 
 /** "/" → "home", "/reports/daily" → "reports-daily". */
 export function kitPageName(pagePath) {

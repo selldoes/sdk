@@ -4,6 +4,7 @@ import {
   BookOpen,
   FileText,
   Frame,
+  Layers,
   Link2,
   Play,
   ScrollText,
@@ -32,6 +33,7 @@ export const KIT_COMPONENTS: KitComponentMeta[] = [
   { type: "stats", label: "Stats", description: "A row of metric cards (label, value, hint).", icon: BarChart2, group: "Content" },
   { type: "links", label: "Links", description: "Buttons linking to docs, dashboards or your site.", icon: Link2, group: "Content" },
   { type: "component", label: "Embedded UI", description: "Embed another of your plugin's UI files (ui/*.html) in a self-resizing iframe.", icon: Frame, group: "Content" },
+  { type: "group", label: "Group (collapsible)", description: "Nest other components inside one card — the header collapses/expands the whole group.", icon: Layers, group: "Content" },
   { type: "table", label: "Table", description: "Live rows from one of your API routes.", icon: Table, group: "Data" },
   { type: "logs", label: "Logs", description: "Recent dev-server output in a monospace panel.", icon: ScrollText, group: "Data" },
   { type: "job", label: "Job runner", description: "Run a declared job with a live transcript.", icon: Play, group: "Actions" },
@@ -62,6 +64,8 @@ export function defaultSettings(type: string, manifest: PluginManifest): Record<
       return { title: "Dev logs", lines: 20 }
     case "component":
       return { entry: "ui/panel.html", title: "Embedded UI" }
+    case "group":
+      return { title: "Group", collapsible: true, defaultOpen: true, sections: [] }
     case "links":
       return { items: [{ label: "Documentation", href: "https://selldoes.com" }] }
     default:

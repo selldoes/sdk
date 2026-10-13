@@ -108,6 +108,33 @@ test("route scaffold: honors the requested methods (upper-cased, deduped, valida
   assert.deepEqual(fallback.manifest.apiRoutes[fallback.manifest.apiRoutes.length - 1], { path: "/other", methods: ["GET"] })
 })
 
+test("route scaffold: public routes land in publicRoutes with their own wiring block", () => {
+  const root = tempPlugin(BASE)
+  const plan = planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "feed", routeKind: "public" })
+  assert.equal(plan.manifest.publicRoutes.length, 1)
+  assert.deepEqual(plan.manifest.publicRoutes[0], { path: "/feed", methods: ["GET"] })
+  assert.equal(plan.manifest.apiRoutes.length, 1, "apiRoutes untouched")
+  assert.match(plan.wiring, /<selldoes-scaffold:publicRoutes>/)
+  assert.match(plan.wiring, /module\.exports\.publicRoutes/)
+  applyCodePlan(root, plan)
+  const module = fs.readFileSync(path.join(root, plan.file), "utf8")
+  assert.match(module, /public API route/)
+
+  // The two kinds wire independently: a dashboard route still appends apiRoutes.
+  const second = planCodeScaffold({ pluginDir: root, manifest: plan.manifest, kind: "route", name: "stats" })
+  assert.match(second.wiring, /<selldoes-scaffold:apiRoutes>/)
+})
+
+test("route scaffold: :params are allowed in paths and documented in the module", () => {
+  const root = tempPlugin(BASE)
+  const plan = planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "/products/:id/restock", methods: ["POST"] })
+  assert.equal(plan.file, "routes/products-id-restock.js")
+  assert.deepEqual(plan.manifest.apiRoutes[plan.manifest.apiRoutes.length - 1], { path: "/products/:id/restock", methods: ["POST"] })
+  applyCodePlan(root, plan)
+  const module = fs.readFileSync(path.join(root, plan.file), "utf8")
+  assert.match(module, /request\.params/)
+})
+
 test("scaffolds reject duplicates and bad names", () => {
   const root = tempPlugin(BASE)
   assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "notes" }), /already declared/)
