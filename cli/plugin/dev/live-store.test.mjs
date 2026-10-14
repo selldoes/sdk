@@ -1,9 +1,10 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
+import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { createLiveProductsBridge, maskKey, readStoreBlock, storeView, writeStoreBlock } from "./live-store.mjs"
+import { connectStore, createLiveProductsBridge, maskKey, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
 
 test("readStoreBlock: defaults, env fallback and normalization", () => {
   assert.deepEqual(readStoreBlock(null), { live: false, appUrl: "", apiKey: "", storeId: null, storeSlug: "" })
@@ -62,4 +63,77 @@ test("bridge: update by unknown id fails with an actionable message", async () =
   const bridge = createLiveProductsBridge({ appUrl: "https://x.com", apiKey: "sk_k", storeId: 1 })
   await assert.rejects(() => bridge.update(999, { price: "1.00" }), /call findBySku first/)
   await assert.rejects(() => bridge.get(999), /call findBySku first/)
+})
+
+// ── verifyStoreKey / connectStore against a stub platform ───────────────────
+const KEY = "sk_test_aaaa1111"
+const STORES = [
+  { id: 3, slug: "shop-a", name: "Shop A" },
+  { id: 8, slug: "shop-b", name: "Shop B" },
+]
+
+async function withStubPlatform(fn) {
+  const server = http.createServer((req, res) => {
+    if (req.url === "/api/templates/me" && req.headers["x-api-key"] === KEY) {
+      res.setHeader("content-type", "application/json")
+      return res.end(JSON.stringify({ userId: 7, stores: STORES }))
+    }
+    res.statusCode = 401
+    res.end(JSON.stringify({ error: "invalid key" }))
+  }).listen(0)
+  await new Promise((r) => server.once("listening", r))
+  const base = `http://127.0.0.1:${server.address().port}`
+  try {
+    await fn(base)
+  } finally {
+    server.close()
+  }
+}
+
+test("verifyStoreKey: returns every store on the account + userId, commits nothing", async () => {
+  await withStubPlatform(async (base) => {
+    const verified = await verifyStoreKey({ appUrl: base, apiKey: KEY })
+    assert.equal(verified.appUrl, base)
+    assert.equal(verified.userId, 7)
+    assert.deepEqual(verified.stores, STORES)
+  })
+})
+
+test("connectStore: picks the matching store, else the account's first", async () => {
+  await withStubPlatform(async (base) => {
+    const first = await connectStore({ appUrl: base, apiKey: KEY })
+    assert.equal(first.storeId, 3)
+    assert.equal(first.storeSlug, "shop-a")
+    assert.equal(first.storeName, "Shop A")
+
+    const byId = await connectStore({ appUrl: base, apiKey: KEY, storeId: "8" })
+    assert.equal(byId.storeId, 8)
+    assert.equal(byId.storeSlug, "shop-b")
+
+    const bySlug = await connectStore({ appUrl: base, apiKey: KEY, storeSlug: "shop-a" })
+    assert.equal(bySlug.storeId, 3)
+  })
+})
+
+test("verifyStoreKey: rejects developer tokens and bad keys with clear errors", async () => {
+  await withStubPlatform(async (base) => {
+    await assert.rejects(() => verifyStoreKey({ appUrl: base, apiKey: "sk_dev_x" }), /developer token/)
+    await assert.rejects(() => verifyStoreKey({ appUrl: base, apiKey: "sk_test_wrong" }), /invalid key/)
+    await assert.rejects(() => verifyStoreKey({ appUrl: base, apiKey: "" }), /merchant API key/)
+  })
+})
+
+test("verifyStoreKey: app URL falls back to SELLDOES_APP_URL when omitted", async () => {
+  await withStubPlatform(async (base) => {
+    const previous = process.env.SELLDOES_APP_URL
+    process.env.SELLDOES_APP_URL = base
+    try {
+      const verified = await verifyStoreKey({ apiKey: KEY })
+      assert.equal(verified.appUrl, base)
+      assert.deepEqual(verified.stores, STORES)
+    } finally {
+      if (previous === undefined) delete process.env.SELLDOES_APP_URL
+      else process.env.SELLDOES_APP_URL = previous
+    }
+  })
 })

@@ -35,6 +35,45 @@ const SDK_ROOT = path.resolve(HERE, "..")
 const UI_DIST = path.join(HERE, "plugin", "dev", "ui-dist")
 const BIN = path.join(SDK_ROOT, "bin", "selldoes.mjs")
 
+/**
+ * SDK-development mode (`--dev`): watch the SDK's own server sources so edits
+ * apply without manual restarts. The shell UI is served through Vite (HMR),
+ * but preview children are separate processes that load `cli/**` at spawn
+ * time — they must be restarted when those files change. Build output
+ * (ui-dist) is ignored: it is served from disk on every request. Returns a
+ * dispose function. `roots` is injectable for tests.
+ */
+export function watchSdkSources(onChange, roots = [path.join(SDK_ROOT, "cli"), path.join(SDK_ROOT, "bin")]) {
+  let timer = null
+  const watchers = []
+  const trigger = (filename) => {
+    const relative = String(filename ?? "").replace(/\\/g, "/")
+    if (relative.includes("ui-dist") || relative.includes("node_modules") || relative.includes(".test.")) return
+    if (relative && !/\.(mjs|js|json)$/.test(relative)) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = null
+      onChange(relative)
+    }, 350)
+  }
+  for (const root of roots) {
+    try {
+      const watcher = fs.watch(root, { recursive: true }, (_event, filename) => trigger(filename))
+      watcher.on("error", () => watcher.close())
+      watchers.push(watcher)
+    } catch {
+      // recursive fs.watch is platform-dependent — skip quietly when unsupported
+    }
+  }
+  return Object.assign(
+    () => {
+      if (timer) clearTimeout(timer)
+      for (const watcher of watchers) watcher.close()
+    },
+    { active: watchers.length > 0 },
+  )
+}
+
 const UI_CSP = [
   "default-src 'self' data: blob:",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
@@ -174,6 +213,7 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
 
   // ── SDK-dev mode: serve the dev-ui through Vite (HMR) ──────────────────────
   let devMiddleware = null
+  let disposeSdkWatch = null
   if (dev) {
     const viteEntry = path.join(SDK_ROOT, "dev-ui", "node_modules", "vite", "dist", "node", "index.js")
     if (!fs.existsSync(viteEntry)) {
@@ -381,6 +421,32 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     return waitForPreview(preview)
   }
 
+  /**
+   * SDK-dev auto-reload: when the SDK's own server sources change, every live
+   * preview runs a stale copy of `cli/**` (children load it at spawn time).
+   * Restart them in place — the shell URL, ports and selection stay put.
+   * Serialized: rapid save bursts coalesce into one restart per preview.
+   */
+  let previewRestartChain = Promise.resolve()
+  function restartLivePreviews(reason) {
+    previewRestartChain = previewRestartChain.then(async () => {
+      const alive = [...previews.values()].filter((preview) => preview.proc && preview.proc.exitCode === null)
+      if (alive.length === 0) return
+      console.log(`  ${reason} — restarting ${alive.length} preview(s)`)
+      for (const preview of alive) {
+        const project = listProjects().find((entry) => entry.id === preview.projectId)
+        stopPreview(preview.id)
+        if (!project || project.missing) continue
+        try {
+          await spawnOnce(project)
+        } catch (error) {
+          console.log(`  preview ${project.slug} restart failed: ${error.message}`)
+        }
+      }
+    })
+    return previewRestartChain
+  }
+
   function listPreviews() {
     return [...previews.values()].map((preview) => ({
       id: preview.id,
@@ -534,6 +600,17 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
       server: { middlewareMode: true, hmr: { server } },
     })
     devMiddleware = viteServer.middlewares
+
+    // SDK-dev auto-reload: Vite hot-reloads the shell UI, and this watcher
+    // restarts preview children when the SDK's own server code changes — so
+    // edits to cli/** apply without a manual preview restart.
+    disposeSdkWatch = watchSdkSources((file) => {
+      const previewCode = file.startsWith("plugin/")
+      void restartLivePreviews(`SDK code changed (${file})`)
+      if (!previewCode) {
+        console.log("  note: workspace shell code changed — restart the workspace once to pick it up")
+      }
+    })
   }
 
   // The shell opens on the current project's URL (/{projectId}) — bare root
@@ -543,6 +620,7 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
   const url = `http://${host === "0.0.0.0" ? "localhost" : host}:${listenPort}${current && !current.missing ? `/${current.id}` : ""}`
 
   const shutdown = () => {
+    disposeSdkWatch?.()
     for (const preview of previews.values()) {
       if (preview.proc && preview.proc.exitCode === null) preview.proc.kill()
     }

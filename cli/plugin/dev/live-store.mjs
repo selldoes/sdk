@@ -83,11 +83,16 @@ export function maskKey(value) {
  * settings UI shows this list in the "which store?" picker dialog).
  * `GET {appUrl}/api/templates/me` with `x-api-key` returns the user + stores.
  * Nothing is written here — use connectStore to commit a selection.
+ *
+ * The app URL is resolved automatically: explicit argument → SELLDOES_APP_URL
+ * → https://selldoes.com. Callers never need to supply one.
  */
 export async function verifyStoreKey({ appUrl, apiKey }) {
-  const base = String(appUrl ?? "").replace(/\/+$/, "")
+  const base =
+    String(appUrl ?? "").replace(/\/+$/, "") ||
+    String(process.env.SELLDOES_APP_URL ?? "").replace(/\/+$/, "") ||
+    "https://selldoes.com"
   const key = String(apiKey ?? "").trim()
-  if (!base) throw new Error("Provide the Selldoes app URL, e.g. https://selldoes.com")
   if (!key) throw new Error("Provide a merchant API key (Dashboard → Settings → API Keys).")
   if (key.startsWith("sk_dev_")) {
     throw new Error("sk_dev_… is a developer token. Live store connections use a merchant API key (sk_…).")

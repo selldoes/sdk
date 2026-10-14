@@ -274,7 +274,9 @@ async function workspaceCommand(args, flags) {
   console.log(`\n  Selldoes workspace → ${server.url}`)
   console.log(devMode ? "  SDK-dev mode — dev-ui served by Vite (hot reload)" : "  Web workspace — projects, previews, AI assistant")
   console.log("  Ctrl+C stops the server and any running previews\n")
-  if (flags["no-open"] !== true) {
+  // DEV_OPEN_SUPPRESS is set by process supervisors when they restart the
+  // command — the tab from the first launch is already open.
+  if (flags["no-open"] !== true && process.env.DEV_OPEN_SUPPRESS !== "1") {
     await waitForServer(server.url)
     openBrowser(server.url)
   }

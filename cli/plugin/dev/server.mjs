@@ -285,6 +285,25 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   }
   applyLiveStore()
 
+  /**
+   * Target Selldoes instance for the live-store bridge. Explicit input wins,
+   * then the project's saved block — otherwise reuse whatever instance the
+   * developer account is logged into (~/.selldoes.json via developerAuth,
+   * which itself falls back to SELLDOES_APP_URL / https://selldoes.com).
+   * So a merchant API key alone is enough: no URL to type.
+   */
+  const resolveAppUrl = async (explicit) => {
+    const clean = (value) => String(value ?? "").replace(/\/+$/, "") || null
+    const target = clean(explicit) || clean(readStoreBlock(readConfig()).appUrl)
+    if (target) return target
+    try {
+      const account = await import("../../account.mjs")
+      return account.developerAuth().appUrl
+    } catch {
+      return "https://selldoes.com"
+    }
+  }
+
   const { ctx, outbox, events, jobEvents, pendingJobs } = createMockContext({
     pluginDir,
     manifest: manifestStore.read(),
@@ -697,7 +716,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         try {
           const verified = await verifyStoreKey({
-            appUrl: body?.appUrl || stored.appUrl || undefined,
+            appUrl: await resolveAppUrl(body?.appUrl),
             apiKey,
           })
           return json(res, 200, {
@@ -720,7 +739,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         try {
           const connected = await connectStore({
-            appUrl: body?.appUrl || stored.appUrl || undefined,
+            appUrl: await resolveAppUrl(body?.appUrl),
             apiKey,
             storeId: body?.storeId,
             storeSlug: body?.storeSlug,
@@ -739,6 +758,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
             ...storeView(readConfig()),
             active: Boolean(liveStore.bridge),
             storeName: connected.storeName,
+            connection: { appUrl: connected.appUrl, storeId: connected.storeId, storeSlug: connected.storeSlug },
           })
         } catch (error) {
           return json(res, 400, { error: error.message })

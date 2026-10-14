@@ -123,7 +123,6 @@ export function SettingsPage() {
   // ── Live store connection ─────────────────────────────────────────────────
   const [store, setStore] = React.useState<StoreStatusResponse | null>(null)
   const [storeError, setStoreError] = React.useState<string | null>(null)
-  const [liveAppUrl, setLiveAppUrl] = React.useState("")
   const [liveApiKey, setLiveApiKey] = React.useState("")
   // Store-picker dialog — filled by storeVerify (key → list of stores).
   const [storePicker, setStorePicker] = React.useState<StoreVerifyResponse | null>(null)
@@ -169,7 +168,6 @@ export function SettingsPage() {
         if (!active) return
         setStore(data)
         setStoreError(null)
-        setLiveAppUrl(data.appUrl ?? "")
       })
       .catch((cause) => {
         if (!active) return
@@ -189,11 +187,7 @@ export function SettingsPage() {
     await run(
       "store-verify",
       async () => {
-        const result = await dev.storeVerify(
-          usingStoredKey
-            ? { useStoredKey: true }
-            : { appUrl: liveAppUrl.trim() || "https://selldoes.com", apiKey: liveApiKey.trim() },
-        )
+        const result = await dev.storeVerify(usingStoredKey ? { useStoredKey: true } : { apiKey: liveApiKey.trim() })
         setStorePicker(result)
         setStorePickerUsingStoredKey(usingStoredKey)
         setStorePickId(result.stores.length === 1 ? result.stores[0].id : (store?.storeId ?? result.stores[0]?.id ?? null))
@@ -214,9 +208,7 @@ export function SettingsPage() {
       "store-connect",
       async () => {
         const result = await dev.storeConnect({
-          ...(storePickerUsingStoredKey
-            ? { useStoredKey: true }
-            : { appUrl: liveAppUrl.trim() || "https://selldoes.com", apiKey: liveApiKey.trim() }),
+          ...(storePickerUsingStoredKey ? { useStoredKey: true } : { apiKey: liveApiKey.trim() }),
           storeId: storePickId,
         })
         setStore(result)
@@ -646,44 +638,25 @@ export function SettingsPage() {
             </>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="live-app-url" className="text-xs">
-                    App URL
-                  </Label>
-                  <Input
-                    id="live-app-url"
-                    value={liveAppUrl}
-                    onChange={(event) => setLiveAppUrl(event.target.value)}
-                    placeholder="https://selldoes.com"
-                    className="h-9 font-mono text-xs"
-                    disabled={configBusy.anyBusy}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="live-api-key" className="text-xs">
-                    Merchant API key
-                  </Label>
-                  <Input
-                    id="live-api-key"
-                    type="password"
-                    value={liveApiKey}
-                    onChange={(event) => setLiveApiKey(event.target.value)}
-                    placeholder={store.apiKeySet ? store.apiKeyMasked ?? "sk_…" : "sk_… (Dashboard → Settings → API Keys)"}
-                    className="h-9 font-mono text-xs"
-                    disabled={configBusy.anyBusy}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="live-api-key" className="text-xs">
+                  Merchant API key
+                </Label>
+                <Input
+                  id="live-api-key"
+                  type="password"
+                  value={liveApiKey}
+                  onChange={(event) => setLiveApiKey(event.target.value)}
+                  placeholder={store.apiKeySet ? store.apiKeyMasked ?? "sk_…" : "sk_… (Dashboard → Settings → API Keys)"}
+                  className="h-9 font-mono text-xs"
+                  disabled={configBusy.anyBusy}
+                />
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" disabled={configBusy.anyBusy || !liveApiKey.trim()} onClick={() => void openStorePicker(false)}>
                   {configBusy.isBusy("store-verify") ? <Loader2 className="animate-spin" /> : <Plug />}
                   Connect store
                 </Button>
-                <span className="text-[10.5px] text-muted-foreground">
-                  Paste your key, pick a store from your account — applies immediately, no restart. The key is saved in this
-                  project&apos;s selldoes.config.json.
-                </span>
               </div>
             </>
           )}
