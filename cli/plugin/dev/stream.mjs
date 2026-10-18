@@ -7,10 +7,14 @@ import { SKIP_DIRS, listProjectFiles } from "./project-files.mjs"
  *
  *   GET /__dev/stream  →  event: hello|files|build|log
  *
+ * `bootstrap()` runs per connection and can replay current state (the build
+ * status) so a page reconnecting after an SDK restart refreshes its preview
+ * without a manual reload.
+ *
  * The workspace shell proxies the preview child byte-for-byte, so this works
  * in both `selldoes` workspace mode and standalone `selldoes dev`.
  */
-export function createStream() {
+export function createStream({ bootstrap } = {}) {
   const clients = new Set()
 
   const drop = (client) => {
@@ -30,6 +34,18 @@ export function createStream() {
       "X-Accel-Buffering": "no",
     })
     res.write("event: hello\ndata: {}\n\n")
+    if (bootstrap) {
+      // A fresh client (including a page reconnecting after a restart) gets
+      // the current build status so its preview can refresh itself.
+      try {
+        for (const event of bootstrap() ?? []) {
+          if (!event?.event) continue
+          res.write(`event: ${event.event}\ndata: ${JSON.stringify(event.data ?? {})}\n\n`)
+        }
+      } catch {
+        // bootstrap is best-effort — the stream still works without it
+      }
+    }
     const client = { res }
     clients.add(client)
     const keepAlive = setInterval(() => {

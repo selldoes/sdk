@@ -25,6 +25,7 @@ import path from "node:path"
  */
 
 const EXTERNAL_PRODUCTS = "/api/external/products"
+const EXTERNAL_AI_PROMPTS = "/api/external/ai/prompts"
 /** Fields `full=1` returns — mirrors what plugins read back from findBySku. */
 const FULL_FIELDS = ["id", "sku", "name", "price", "status", "category", "subCategory", "image", "mainImage", "variationGroups", "customAttributes"]
 
@@ -153,6 +154,58 @@ export async function connectStore({ appUrl, apiKey, storeId, storeSlug }) {
 }
 
 /**
+ * Builds the live `ctx.ai` prompts bridge (saved AI prompts from Dashboard →
+ * AI Prompts). Backed by the platform's merchant API
+ * (`/api/external/ai/prompts`) — an older host that answers 404 surfaces a
+ * clear "deploy the latest Selldesk" error instead of an empty list.
+ */
+export function createLivePromptsBridge(connection, log = () => {}) {
+  const { appUrl, apiKey, storeId } = connection
+
+  const call = async (search = "") => {
+    const params = new URLSearchParams({ storeId: String(storeId) })
+    const extra = String(search ?? "").replace(/^\?/, "")
+    if (extra) {
+      for (const [key, value] of new URLSearchParams(extra)) params.append(key, value)
+    }
+    const url = `${appUrl}${EXTERNAL_AI_PROMPTS}?${params.toString()}`
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    })
+    const text = await res.text()
+    let data = null
+    try {
+      data = JSON.parse(text)
+    } catch {
+      // non-JSON body
+    }
+    if (res.status === 404 && !data?.error) {
+      throw new Error("the store's platform does not expose AI prompt listing — deploy the latest Selldesk (GET /api/external/ai/prompts)")
+    }
+    if (!res.ok) {
+      const detail = data?.error || res.statusText || "request failed"
+      throw new Error(`${detail} [${res.status} GET ${url}]`)
+    }
+    return data
+  }
+
+  return {
+    async list(opts = {}) {
+      const data = await call(opts.type ? `type=${encodeURIComponent(String(opts.type))}` : "")
+      return Array.isArray(data?.prompts) ? data.prompts : []
+    },
+    async get(id) {
+      // The external API lists rather than fetches by id — filter client-side
+      // (the prompt library is small) to keep one endpoint.
+      const prompts = await this.list()
+      return prompts.find((prompt) => Number(prompt.id) === Number(id)) ?? null
+    },
+  }
+}
+
+/**
  * Builds the live `ctx.products` bridge. `connection` is the resolved
  * { appUrl, apiKey, storeId } — every call is store-scoped by the API key's
  * user plus the explicit `storeId` parameter.
@@ -165,8 +218,18 @@ export function createLiveProductsBridge(connection, log = () => {}) {
   const { appUrl, apiKey, storeId } = connection
   const idToSku = new Map()
 
+  /**
+   * Every external-products request is store-scoped. Build the query with
+   * URLSearchParams — the old string concatenation glued `list=all` onto the
+   * path (`/productslist=all&storeId=…`) and every GET answered 404.
+   */
   const call = async (method, search = "", body) => {
-    const url = `${appUrl}${EXTERNAL_PRODUCTS}${search}${search ? "&" : "?"}storeId=${storeId}`
+    const params = new URLSearchParams({ storeId: String(storeId) })
+    const extra = String(search ?? "").replace(/^\?/, "")
+    if (extra) {
+      for (const [key, value] of new URLSearchParams(extra)) params.append(key, value)
+    }
+    const url = `${appUrl}${EXTERNAL_PRODUCTS}?${params.toString()}`
     const res = await fetch(url, {
       method,
       headers: {
@@ -183,8 +246,24 @@ export function createLiveProductsBridge(connection, log = () => {}) {
     } catch {
       // non-JSON body
     }
-    if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText} (${EXTERNAL_PRODUCTS})`)
+    if (!res.ok) {
+      const detail = data?.error || res.statusText || "request failed"
+      throw new Error(`${detail} [${res.status} ${method} ${url}]`)
+    }
     return data
+  }
+
+  /**
+   * `full=1` returns the whole product row next to `exists` on current
+   * Selldesk deploys. An older platform answers `{exists:true}` alone, which
+   * makes catalog reads impossible — surface that once instead of silently
+   * returning null for every SKU.
+   */
+  let warnedMissingFull = false
+  const warnMissingFullRead = () => {
+    if (warnedMissingFull) return
+    warnedMissingFull = true
+    log("[live] the store's platform answered `exists` without the full product row — deploy the latest Selldesk to enable catalog reads (findBySku / refresh)")
   }
 
   const remember = (product) => {
@@ -195,7 +274,11 @@ export function createLiveProductsBridge(connection, log = () => {}) {
   return {
     async findBySku(sku) {
       const data = await call("GET", `sku=${encodeURIComponent(String(sku))}&full=1`)
-      if (!data?.exists || !data?.product) return null
+      if (!data?.exists) return null
+      if (!data?.product) {
+        warnMissingFullRead()
+        return null
+      }
       return remember(data.product)
     },
 
@@ -208,11 +291,14 @@ export function createLiveProductsBridge(connection, log = () => {}) {
     async list(opts = {}) {
       const data = await call("GET", "list=all")
       const skus = Array.isArray(data?.skus) ? data.skus : []
-      const capped = opts.limit ? skus.slice(0, Number(opts.limit)) : skus
+      const offset = Math.max(0, Number(opts.offset) || 0)
+      const limit = Number(opts.limit) || 0
+      const page = limit ? skus.slice(offset, offset + limit) : skus.slice(offset)
       const rows = []
-      for (const sku of capped) {
+      for (const sku of page) {
         const full = await call("GET", `sku=${encodeURIComponent(String(sku))}&full=1`)
         if (full?.product) rows.push(remember(full.product))
+        else if (full?.exists) warnMissingFullRead()
       }
       return rows
     },

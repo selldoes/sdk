@@ -208,6 +208,31 @@ export interface PluginAI {
     size?: string
     aspectRatio?: string
   }): Promise<{ url?: string; base64?: string }>
+  /**
+   * List the store's saved AI prompts (Dashboard → AI Prompts) plus the system
+   * defaults — surface a prompt picker instead of asking the merchant for a
+   * hard-coded numeric id. Requires `ai:use`.
+   */
+  listPrompts(opts?: { type?: "text" | "image" }): Promise<PluginAIPrompt[]>
+  /** Fetch one saved prompt by id; null when missing or not visible to the store. */
+  getPrompt(id: number): Promise<PluginAIPrompt | null>
+}
+
+/** A saved AI prompt as exposed to plugins (`ctx.ai.listPrompts` / `ctx.ai.getPrompt`). */
+export interface PluginAIPrompt {
+  id: number
+  name: string
+  description: string | null
+  /** "text" (copy generation) or "image". */
+  type: string
+  /** What the prompt is bound to, e.g. "description", "bulletpoints", "mainImage", "custom". */
+  field: string
+  /** The prompt template text. */
+  template: string
+  provider: string
+  model: string
+  isDefault: boolean
+  aspectRatio: string | null
 }
 
 export interface PluginFileUploadInput {

@@ -68,12 +68,16 @@ projects (e.g. a first-party plugin) into the same workspace and develop them
 against the local SDK — that's the dogfood loop. Installed users get the built
 UI and never touch Vite.
 
-> **Restart the server after backend edits.** Vite hot-reloads only the UI
-> (`dev-ui/src`). The server-side `cli/*.mjs` modules are loaded once at
-> startup and cached by Node for the process lifetime, so a new `/__ws/*`
-> route added after boot answers `Unknown workspace route` until you restart
-> (`Ctrl+C`, then `npm run dev` again). The UI will happily show buttons for
-> routes the running server does not know yet.
+> **The SDK reloads itself.** Vite hot-reloads the UI (`dev-ui/src`). Edits to
+> the CLI's own sources apply automatically: `cli/plugin/**` and `kit/**`
+> changes rebuild and restart the live previews in place, while shell-level
+> sources (`cli/*.mjs`, `bin/**`) restart the workspace child itself — same
+> port, browser reconnects, and a reconnecting preview page refreshes its
+> iframe, so new kit runtimes apply without a manual reload. Plugin edits made
+> outside the preview (VS Code, the AI) rebuild the manifest, kit pages and UI
+> bundle too. `--no-watch` disables the supervisor, and debugger launches keep
+> the single-process layout so breakpoints keep working. From a checkout, a
+> standalone `selldoes dev` is supervised the same way.
 
 ## Commands
 
@@ -89,7 +93,7 @@ UI and never touch Vite.
 | `selldoes create [dir] --ai "…"` | Scaffold with AI — validated before a single file is written |
 | `selldoes ask ["…"]` | Terminal assistant: chat about the current plugin, apply edits with `--yes` |
 | `selldoes add <pkg>` | Install an npm package and declare it in `plugin.json` |
-| `selldoes dev` | Preview server for a project (`:4590`, or spawned by the workspace). Project settings → **Store** connects a real store (merchant API key) so `ctx.products` writes to live catalog data — no publish needed to test against real products |
+| `selldoes dev` | Preview server for a project (`:4590`, or spawned by the workspace). Project settings → **Store** connects a real store (merchant API key) so `ctx.products` writes to live catalog data — no publish needed to test against real products. From an SDK checkout it runs under a supervisor (`cli/`, `bin/`, `kit/` edits restart it; `--no-watch` disables) |
 | `selldoes build` / `pack` / `validate` | Bundle / zip / validate |
 | `selldoes bump [patch\|minor\|major]` | Increase `plugin.json` version (the Ship page can do it as part of publish) |
 | `selldoes publish` | Publish through your developer account (`sk_dev_…`) |

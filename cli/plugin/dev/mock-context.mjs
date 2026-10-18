@@ -1,6 +1,36 @@
 import fs from "node:fs"
 import path from "node:path"
 
+/** Dev-preview prompt library for `ctx.ai.listPrompts` (override: `ai.mockPrompts`). */
+const DEFAULT_MOCK_PROMPTS = [
+  {
+    id: 1,
+    name: "Product description",
+    description: "System default — SEO copy",
+    type: "text",
+    field: "description",
+    template: "Write a compelling product description for:\n{product}",
+    isDefault: true,
+  },
+  {
+    id: 2,
+    name: "Bullet points",
+    description: "System default — 3-5 bullet points",
+    type: "text",
+    field: "bulletpoints",
+    template: "Generate 3-5 bullet points for:\n{product}",
+  },
+  {
+    id: 15,
+    name: "Vintage radio cover",
+    description: "Album-cover style main image",
+    type: "image",
+    field: "mainImage",
+    template: "Redraw the reference image as a vintage radio album cover",
+    aspectRatio: "1:1",
+  },
+]
+
 /**
  * Builds a `PluginContext` that mirrors the production sandbox for local
  * development: permission checks, store scoping, allowed-tables enforcement,
@@ -12,9 +42,10 @@ import path from "node:path"
  */
 export function createMockContext({ pluginDir, manifest, getManifest, db, storeId, config = {}, devDir, log = () => {}, liveStore = null }) {
   /**
-   * Live store bridge (`{ bridge }` — mutated by the dev server's /__dev/store
-   * connect/disconnect so switching modes needs no restart). When `bridge` is
-   * set, ctx.products proxies to the real store through the merchant API.
+   * Live store bridge (`{ bridge, prompts }` — mutated by the dev server's
+   * /__dev/store connect/disconnect so switching modes needs no restart). When
+   * `bridge` is set, ctx.products proxies to the real store through the
+   * merchant API; `prompts` does the same for ctx.ai prompt listing.
    */
   const live = liveStore ?? { bridge: null }
   const liveProducts = () => live.bridge
@@ -186,6 +217,36 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
         requirePermission("ai:use", "ctx.ai.image")
         log("[ai] image()")
         return { url: config.ai?.mockImage ?? "" }
+      },
+      async listPrompts(opts = {}) {
+        requirePermission("ai:use", "ctx.ai.listPrompts")
+        // Live store: the platform's saved prompt library (Dashboard → AI Prompts).
+        if (live.prompts) {
+          const prompts = await live.prompts.list(opts)
+          log(`[live] ai.listPrompts → ${prompts.length} prompt(s)`)
+          return prompts
+        }
+        log(`[ai] listPrompts(${opts.type ?? "all"}) (mock)`)
+        // Dev mock library — override with `ai.mockPrompts` in selldoes.config.json.
+        const prompts = (Array.isArray(config.ai?.mockPrompts) ? config.ai.mockPrompts : DEFAULT_MOCK_PROMPTS).map((prompt) => ({
+          id: prompt.id,
+          name: prompt.name,
+          description: prompt.description ?? null,
+          type: prompt.type ?? "text",
+          field: prompt.field ?? "custom",
+          template: prompt.template ?? "",
+          provider: prompt.provider ?? "mock",
+          model: prompt.model ?? "mock",
+          isDefault: prompt.isDefault === true,
+          aspectRatio: prompt.aspectRatio ?? null,
+        }))
+        return opts.type ? prompts.filter((prompt) => prompt.type === String(opts.type)) : prompts
+      },
+      async getPrompt(id) {
+        requirePermission("ai:use", "ctx.ai.getPrompt")
+        if (live.prompts) return live.prompts.get(id)
+        const prompts = await this.listPrompts()
+        return prompts.find((prompt) => prompt.id === Number(id)) ?? null
       },
     },
 

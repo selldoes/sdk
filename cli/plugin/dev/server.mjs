@@ -3,12 +3,13 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { contentTypeFor, readJson } from "../../util.mjs"
+import { reclaimPort } from "../../port.mjs"
 import { sendNotFound } from "../../not-found-page.mjs"
 import { openInEditor, openTerminal } from "../../open-editor.mjs"
 import { buildPlugin, collectUiEntries } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
-import { connectStore, createLiveProductsBridge, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import { connectStore, createLiveProductsBridge, createLivePromptsBridge, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
 import { PluginRunner, cleanPath, matchDeclaredRoute } from "./runner.mjs"
 import { ManifestStore } from "./manifest-store.mjs"
 import { DevState } from "./dev-state.mjs"
@@ -141,8 +142,11 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   const storeName = String(config.storeName ?? "Dev Store")
   const devDir = path.join(pluginDir, ".selldoes-dev")
 
-  const stream = createStream()
   const logs = []
+  const buildStatus = { rebuilds: 0, builtAt: new Date().toISOString(), lastError: null, errors: [] }
+  // Fresh SSE clients (a page reconnecting after an SDK restart) replay the
+  // build status, which triggers the preview iframe to reload itself.
+  const stream = createStream({ bootstrap: () => [{ event: "build", data: buildStatus }] })
   const log = (line) => {
     const entry = `[${new Date().toLocaleTimeString()}] ${line}`
     logs.push(entry)
@@ -151,8 +155,6 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     process.stdout.write(`  ${entry}\n`)
     stream.broadcast("log", { line: entry })
   }
-
-  const buildStatus = { rebuilds: 0, builtAt: new Date().toISOString(), lastError: null, errors: [] }
   /** Package compatibility probes, keyed by `name@version`. */
   const packageProbeCache = new Map()
   /**
@@ -192,6 +194,8 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
   seedDemoTables(db, storeId)
 
   const runner = new PluginRunner({ pluginDir, manifest: manifestStore.read(), devDir, log })
+  /** When the last rebuild finished — the disk watcher suppresses its own echoes. */
+  let lastRebuildAt = 0
   const rebuildAll = async () => {
     try {
       runner.manifest = manifestStore.read()
@@ -201,6 +205,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       buildStatus.builtAt = new Date().toISOString()
       buildStatus.lastError = null
       buildStatus.errors = []
+      lastRebuildAt = Date.now()
       log(`rebuilt (bundle${manifestHasUi(manifestStore.read()) ? " + ui" : ""})`)
       stream.broadcast("build", { ...buildStatus })
     } catch (error) {
@@ -264,7 +269,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
    * cli/plugin/dev/live-store.mjs. The bridge object is swapped in place so
    * connect/disconnect applies to running jobs immediately.
    */
-  const liveStore = { bridge: null, connection: null }
+  const liveStore = { bridge: null, prompts: null, connection: null }
   const applyLiveStore = () => {
     const block = readStoreBlock(readConfig())
     if (block.live && block.appUrl && block.apiKey && block.storeId) {
@@ -275,11 +280,13 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         storeSlug: block.storeSlug,
       }
       liveStore.bridge = createLiveProductsBridge(liveStore.connection, log)
+      liveStore.prompts = createLivePromptsBridge(liveStore.connection, log)
       log(`live store connected — ctx.products → ${block.appUrl} (store ${block.storeSlug || block.storeId})`)
       return true
     }
     if (liveStore.bridge) log("live store disconnected — ctx.products back on the local mock")
     liveStore.bridge = null
+    liveStore.prompts = null
     liveStore.connection = null
     return false
   }
@@ -330,16 +337,37 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
    * Platform-shaped job rows for the compiled kit runtime. The dev runner runs
    * a job to completion (bounded ticks, queued jobs drained) in one call, so
    * the preview's Run buttons behave like the host: start → progress → done.
+   *
+   * When a run exhausts its tick budget it is parked as "paused" WITH its
+   * checkpointed state, and the kit runtime's `POST /jobs/:id/tick` continues
+   * it from where it stopped — mirroring how the platform resumes paused jobs
+   * instead of spinning on a row that never advances.
    */
   const mockJobs = []
   let mockJobCursor = 0
-  const runMockJob = async ({ type, input, maxTicks = 200 }) => {
+  /** Steps one paused job continues per /tick call (bounded further by the wall-clock budget). */
+  const TICK_STEPS_PER_CALL = 20
+  /** Wall-clock budget per /tick continuation call (initial POSTs use the job's tickBudgetMs). */
+  const TICK_BUDGET_MS = 10_000
+  const MAX_TICK_BUDGET_MS = 60_000
+
+  const drainChainedJobs = async (ticks) => {
+    let chained = 0
+    while (pendingJobs.length > 0 && chained < 10) {
+      const next = pendingJobs.shift()
+      await runner.runJob(next.type, next.input ?? {}, ctx, ticks)
+      chained += 1
+    }
+    return chained
+  }
+
+  const runMockJob = async ({ type, input, maxTicks = 200, budgetMs = 0, resumeRow = null }) => {
     const manifest = manifestStore.read()
     const declared = (manifest.jobs ?? []).find((job) => job.type === type)
     if (!declared) throw new Error(`Job "${type}" is not declared in plugin.json "jobs"`)
-    resetJobEvents()
+    if (!resumeRow) resetJobEvents()
     state.record("jobs", { type })
-    const row = {
+    const row = resumeRow ?? {
       id: ++mockJobCursor,
       type,
       status: "running",
@@ -352,34 +380,56 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       runtime: declared.runtime ?? "quickjs",
       createdAt: new Date().toISOString(),
     }
-    mockJobs.push(row)
+    row.status = "running"
+    row.error = null
+    if (!resumeRow) mockJobs.push(row)
     try {
       const ticks = Math.max(1, Math.min(Number(maxTicks) || 200, 500))
-      const run = await runner.runJob(type, input ?? {}, ctx, ticks)
-      let chained = 0
-      while (pendingJobs.length > 0 && chained < 10) {
-        const next = pendingJobs.shift()
-        await runner.runJob(next.type, next.input ?? {}, ctx, ticks)
-        chained += 1
-      }
+      // Bound each invocation's wall clock like the platform's tickBudgetMs:
+      // the run pauses at the deadline and the next /tick continues it.
+      const declaredBudget = Number(declared.tickBudgetMs) || 30_000
+      const budget = Math.max(0, Math.min(Number(budgetMs) || declaredBudget, MAX_TICK_BUDGET_MS))
+      const deadline = Date.now() + budget
+      const resume = resumeRow?.checkpoint ? { state: resumeRow.checkpoint.state } : null
+      const run = await runner.runJob(type, input ?? {}, ctx, ticks, resume, deadline)
+      await drainChainedJobs(ticks)
       const last = jobEvents.progress.length > 0 ? jobEvents.progress[jobEvents.progress.length - 1] : {}
       row.status = run.done ? "completed" : "paused"
-      row.processed = Number(last.processed) || 0
-      row.total = Number(last.total) || 0
-      row.failed = Number(last.failed) || 0
-      row.skipped = Number(last.skipped) || 0
-      row.progress = last.message ? { message: last.message } : null
-      row.result = run.result ?? null
+      row.processed = Number(last.processed) || row.processed
+      row.total = Number(last.total) || row.total
+      row.failed = Number(last.failed) || row.failed
+      row.skipped = Number(last.skipped) || row.skipped
+      row.progress = last.message ? { message: last.message } : row.progress
+      row.result = run.result ?? row.result ?? null
+      // Keep the checkpoint so a later /tick continues this exact run.
+      row.checkpoint = run.done ? undefined : { input: input ?? {}, state: run.state }
       if (run.kind === "node") row.runtime = "node"
-      log(`job ${type} ran${run.done ? " — done" : " — tick limit reached"}`)
+      log(`job ${type} ${resumeRow ? "resumed" : "ran"}${run.done ? " — done" : " — tick limit reached (paused)"}`)
     } catch (error) {
       row.status = "failed"
       row.error = String(error?.message ?? error)
+      row.checkpoint = undefined
     }
     row.items = jobEvents.items.slice()
     row.logs = jobEvents.logs.slice()
     row.completedAt = new Date().toISOString()
     return row
+  }
+
+  /**
+   * Continues a paused job when the kit runtime POSTs /jobs/:id/tick. Unknown,
+   * finished or checkpoint-less jobs are returned unchanged (a no-op tick),
+   * which is what the platform does for rows it no longer owns.
+   */
+  const tickMockJob = async (row) => {
+    if (!row || row.status !== "paused" || !row.checkpoint) return row
+    return runMockJob({
+      type: row.type,
+      input: row.checkpoint.input ?? {},
+      maxTicks: TICK_STEPS_PER_CALL,
+      budgetMs: TICK_BUDGET_MS,
+      resumeRow: row,
+    })
   }
 
   // ── Editor services (files, git, live stream) ─────────────────────────────
@@ -391,7 +441,46 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     log,
   })
   const gitService = createGit({ pluginDir })
-  const projectWatcher = watchProject(pluginDir, (paths) => stream.broadcast("files", { paths }))
+
+  /**
+   * External edits (VS Code, the AI, another tool) apply like Code-page saves:
+   * `plugin.json` and `ui/**` changes rebuild the manifest, kit pages and UI
+   * bundle. Runtime entries (index.js, jobs, hooks) stay with esbuild's own
+   * watcher — no double builds. A short quiet window skips the echo of the
+   * dev server's own writes (Code page, scaffolds, AI apply — those already
+   * rebuilt) and kit files `syncKitPages` regenerates during a build.
+   */
+  const AUTO_REBUILD_RE = /^(?:plugin\.json$|ui\/)/
+  const AUTO_REBUILD_QUIET_MS = 1200
+  const pendingRebuildPaths = new Set()
+  let autoRebuildTimer = null
+  const scheduleRebuild = (paths) => {
+    for (const raw of paths) {
+      const file = String(raw).replace(/\\/g, "/")
+      if (AUTO_REBUILD_RE.test(file)) pendingRebuildPaths.add(file)
+    }
+    if (pendingRebuildPaths.size === 0) return
+    if (autoRebuildTimer) clearTimeout(autoRebuildTimer)
+    autoRebuildTimer = setTimeout(async () => {
+      autoRebuildTimer = null
+      const batch = [...pendingRebuildPaths]
+      pendingRebuildPaths.clear()
+      if (Date.now() - lastRebuildAt < AUTO_REBUILD_QUIET_MS) return
+      try {
+        const shown = batch.slice(0, 3).join(", ")
+        log(`rebuilt from disk changes (${shown}${batch.length > 3 ? `, +${batch.length - 3} more` : ""})`)
+        await rebuildAll()
+      } catch (error) {
+        // rebuildAll already surfaced the error on the build status stream
+        log(`rebuild failed: ${error.message}`)
+      }
+    }, 300)
+  }
+
+  const projectWatcher = watchProject(pluginDir, (paths) => {
+    stream.broadcast("files", { paths })
+    scheduleRebuild(paths)
+  })
 
   const bootstrap = () => ({
     manifest: manifestStore.read(),
@@ -1721,17 +1810,23 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
         }
         // Jobs API — mirrors the platform's plugin job endpoints.
         const jobMatch = /^\/(\d+)(\/tick)?$/.exec(tail)
+        // `checkpoint` is the paused-run state the server holds internally —
+        // clients never see it (same as items/logs on list responses).
+        const publicJob = (entry) => {
+          const { items, logs, checkpoint, ...rest } = entry
+          return rest
+        }
         if (!tail) {
           if (req.method === "GET") {
             return json(res, 200, {
-              jobs: mockJobs.slice(-10).reverse().map(({ items, logs, ...rest }) => rest),
+              jobs: mockJobs.slice(-10).reverse().map(publicJob),
             })
           }
           if (req.method === "POST") {
             const body = await readBody(req)
             try {
               const job = await runMockJob({ type: String(body?.type ?? ""), input: body?.input ?? {}, maxTicks: body?.maxTicks })
-              return json(res, 200, { job: { ...job, items: undefined, logs: undefined } })
+              return json(res, 200, { job: publicJob(job) })
             } catch (error) {
               return json(res, 500, { error: error.message })
             }
@@ -1739,14 +1834,18 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
           return json(res, 405, { error: "Method not allowed" })
         }
         if (jobMatch) {
-          const job = mockJobs.find((entry) => entry.id === Number(jobMatch[1]))
-          if (!job) return json(res, 404, { error: "Job not found" })
-          // The dev runner finishes a job in one run, so a tick just returns it.
+          const row = mockJobs.find((entry) => entry.id === Number(jobMatch[1]))
+          if (!row) return json(res, 404, { error: "Job not found" })
+          // A tick continues a paused job from its checkpoint; finished or
+          // unknown jobs tick as a no-op, like on the platform.
           if (jobMatch[2]) {
-            if (req.method === "POST") return json(res, 200, { job: { ...job, items: undefined, logs: undefined } })
+            if (req.method === "POST") {
+              const job = await tickMockJob(row)
+              return json(res, 200, { job: publicJob(job) })
+            }
             return json(res, 405, { error: "Method not allowed" })
           }
-          if (req.method === "GET") return json(res, 200, { job, items: job.items ?? [], logs: job.logs ?? [] })
+          if (req.method === "GET") return json(res, 200, { job: publicJob(row), items: row.items ?? [], logs: row.logs ?? [] })
           return json(res, 405, { error: "Method not allowed" })
         }
         return json(res, 404, { error: "Not found" })
@@ -1850,6 +1949,12 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     resolveCwd: () => pluginDir,
     log,
   })
+
+  // A hard Ctrl+C (or a supervisor restart) can leave the previous process
+  // holding the port for a moment — stop a stale Selldoes process instead of
+  // crash-looping the supervisor on EADDRINUSE. Another app on the port still
+  // fails with a clear message.
+  await reclaimPort(listenPort, listenHost, log)
 
   await new Promise((resolve, reject) => {
     server.once("error", reject)

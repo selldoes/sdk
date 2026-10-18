@@ -8,6 +8,10 @@ import { probePort, reclaimPort } from "./port.mjs"
 import { sendNotFound } from "./not-found-page.mjs"
 import { defaultProjectsDir, getCurrentProjectId, getWorkspaceSettings, listProjects, setCurrentProject, touchProject } from "./workspace.mjs"
 import { attachTerminalServer } from "./terminal.mjs"
+import { watchSdkSources } from "./sdk-watch.mjs"
+
+// Re-exported for callers/tests that predate `cli/sdk-watch.mjs`.
+export { watchSdkSources }
 
 /**
  * The workspace server — the web front door of the SDK.
@@ -34,45 +38,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SDK_ROOT = path.resolve(HERE, "..")
 const UI_DIST = path.join(HERE, "plugin", "dev", "ui-dist")
 const BIN = path.join(SDK_ROOT, "bin", "selldoes.mjs")
-
-/**
- * SDK-development mode (`--dev`): watch the SDK's own server sources so edits
- * apply without manual restarts. The shell UI is served through Vite (HMR),
- * but preview children are separate processes that load `cli/**` at spawn
- * time — they must be restarted when those files change. Build output
- * (ui-dist) is ignored: it is served from disk on every request. Returns a
- * dispose function. `roots` is injectable for tests.
- */
-export function watchSdkSources(onChange, roots = [path.join(SDK_ROOT, "cli"), path.join(SDK_ROOT, "bin")]) {
-  let timer = null
-  const watchers = []
-  const trigger = (filename) => {
-    const relative = String(filename ?? "").replace(/\\/g, "/")
-    if (relative.includes("ui-dist") || relative.includes("node_modules") || relative.includes(".test.")) return
-    if (relative && !/\.(mjs|js|json)$/.test(relative)) return
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      onChange(relative)
-    }, 350)
-  }
-  for (const root of roots) {
-    try {
-      const watcher = fs.watch(root, { recursive: true }, (_event, filename) => trigger(filename))
-      watcher.on("error", () => watcher.close())
-      watchers.push(watcher)
-    } catch {
-      // recursive fs.watch is platform-dependent — skip quietly when unsupported
-    }
-  }
-  return Object.assign(
-    () => {
-      if (timer) clearTimeout(timer)
-      for (const watcher of watchers) watcher.close()
-    },
-    { active: watchers.length > 0 },
-  )
-}
 
 const UI_CSP = [
   "default-src 'self' data: blob:",
@@ -474,7 +439,10 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     const child = spawn(process.execPath, [BIN, "dev", "--dir", project.path, "--port", String(previewPort)], {
       cwd: project.path,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, SELDOES_NO_UPDATE_CHECK: "1" },
+      // SELLDOES_PREVIEW tells the dev child the workspace supervises it —
+      // preview children skip their own SDK watcher (this server restarts
+      // them in place when the SDK's preview code changes).
+      env: { ...process.env, SELDOES_NO_UPDATE_CHECK: "1", SELLDOES_PREVIEW: "1" },
       windowsHide: true,
     })
     const preview = {
@@ -601,12 +569,17 @@ export async function startWorkspaceServer({ port = 4590, host = "127.0.0.1", de
     })
     devMiddleware = viteServer.middlewares
 
-    // SDK-dev auto-reload: Vite hot-reloads the shell UI, and this watcher
-    // restarts preview children when the SDK's own server code changes — so
-    // edits to cli/** apply without a manual preview restart.
-    disposeSdkWatch = watchSdkSources((file) => {
-      const previewCode = file.startsWith("plugin/")
-      void restartLivePreviews(`SDK code changed (${file})`)
+    // SDK-dev auto-reload: Vite hot-reloads the shell UI. A supervised child
+    // (spawned by dev-supervisor.mjs) only handles preview code here — the
+    // supervisor restarts the whole workspace when shell-level sources change.
+    // Unsupervised, previews restart on any SDK change and shell edits still
+    // need a manual workspace restart.
+    const supervised = process.env.SELLDOES_WORKSPACE_CHILD === "1"
+    disposeSdkWatch = watchSdkSources((file, root) => {
+      const fromKit = path.basename(root) === "kit"
+      const previewCode = fromKit || file.startsWith("plugin/")
+      if (supervised && !previewCode) return
+      void restartLivePreviews(`SDK code changed (${path.basename(root)}/${file})`)
       if (!previewCode) {
         console.log("  note: workspace shell code changed — restart the workspace once to pick it up")
       }

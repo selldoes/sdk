@@ -192,7 +192,7 @@ const SDK_REFERENCE = `Runtime is sandboxed (QuickJS in production; Node locally
 Only these capabilities exist, gated by manifest permissions:
 - ctx.db.select/count/insert/insertMany/update/delete/ensureTable (db:read/db:write/db:schema)
 - ctx.http.get/post (api:external) — 60s default timeout (opts.timeoutMs, capped at 60s), public URLs only
-- ctx.ai.complete({prompt}) / ctx.ai.image() (ai:use)
+- ctx.ai.complete({prompt}) / ctx.ai.image() / ctx.ai.listPrompts({type}) / ctx.ai.getPrompt(id) (ai:use)
 - ctx.email.send({to,subject,html,text}) (email:send)
 - ctx.files.upload/importFromUrl/list/delete (files:read/files:write)
 - ctx.products.list/get/create/update/findBySku/upsertBySku (products:read/products:write)

@@ -1,7 +1,27 @@
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { parseArgs, findPluginRoot, openBrowser, die } from "./util.mjs"
 import { getUpdateInfo, printUpdateNotice } from "./update-check.mjs"
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+/** The SDK install/repo this CLI is running from. */
+const SDK_ROOT = path.resolve(HERE, "..")
+
+/** True when running from an SDK source checkout (dev-ui only ships there). */
+function isSdkCheckout() {
+  return fs.existsSync(path.join(SDK_ROOT, "dev-ui"))
+}
+
+/**
+ * True when Node runs under the inspector (VS Code launch configs, `node
+ * --inspect`, NODE_OPTIONS). SDK supervision steps aside so breakpoints keep
+ * hitting the real server instead of the supervisor wrapper.
+ */
+function underInspector() {
+  const flags = `${process.execArgv.join(" ")} ${process.env.NODE_OPTIONS ?? ""}`
+  return flags.includes("--inspect")
+}
 
 const HELP = `selldoes — build Selldoes plugins and themes
 
@@ -38,7 +58,9 @@ Plugin projects (a directory with plugin.json)
   dev                       Local preview server (dashboard UI, storefront, API console, jobs).
                             Project settings → Store connects a real store (merchant API
                             key) so ctx.products writes to live catalog data — no publish
-                            needed to test against real products.
+                            needed to test against real products. From an SDK checkout,
+                            cli/, bin/ and kit/ edits restart the preview automatically
+                            (--no-watch disables).
   add <pkg>[@version]       Install an npm package and declare it in plugin.json
   build                     Bundle the plugin into dist/ (--zip to also write <slug>.zip)
   pack                      Bundle + zip without publishing
@@ -81,6 +103,8 @@ Maintenance
 Options
   --dir <path>              Project directory (default: nearest plugin.json / manifest.json)
   --port <n> --host <addr>  Dev server address (plugin default 4590, theme default 4173)
+  --no-watch                dev / workspace --dev: disable the SDK auto-reload
+                            supervisor (edits need a manual restart)
   --open                    Open the preview in your browser (plugin dev)
   --file <path[:line]>      open: file to reveal (also a positional argument)
   --editor <command>        open: editor command (default: $SELDOES_EDITOR, code, cursor, windsurf)
@@ -136,7 +160,9 @@ function resolveProjectDir(flags) {
 export async function main() {
   const argv = process.argv.slice(2)
   // Bare `selldoes` = the web workspace (flags like --no-open pass through).
-  if (argv.length === 0 || argv[0].startsWith("--")) argv.unshift("workspace")
+  // `--help`/`--version` stay top-level commands even when they come first.
+  const TOP_LEVEL_FLAGS = new Set(["--help", "-h", "--version", "-v"])
+  if (argv.length === 0 || (argv[0].startsWith("--") && !TOP_LEVEL_FLAGS.has(argv[0]))) argv.unshift("workspace")
   const { command, args, flags } = parseArgs(argv)
   const normalized =
     command === "--help" || command === "-h"
@@ -265,12 +291,30 @@ export async function main() {
 
 /** Starts the web workspace (bare `selldoes` / `selldoes workspace`). */
 async function workspaceCommand(args, flags) {
-  const { startWorkspaceServer } = await import("./workspace-server.mjs")
   const devMode = flags.dev === true || process.env.SELLDOES_SDK_DEV === "1"
-  const server = await startWorkspaceServer({
-    port: flags.port ? Number(flags.port) : 4590,
-    dev: devMode,
-  })
+  const port = flags.port ? Number(flags.port) : 4590
+  // SDK-dev mode runs under a supervisor: edits to the CLI's own sources
+  // restart the workspace — or just its previews — without a manual restart.
+  // `--no-watch` opts out; a debugger launch keeps the single-process layout.
+  if (
+    devMode &&
+    isSdkCheckout() &&
+    flags["no-watch"] !== true &&
+    process.env.SELLDOES_WORKSPACE_CHILD !== "1" &&
+    !underInspector()
+  ) {
+    const { runWorkspaceSupervisor } = await import("./dev-supervisor.mjs")
+    console.log("\n  SDK watch on — cli/, bin/ and kit/ edits apply automatically (--no-watch disables)\n")
+    await runWorkspaceSupervisor({ port })
+    return
+  }
+  const { startWorkspaceServer } = await import("./workspace-server.mjs")
+  const server = await startWorkspaceServer({ port, dev: devMode })
+  if (process.send) {
+    process.on("message", (message) => {
+      if (message?.type === "shutdown") void server.close()
+    })
+  }
   console.log(`\n  Selldoes workspace → ${server.url}`)
   console.log(devMode ? "  SDK-dev mode — dev-ui served by Vite (hot reload)" : "  Web workspace — projects, previews, AI assistant")
   console.log("  Ctrl+C stops the server and any running previews\n")
@@ -381,15 +425,45 @@ async function runProjectCommand(command, args, flags) {
     }
 
     case "dev": {
+      // SDK-dev auto-reload: from a checkout, run the preview under a
+      // supervisor so edits to cli/**, bin/** and kit/** restart it
+      // automatically. Workspace-spawned previews skip it (the workspace
+      // restarts them in place) and debugger launches keep the
+      // single-process layout.
+      if (
+        flags["no-watch"] !== true &&
+        process.env.SELLDOES_DEV_CHILD !== "1" &&
+        process.env.SELLDOES_PREVIEW !== "1" &&
+        !underInspector() &&
+        isSdkCheckout()
+      ) {
+        const { runPreviewSupervisor } = await import("./dev-supervisor.mjs")
+        console.log("\n  SDK watch on — cli/, bin/ and kit/ edits restart the preview (--no-watch disables)\n")
+        await runPreviewSupervisor({
+          pluginDir: projectDir,
+          port: flags.port ? Number(flags.port) : undefined,
+          host: flags.host ? String(flags.host) : undefined,
+          open: flags.open === true,
+        })
+        return
+      }
       const { startDevServer } = await import("./plugin/dev/server.mjs")
       const server = await startDevServer({
         pluginDir: projectDir,
         port: flags.port ? Number(flags.port) : undefined,
         host: flags.host ? String(flags.host) : undefined,
       })
+      // A supervisor (or the workspace) asks for a graceful stop over IPC.
+      if (process.send) {
+        process.on("message", (message) => {
+          if (message?.type === "shutdown") void server.close()
+        })
+      }
       console.log(`\n  Selldoes plugin preview → ${server.url}`)
       console.log("  Press Ctrl+C to stop\n")
-      if (flags.open) openBrowser(server.url)
+      // DEV_OPEN_SUPPRESS is set by the supervisor on restarts — the tab from
+      // the first launch is already open.
+      if (flags.open && process.env.DEV_OPEN_SUPPRESS !== "1") openBrowser(server.url)
       return
     }
 

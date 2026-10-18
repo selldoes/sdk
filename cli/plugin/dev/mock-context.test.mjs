@@ -123,3 +123,27 @@ test("mock context: jobs.enqueue validates declared jobs and records the queue",
     { type: "import-batch", input: { cursor: 5 } },
   ])
 })
+
+test("mock context: ai.listPrompts serves the dev prompt library, filtered by type", async () => {
+  const { ctx } = setup(["ai:use"])
+  const all = await ctx.ai.listPrompts()
+  assert.ok(all.length >= 3)
+  assert.ok(all.every((prompt) => prompt.id && prompt.name && prompt.type))
+  const images = await ctx.ai.listPrompts({ type: "image" })
+  assert.ok(images.length >= 1)
+  assert.ok(images.every((prompt) => prompt.type === "image"))
+  const picked = await ctx.ai.getPrompt(images[0].id)
+  assert.equal(picked.id, images[0].id)
+  assert.equal(await ctx.ai.getPrompt(99999), null)
+})
+
+test("mock context: ai.listPrompts honors ai.mockPrompts overrides and ai:use", async () => {
+  const { ctx } = setup(["ai:use"], { ai: { mockPrompts: [{ id: 42, name: "Custom", type: "image", template: "T" }] } })
+  const prompts = await ctx.ai.listPrompts()
+  assert.equal(prompts.length, 1)
+  assert.equal(prompts[0].id, 42)
+  assert.equal(prompts[0].field, "custom")
+
+  const bare = setup([])
+  await assert.rejects(() => bare.ctx.ai.listPrompts(), /ai:use/)
+})

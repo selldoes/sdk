@@ -452,7 +452,7 @@ real SKUs, inspect results, iterate — and only publish when it behaves.
 | `db:read` / `db:write` | Read/write permitted tables + own `plugin_<slug>_*` tables |
 | `db:schema` | `ctx.db.ensureTable(name, columns)` |
 | `api:external` | `ctx.http.get/post` (60s default timeout, `opts.timeoutMs` capped at 60s, 4 MB responses) |
-| `ai:use` | `ctx.ai.complete` / `ctx.ai.image` (generated images are saved to media storage and returned as a URL) |
+| `ai:use` | `ctx.ai.complete` / `ctx.ai.image` (generated images are saved to media storage and returned as a URL) / `ctx.ai.listPrompts` / `ctx.ai.getPrompt` (the store's saved prompt library from Dashboard → AI Prompts, so settings can offer a picker instead of a hard-coded prompt id) |
 | `email:send` | `ctx.email.send` through the platform SMTP |
 | `files:read` / `files:write` | `ctx.files` (S3 media) |
 | `products:read` / `products:write` | `ctx.products` |
@@ -466,6 +466,14 @@ example a `configSchema` field of type `secret`); values are never bundled with
 the plugin or written to logs. `ctx.storage` is a small JSON store scoped to
 the plugin **and** the store — use it for cursors, tokens and sync state
 instead of assuming a persistent filesystem (jobs run in disposable sandboxes).
+
+`ctx.ai.listPrompts({ type: "image" })` returns the store's saved AI prompt
+library (Dashboard → AI Prompts, plus the system defaults) —
+`{ id, name, description, type, field, template, provider, model, isDefault,
+aspectRatio }`. Use it to render prompt pickers in your UI instead of asking
+merchants for a numeric prompt id, then pass the chosen id to
+`ctx.ai.image({ promptId })`. `ctx.ai.getPrompt(id)` fetches one prompt (null
+when missing or not visible to the store).
 
 `ctx.products.upsertBySku()` is the idempotent import primitive (create or
 update keyed by SKU); `create`/`update` also accept `categories: ["A", "B"]` —
@@ -484,6 +492,13 @@ plugin, e.g. `assets/icon.png`), `screenshots`, `tags`, `category` and
 `pricing` (`{ amount, currency, billingPeriod: one_time | monthly | yearly,
 trialDays }` — what the marketplace card shows and the default price at
 publish time). The Details editor in `selldoes dev` writes these for you.
+
+`configSchema` selects may declare `optionsFrom` instead of static `options`:
+the kit settings form then GETs the given plugin API route at render time and
+populates the dropdown from its `{ options: [{ value, label }] }` (or
+`{ prompts: [...] }` / raw array) response — showing "Loading…" meanwhile and a
+disabled "None found" when the route answers empty or fails, e.g.
+`{ "key": "aiImagePromptId", "type": "select", "optionsFrom": "/ai/prompts?type=image" }`.
 
 ## API routes
 

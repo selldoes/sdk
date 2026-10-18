@@ -158,6 +158,30 @@ export function DashboardPage() {
     return () => window.removeEventListener("message", onMessage)
   }, [manifest.slug, scaffold])
 
+  // ── Full-bleed preview: fill the remaining viewport height ────────────────
+  // The plugin page scrolls internally, so letting the preview grow naturally
+  // would stack a second scrollbar on top of the app's own page scroll. Measure
+  // the wrapper's top offset and fill whatever is left of the viewport
+  // (re-measured after every render — callouts appearing/disappearing above it
+  // stay correct — and on scroll/resize, since scrolling the shell moves the
+  // offset without a re-render).
+  const frameRef = React.useRef<HTMLDivElement>(null)
+  const [frameHeight, setFrameHeight] = React.useState(720)
+
+  React.useEffect(() => {
+    const update = () => {
+      const top = frameRef.current?.getBoundingClientRect().top ?? 0
+      setFrameHeight(Math.max(420, Math.round(window.innerHeight - top - 16)))
+    }
+    update()
+    window.addEventListener("resize", update)
+    window.addEventListener("scroll", update, { passive: true })
+    return () => {
+      window.removeEventListener("resize", update)
+      window.removeEventListener("scroll", update)
+    }
+  })
+
   const rebuild = React.useCallback(async () => {
     await runBusy("rebuild", async () => {
       try {
@@ -267,139 +291,166 @@ export function DashboardPage() {
     else groups.push({ group: key, pages: [page] })
   }
 
+  // A page that renders real content (an iframe entry or no-code sections) goes
+  // full-bleed: a slim toolbar owns the chrome and the plugin page fills the
+  // rest of the viewport, scrolling internally — the way Shopify embeds an app.
+  // The empty state keeps the card layout for its call-to-actions.
+  const fullBleed = Boolean(source) || hasSections
+
+  // The page rail — full-bleed hides it below lg (the toolbar's page picker
+  // takes over) and lets it scroll internally instead of growing the page.
+  const railCard = (
+    <Card className={cn("min-h-0", fullBleed ? "hidden h-full flex-col lg:flex" : "h-fit")}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Sidebar pages</CardTitle>
+        <CardDescription className="text-[11.5px]">From <code>dashboardPages</code> in plugin.json.</CardDescription>
+      </CardHeader>
+      <CardContent className={cn("space-y-3", fullBleed && "min-h-0 flex-1 overflow-y-auto")}>
+        {groups.map((bucket) => (
+          <div key={bucket.group ?? "__ungrouped__"} className="space-y-1">
+            {bucket.group ? (
+              <p className="px-1 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">{bucket.group}</p>
+            ) : null}
+            {bucket.pages.map((page) => {
+              const Icon = resolveIcon(page.icon)
+              const isActive = page.path === activePage?.path
+              return (
+                <button
+                  key={page.path}
+                  type="button"
+                  onClick={() => setParams(page.path === "/" ? {} : { page: page.path })}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors",
+                    isActive ? "border-primary bg-primary/5 font-semibold" : "border-border hover:bg-muted",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{page.label}</span>
+                  <code className="shrink-0 text-[9.5px] text-muted-foreground">
+                    {page.entry ? page.entry.replace(/^ui\//, "") : "kit"}
+                  </code>
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+
+  const ActiveIcon = resolveIcon(activePage!.icon)
+
   return (
     <>
-      <div className="space-y-4">
-        <PageHead
-          title="Dashboard"
-          description={
-            <>
-              Rendered exactly like the host does — a sandboxed iframe calling{" "}
-              <code>/api/plugin-api/{manifest.slug}/…</code> with the mock store, or the compiled no-code components page
-              when a page declares <code>sections</code>.
-            </>
-          }
-        />
-        <CreatePageBar onPick={() => setCreateOpen(true)} />
+      {fullBleed ? (
+        /* -mb-24 cancels main's pb-24 (fixed toast/drawer clearance): the
+           wrapper already stops short of the viewport bottom, so without it
+           the page stays ~80px scrollable — a phantom second scrollbar. */
+        <div className="-mb-24 flex flex-col">
+          {/* ── Slim toolbar — the chrome; the plugin page owns the rest ── */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <ActiveIcon className="h-4 w-4 shrink-0" />
+            <span className="text-sm font-semibold">{activePage!.label}</span>
+            {hasSections ? <Badge className="border-0 bg-violet-100 text-violet-700">components</Badge> : null}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{activePage!.entry ?? "kit"}</code>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {pages.length > 1 ? (
+                <Select value={activePage!.path} onValueChange={(path) => setParams(path === "/" ? {} : { page: path })}>
+                  <SelectTrigger className="h-8 w-[170px] text-xs lg:hidden">
+                    <SelectValue placeholder="Page" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pages.map((page) => (
+                      <SelectItem key={page.path} value={page.path}>
+                        {page.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+              <Button size="sm" variant="outline" onClick={() => setBuilderOpen(true)}>
+                <Sparkles />
+                {hasSections ? "Edit components" : "Add components"}
+              </Button>
+              {source ? (
+                <Button size="sm" variant="outline" onClick={() => window.open(source, "_blank")}>
+                  <ExternalLink />
+                  Open raw
+                </Button>
+              ) : null}
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus />
+                New page
+              </Button>
+            </div>
+          </div>
 
-        {activePage!.entry && activeStatus && !activeStatus.sourceExists ? (
-          <Callout kind="danger">
-            <p className="font-semibold">
-              Page entry <code>{activePage!.entry}</code> doesn’t exist in the plugin source
-            </p>
-            <p className="mt-0.5 text-[12px]">
-              Create the file under <code>ui/</code>, fix <code>plugin.json</code>, or scaffold the default notes example for this page.
-            </p>
-            <Button size="sm" className="mt-2" disabled={busy.isBusy(`scaffold:${activePage!.entry!}`)} onClick={() => void scaffold(activePage!.entry!)}>
-              {busy.isBusy(`scaffold:${activePage!.entry!}`) ? <Loader2 className="animate-spin" /> : <Sparkles />}
-              {busy.isBusy(`scaffold:${activePage!.entry!}`) ? "Creating…" : `Create ${activePage!.entry}`}
-            </Button>
-          </Callout>
-        ) : activePage!.entry && activeStatus && activeStatus.sourceExists && !activeStatus.builtExists ? (
-          <Callout kind="warn">
-            <span>
-              <code>{activePage!.entry}</code> exists in source but is not in the built UI output yet — it should appear after the next
-              rebuild.
-            </span>
-            <Button size="sm" variant="outline" className="ml-2" disabled={busy.isBusy("rebuild")} onClick={() => void rebuild()}>
-              {busy.isBusy("rebuild") ? <Loader2 className="animate-spin" /> : <Play />}
-              Rebuild
-            </Button>
-          </Callout>
-        ) : null}
+          {activePage!.entry && activeStatus && !activeStatus.sourceExists ? (
+            <Callout kind="danger">
+              <p className="font-semibold">
+                Page entry <code>{activePage!.entry}</code> doesn't exist in the plugin source
+              </p>
+              <p className="mt-0.5 text-[12px]">
+                Create the file under <code>ui/</code>, fix <code>plugin.json</code>, or scaffold the default notes example for this page.
+              </p>
+              <Button size="sm" className="mt-2" disabled={busy.isBusy(`scaffold:${activePage!.entry!}`)} onClick={() => void scaffold(activePage!.entry!)}>
+                {busy.isBusy(`scaffold:${activePage!.entry!}`) ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                {busy.isBusy(`scaffold:${activePage!.entry!}`) ? "Creating…" : `Create ${activePage!.entry}`}
+              </Button>
+            </Callout>
+          ) : activePage!.entry && activeStatus && activeStatus.sourceExists && !activeStatus.builtExists ? (
+            <Callout kind="warn">
+              <span>
+                <code>{activePage!.entry}</code> exists in source but is not in the built UI output yet — it should appear after the next
+                rebuild.
+              </span>
+              <Button size="sm" variant="outline" className="ml-2" disabled={busy.isBusy("rebuild")} onClick={() => void rebuild()}>
+                {busy.isBusy("rebuild") ? <Loader2 className="animate-spin" /> : <Play />}
+                Rebuild
+              </Button>
+            </Callout>
+          ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <Card className="h-fit">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Sidebar pages</CardTitle>
-              <CardDescription className="text-[11.5px]">From <code>dashboardPages</code> in plugin.json.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {groups.map((bucket) => (
-                <div key={bucket.group ?? "__ungrouped__"} className="space-y-1">
-                  {bucket.group ? (
-                    <p className="px-1 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">{bucket.group}</p>
-                  ) : null}
-                  {bucket.pages.map((page) => {
-                    const Icon = resolveIcon(page.icon)
-                    const isActive = page.path === activePage?.path
-                    return (
-                      <button
-                        key={page.path}
-                        type="button"
-                        onClick={() => setParams(page.path === "/" ? {} : { page: page.path })}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors",
-                          isActive ? "border-primary bg-primary/5 font-semibold" : "border-border hover:bg-muted",
-                        )}
-                      >
-                        <Icon className="h-3.5 w-3.5 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate">{page.label}</span>
-                        <code className="shrink-0 text-[9.5px] text-muted-foreground">
-                          {page.entry ? page.entry.replace(/^ui\//, "") : "kit"}
-                        </code>
-                      </button>
-                    )
-                  })}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <LayoutDashboard className="h-4 w-4" />
-                    {activePage!.label}
-                    {hasSections ? <Badge className="border-0 bg-violet-100 text-violet-700">components</Badge> : null}
-                  </CardTitle>
-                  <CardDescription>
-                    {hasSections ? (
-                      source ? (
-                        <>
-                          Compiled from <code>dashboardPages[].sections</code> into <code>{activePage!.entry}</code> — the exact page
-                          the store serves. Edit components or ask the AI to rearrange.
-                        </>
-                      ) : (
-                        <>
-                          Compiling from <code>dashboardPages[].sections</code> — the next rebuild generates the page under{" "}
-                          <code>ui/kit/</code>.
-                        </>
-                      )
-                    ) : (
-                      <>
-                        Source: <code>{activePage!.entry}</code> · rebuilt on every file save.
-                      </>
-                    )}
-                  </CardDescription>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setBuilderOpen(true)}>
-                    <Sparkles />
-                    {hasSections ? "Edit components" : "Add components"}
-                  </Button>
-                  {source ? (
-                    <Button size="sm" variant="outline" onClick={() => window.open(source, "_blank")}>
-                      <ExternalLink />
-                      Open raw
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
+          {/* ── Fixed-height preview area: one scrollbar, inside the plugin ── */}
+          <div ref={frameRef} style={{ height: frameHeight }} className="flex min-h-0 flex-col overflow-hidden">
+            <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+              {railCard}
               {source ? (
                 <iframe
                   key={source}
                   src={source}
                   title={`Plugin dashboard UI — ${activePage!.label}`}
-                  className="h-[720px] w-full rounded-xl border border-border bg-white"
+                  className="h-full min-h-0 w-full rounded-xl border border-border bg-white"
                 />
-              ) : hasSections ? (
-                <SectionKit slug={manifest.slug} store={store} sections={activeSections} />
               ) : (
+                <div className="min-h-0 overflow-y-auto pr-1">
+                  <SectionKit slug={manifest.slug} store={store} sections={activeSections} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <PageHead
+            title="Dashboard"
+            description={<>This page declares no components yet — add them in the builder, or scaffold the notes UI as an iframe under <code>ui/</code>.</>}
+          />
+          <CreatePageBar onPick={() => setCreateOpen(true)} />
+
+          <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+            {railCard}
+            <Card className="overflow-hidden">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <LayoutDashboard className="h-4 w-4" />
+                  {activePage!.label}
+                </CardTitle>
+                <CardDescription>
+                  From <code>dashboardPages</code> in plugin.json — no-code components or an iframe entry.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <Callout kind="info">
                   <p>
                     This page has no components yet — open the builder to add the first one, or scaffold the notes UI as an iframe
@@ -416,11 +467,11 @@ export function DashboardPage() {
                     </Button>
                   </div>
                 </Callout>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
+      )}
 
       <CreatePageDialog open={createOpen} onOpenChange={setCreateOpen} onScaffolded={handleScaffolded} />
 

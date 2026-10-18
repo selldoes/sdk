@@ -139,7 +139,41 @@
 
   function apiRoute(route) {
     var path = route.charAt(0) === "/" ? route : "/" + route
-    return request("/api/plugin-api/" + SLUG + path + "?" + scope)
+    return request("/api/plugin-api/" + SLUG + path + (path.indexOf("?") === -1 ? "?" : "&") + scope)
+  }
+
+  /**
+   * Dynamic <select> options (field.optionsFrom): GETs a plugin API route and
+   * accepts `{ options: [{ value, label }] }`, a raw array in the same shape,
+   * or `{ prompts: [...] }` (the ctx.ai prompt library — id/name rows). Any
+   * failure resolves to null so the caller can show "None found".
+   */
+  function fetchOptions(source) {
+    var path = String(source)
+    var url = path.indexOf("/api/") === 0 ? path : null
+    var request$ = url ? request(path) : apiRoute(path)
+    return request$
+      .then(function (body) {
+        var list = Array.isArray(body)
+          ? body
+          : body && Array.isArray(body.options)
+            ? body.options
+            : body && Array.isArray(body.prompts)
+              ? body.prompts.map(function (prompt) {
+                  return { value: prompt.id, label: (prompt.name || prompt.id) + " (id " + prompt.id + ")" }
+                })
+              : null
+        if (!list) return null
+        return list.map(function (item) {
+          return {
+            value: item && item.value !== undefined ? item.value : item,
+            label: item && item.label !== undefined ? item.label : String(item && item.value !== undefined ? item.value : item),
+          }
+        })
+      })
+      .catch(function () {
+        return null
+      })
   }
 
   // ── section renderers ──────────────────────────────────────────────────────
@@ -279,7 +313,16 @@
     transcript.appendChild(resultBox)
     view.body.appendChild(transcript)
 
+    var lastPaintKey = ""
     function paint(job, detail) {
+      // Repainting rebuilds transcript rows and kills any text selection —
+      // only touch the DOM when something actually changed.
+      var itemsCount = detail && Array.isArray(detail.items) ? detail.items.length : 0
+      var logsCount = detail && Array.isArray(detail.logs) ? detail.logs.length : 0
+      var paintKey = [job.status, job.total, job.processed, job.failed, job.skipped, job.error,
+        job.progress && job.progress.message, itemsCount, logsCount].join("|")
+      if (paintKey === lastPaintKey) return
+      lastPaintKey = paintKey
       transcript.style.display = ""
       var statusText = job.status === "paused" ? "paused at tick limit" : job.status || "?"
       status.textContent = statusText
@@ -372,7 +415,10 @@
     run.addEventListener("click", function () {
       run.disabled = true
       runLabel.textContent = "Running…"
-      api("/jobs", { method: "POST", body: JSON.stringify({ storeId: Number(storeId) || undefined, type: type, input: settings.input || {} }) })
+      lastPaintKey = ""
+      var body = { storeId: Number(storeId) || undefined, type: type, input: settings.input || {} }
+      if (Number(settings.maxTicks)) body.maxTicks = Number(settings.maxTicks)
+      api("/jobs", { method: "POST", body: JSON.stringify(body) })
         .then(function (body) { return loop(body.job) })
         .catch(function (error) {
           run.disabled = false
@@ -421,12 +467,39 @@
             wrap.appendChild(switchWrap)
           } else if (field.type === "select") {
             input = h("select")
-            ;(field.options || []).forEach(function (option) {
-              var node = h("option", null, option.label || option.value)
-              node.value = option.value
-              input.appendChild(node)
-            })
-            input.value = String(values[field.key] !== undefined ? values[field.key] : field.default || "")
+            var initial = String(values[field.key] !== undefined ? values[field.key] : field.default || "")
+            if (field.optionsFrom) {
+              // Dynamic options (e.g. the store's saved AI prompts): skeleton
+              // placeholder while loading, the fetched list on success, or a
+              // disabled "None found" when the host/route has nothing.
+              var placeholder = h("option", null, "Loading…")
+              placeholder.disabled = true
+              input.appendChild(placeholder)
+              fetchOptions(field.optionsFrom).then(function (options) {
+                input.innerHTML = ""
+                if (!options || options.length === 0) {
+                  var none = h("option", null, "None found")
+                  none.disabled = true
+                  input.appendChild(none)
+                  input.disabled = true
+                  return
+                }
+                options.forEach(function (option) {
+                  var node = h("option", null, option.label)
+                  node.value = String(option.value)
+                  input.appendChild(node)
+                })
+                input.value = initial
+                if (input.value !== initial) input.selectedIndex = 0
+              })
+            } else {
+              (field.options || []).forEach(function (option) {
+                var node = h("option", null, option.label || option.value)
+                node.value = option.value
+                input.appendChild(node)
+              })
+              input.value = initial
+            }
             wrap.appendChild(input)
           } else if (field.type === "text") {
             input = h("textarea")
@@ -456,6 +529,9 @@
           var payload = {}
           Object.keys(inputs).forEach(function (key) {
             var entry = inputs[key]
+            // Disabled (a dynamic select still loading or showing "None found")
+            // carries no choice — never let it overwrite the stored value.
+            if (entry.input.disabled) return
             if (entry.field.type === "boolean") payload[key] = entry.input.checked
             else if (entry.field.type === "number") payload[key] = Number(entry.input.value)
             else payload[key] = entry.input.value
@@ -560,7 +636,10 @@
       var data = event.data
       if (!data) return
       if (data.type === "selldesk:kit-resize") {
-        var height = Math.max(160, Math.min(Number(data.height) || 0, 12000))
+        // Upper bound only guards against broken resize messages; plugin UIs
+        // that paginate stay far below it, and an unpaged long list must not
+        // be clipped into an inner scrollbar (200k px ≈ never).
+        var height = Math.max(160, Math.min(Number(data.height) || 0, 200000))
         frame.style.height = height + "px"
         return
       }

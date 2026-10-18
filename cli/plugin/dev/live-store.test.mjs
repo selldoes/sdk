@@ -4,7 +4,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { connectStore, createLiveProductsBridge, maskKey, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import { connectStore, createLiveProductsBridge, createLivePromptsBridge, maskKey, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
 
 test("readStoreBlock: defaults, env fallback and normalization", () => {
   assert.deepEqual(readStoreBlock(null), { live: false, appUrl: "", apiKey: "", storeId: null, storeSlug: "" })
@@ -135,5 +135,178 @@ test("verifyStoreKey: app URL falls back to SELLDOES_APP_URL when omitted", asyn
       if (previous === undefined) delete process.env.SELLDOES_APP_URL
       else process.env.SELLDOES_APP_URL = previous
     }
+  })
+})
+
+// ── products bridge against a stub external-products API ────────────────────
+const PRODUCTS = {
+  "sku-a": { id: 11, sku: "sku-a", name: "A", price: "1.00", variationGroups: null, customAttributes: null },
+  "sku-b": { id: 12, sku: "sku-b", name: "B", price: "2.00", variationGroups: null, customAttributes: null },
+  "sku-c": { id: 13, sku: "sku-c", name: "C", price: "3.00", variationGroups: null, customAttributes: null },
+}
+
+/**
+ * Stub platform products API. `mode: "bare"` mimics pre-`full=1` deploys that
+ * answer `{exists:true}` without the product row.
+ */
+async function withStubProducts(options, fn) {
+  if (typeof options === "function") {
+    fn = options
+    options = {}
+  }
+  const { mode = "full" } = options ?? {}
+  const requests = []
+  const server = http
+    .createServer((req, res) => {
+      requests.push({ method: req.method, url: req.url })
+      res.setHeader("content-type", "application/json")
+      if (!req.url?.startsWith("/api/external/products")) {
+        res.statusCode = 404
+        return res.end(JSON.stringify({ error: "not found" }))
+      }
+      const url = new URL(req.url, "http://stub")
+      if (req.method === "POST") {
+        let body = ""
+        req.on("data", (chunk) => (body += chunk))
+        req.on("end", () => {
+          const parsed = JSON.parse(body || "{}")
+          const existing = PRODUCTS[parsed.sku]
+          res.statusCode = existing ? 200 : 201
+          res.end(JSON.stringify({ id: existing?.id ?? 99, sku: parsed.sku, created: !existing }))
+        })
+        return
+      }
+      if (url.searchParams.get("list") === "all") {
+        return res.end(JSON.stringify({ skus: Object.keys(PRODUCTS) }))
+      }
+      const sku = url.searchParams.get("sku")
+      const product = PRODUCTS[sku]
+      if (!product) return res.end(JSON.stringify({ exists: false }))
+      if (mode === "bare") return res.end(JSON.stringify({ exists: true }))
+      if (url.searchParams.get("full")) return res.end(JSON.stringify({ exists: true, id: product.id, product }))
+      return res.end(JSON.stringify({ exists: true, id: product.id }))
+    })
+    .listen(0)
+  await new Promise((resolve) => server.once("listening", resolve))
+  const base = `http://127.0.0.1:${server.address().port}`
+  try {
+    return await fn(base, requests)
+  } finally {
+    server.close()
+  }
+}
+
+test("bridge: GET queries are store-scoped and never glue onto the path", async () => {
+  await withStubProducts(async (base, requests) => {
+    const bridge = createLiveProductsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const product = await bridge.findBySku("sku-a")
+    assert.equal(product.id, 11)
+    assert.equal(product.name, "A")
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].url, "/api/external/products?storeId=6&sku=sku-a&full=1")
+  })
+})
+
+test("bridge: list honors offset and hydrates only the requested page", async () => {
+  await withStubProducts(async (base, requests) => {
+    const bridge = createLiveProductsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const page = await bridge.list({ limit: 2, offset: 1 })
+    assert.deepEqual(page.map((row) => row.sku), ["sku-b", "sku-c"])
+    const hydrated = requests
+      .filter((request) => request.url.includes("sku="))
+      .map((request) => new URL(request.url, "http://stub").searchParams.get("sku"))
+    assert.deepEqual(hydrated, ["sku-b", "sku-c"])
+  })
+})
+
+test("bridge: upsertBySku posts to the store-scoped endpoint", async () => {
+  await withStubProducts(async (base, requests) => {
+    const bridge = createLiveProductsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const result = await bridge.upsertBySku({ name: "A", sku: "sku-a", price: "1.00" })
+    assert.equal(result.id, 11)
+    assert.equal(result.created, false)
+    const posted = requests.find((request) => request.method === "POST")
+    assert.equal(posted.url, "/api/external/products?storeId=6")
+  })
+})
+
+test("bridge: a platform without full=1 warns once and reads as null", async () => {
+  await withStubProducts({ mode: "bare" }, async (base) => {
+    const logs = []
+    const bridge = createLiveProductsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 }, (line) => logs.push(line))
+    assert.equal(await bridge.findBySku("sku-a"), null)
+    assert.equal(await bridge.findBySku("sku-b"), null)
+    assert.equal(logs.filter((line) => line.includes("deploy the latest Selldesk")).length, 1)
+  })
+})
+
+/**
+ * Stub platform AI-prompts API (`/api/external/ai/prompts`). `mode: "missing"`
+ * mimics an older host that answers a plain 404 page.
+ */
+async function withStubPrompts(options, fn) {
+  if (typeof options === "function") {
+    fn = options
+    options = {}
+  }
+  const { mode = "full" } = options ?? {}
+  const requests = []
+  const PROMPTS = [
+    { id: 2, name: "Album cover", description: null, type: "image", field: "mainImage", template: "T1", provider: "openai", model: "gpt-image-1", isDefault: true, aspectRatio: "1:1" },
+    { id: 15, name: "Vintage radio", description: "style", type: "image", field: "mainImage", template: "T2", provider: "openai", model: "gpt-image-1", isDefault: false, aspectRatio: null },
+  ]
+  const server = http
+    .createServer((req, res) => {
+      requests.push({ method: req.method, url: req.url })
+      if (mode === "missing") {
+        res.statusCode = 404
+        return res.end("<html>Not Found</html>")
+      }
+      if (!req.url?.startsWith("/api/external/ai/prompts")) {
+        res.statusCode = 404
+        res.setHeader("content-type", "application/json")
+        return res.end(JSON.stringify({ error: "not found" }))
+      }
+      res.setHeader("content-type", "application/json")
+      const url = new URL(req.url, "http://stub")
+      const type = url.searchParams.get("type")
+      const prompts = type ? PROMPTS.filter((prompt) => prompt.type === type) : PROMPTS
+      res.end(JSON.stringify({ prompts }))
+    })
+    .listen(0)
+  await new Promise((resolve) => server.once("listening", resolve))
+  const base = `http://127.0.0.1:${server.address().port}`
+  try {
+    return await fn(base, requests)
+  } finally {
+    server.close()
+  }
+}
+
+test("prompts bridge: list is store-scoped and type-filterable", async () => {
+  await withStubPrompts(async (base, requests) => {
+    const bridge = createLivePromptsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const all = await bridge.list()
+    assert.deepEqual(all.map((prompt) => prompt.id), [2, 15])
+    const images = await bridge.list({ type: "image" })
+    assert.equal(images.length, 2)
+    assert.ok(requests.every((request) => request.url.startsWith("/api/external/ai/prompts?storeId=6")))
+    assert.ok(requests[1].url.includes("type=image"))
+  })
+})
+
+test("prompts bridge: get filters the listed library by id", async () => {
+  await withStubPrompts(async (base) => {
+    const bridge = createLivePromptsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const prompt = await bridge.get(15)
+    assert.equal(prompt.name, "Vintage radio")
+    assert.equal(await bridge.get(999), null)
+  })
+})
+
+test("prompts bridge: an older host surfaces a deploy hint instead of an empty list", async () => {
+  await withStubPrompts({ mode: "missing" }, async (base) => {
+    const bridge = createLivePromptsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    await assert.rejects(() => bridge.list(), /deploy the latest Selldesk/)
   })
 })

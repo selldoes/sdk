@@ -311,10 +311,16 @@ export class PluginRunner {
    *   jobs[type] = async (input, ctx) => result        (legacy function form)
    *   jobs[type] = { init, step, finalize }            (host contract)
    *
+   * `resume` continues a paused chunked run: pass the transcript's `state`
+   * (and `input` unchanged) and the loop picks up at the checkpoint instead
+   * of re-running `init`. Function-form jobs cannot be resumed — they restart.
+   * `deadline` (epoch ms) pauses a chunked run between steps once the wall
+   * clock passes it, so a caller can bound how long one invocation lasts.
+   *
    * Returns a transcript the preview UI renders:
    * `{ kind, ticks, state, result, done }`.
    */
-  async runJob(type, input, ctx, maxTicks = 50) {
+  async runJob(type, input, ctx, maxTicks = 50, resume = null, deadline = 0) {
     const definition = this.jobDefinition(type)
     if (definition?.runtime === "node") return this.runNodeJob(type, input, ctx, definition)
 
@@ -343,12 +349,14 @@ export class PluginRunner {
       throw new Error(`Job "${type}" exports neither a function nor an { init, step, finalize } handler`)
     }
 
-    let state = typeof job.init === "function" ? await job.init(input, ctx) : undefined
+    const resuming = resume !== null && resume !== undefined && typeof resume === "object" && "state" in resume
+    let state = resuming ? resume.state : typeof job.init === "function" ? await job.init(input, ctx) : undefined
     const ticks = []
     let done = false
     let result = null
 
     for (let tick = 0; tick < maxTicks; tick += 1) {
+      if (deadline && Date.now() >= deadline) break
       const stepResult = (await job.step(state, ctx)) ?? {}
       ticks.push(stepResult)
       if (stepResult && typeof stepResult === "object") {

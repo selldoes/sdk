@@ -64,6 +64,58 @@ test("PluginRunner: a Node entry without a handler reports a clear error", async
   await assert.rejects(() => runner.runJob("write-file", {}, {}, 5), /no loaded handler/)
 })
 
+const CHUNKED_MANIFEST = {
+  slug: "chunked-runner",
+  name: "Chunked Runner",
+  description: "test",
+  version: "0.1.0",
+  entry: "./index.js",
+  jobs: [{ type: "count", name: "Count" }],
+}
+
+const CHUNKED_ENTRY = `export const jobs = {
+  count: {
+    init() { return { n: 0 } },
+    step(state) {
+      const next = { ...state, n: state.n + 1 }
+      return { state: next, done: next.n >= 10, result: next.n >= 10 ? { total: next.n } : undefined }
+    },
+  },
+}
+`
+
+function chunkedRunner() {
+  const root = tempPlugin(CHUNKED_MANIFEST, { "index.js": CHUNKED_ENTRY })
+  const runner = new PluginRunner({
+    pluginDir: root,
+    manifest: JSON.parse(fs.readFileSync(path.join(root, "plugin.json"), "utf8")),
+    devDir: path.join(root, ".selldoes-dev"),
+    log: () => {},
+  })
+  return runner.build().then(() => runner)
+}
+
+test("PluginRunner: a paused chunked job resumes from its checkpoint, not from init", async () => {
+  const runner = await chunkedRunner()
+  const paused = await runner.runJob("count", {}, {}, 4)
+  assert.equal(paused.done, false)
+  assert.equal(paused.state.n, 4)
+  const resumed = await runner.runJob("count", {}, {}, 10, { state: paused.state })
+  assert.equal(resumed.done, true)
+  assert.equal(resumed.state.n, 10)
+  assert.deepEqual(resumed.result, { total: 10 })
+})
+
+test("PluginRunner: an expired deadline pauses between steps and resumes cleanly", async () => {
+  const runner = await chunkedRunner()
+  const paused = await runner.runJob("count", {}, {}, 100, null, Date.now() - 1)
+  assert.equal(paused.done, false)
+  assert.equal(paused.state.n, 0)
+  const resumed = await runner.runJob("count", {}, {}, 100, { state: paused.state }, Date.now() + 60_000)
+  assert.equal(resumed.done, true)
+  assert.equal(resumed.state.n, 10)
+})
+
 test("route matching: exact beats params beats longest prefix", () => {
   const routes = [
     { path: "/products" },
