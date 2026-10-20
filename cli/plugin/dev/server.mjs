@@ -9,7 +9,7 @@ import { openInEditor, openTerminal } from "../../open-editor.mjs"
 import { buildPlugin, collectUiEntries } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
-import { connectStore, createLiveProductsBridge, createLivePromptsBridge, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import { connectStore, createLiveAiBridge, createLiveProductsBridge, createLivePromptsBridge, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
 import { PluginRunner, cleanPath, matchDeclaredRoute } from "./runner.mjs"
 import { ManifestStore } from "./manifest-store.mjs"
 import { DevState } from "./dev-state.mjs"
@@ -254,12 +254,25 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
 
   // ctx.config sees selldoes.config.json plus the values saved from the
   // settings form in the preview (so plugin code reads what the form shows).
-  const ctxConfig = { ...config, ...state.settings() }
-  let settingsKeys = Object.keys(state.settings())
+  // The manifest's configSchema defaults are applied like the platform does
+  // (resolveConfig): a missing or empty setting falls back to the default.
+  const applySchemaDefaults = (values) => {
+    const manifest = manifestStore.read()
+    const out = { ...(values ?? {}) }
+    for (const field of manifest.configSchema ?? []) {
+      if (field.default === undefined) continue
+      const current = out[field.key]
+      if (current === undefined || current === null || current === "") out[field.key] = field.default
+    }
+    return out
+  }
+  const ctxConfig = applySchemaDefaults({ ...config, ...state.settings() })
   const applySettings = (values) => {
-    for (const key of settingsKeys) delete ctxConfig[key]
-    settingsKeys = Object.keys(values ?? {})
-    for (const [key, value] of Object.entries(values ?? {})) ctxConfig[key] = value
+    const store = ctxConfig.store
+    const merged = applySchemaDefaults({ ...config, ...(values ?? {}) })
+    if (store) merged.store = store
+    for (const key of Object.keys(ctxConfig)) delete ctxConfig[key]
+    Object.assign(ctxConfig, merged)
     state.setSettings(values ?? {})
   }
 
@@ -269,7 +282,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
    * cli/plugin/dev/live-store.mjs. The bridge object is swapped in place so
    * connect/disconnect applies to running jobs immediately.
    */
-  const liveStore = { bridge: null, prompts: null, connection: null }
+  const liveStore = { bridge: null, prompts: null, ai: null, connection: null }
   const applyLiveStore = () => {
     const block = readStoreBlock(readConfig())
     if (block.live && block.appUrl && block.apiKey && block.storeId) {
@@ -281,12 +294,14 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
       }
       liveStore.bridge = createLiveProductsBridge(liveStore.connection, log)
       liveStore.prompts = createLivePromptsBridge(liveStore.connection, log)
-      log(`live store connected — ctx.products → ${block.appUrl} (store ${block.storeSlug || block.storeId})`)
+      liveStore.ai = createLiveAiBridge(liveStore.connection, log)
+      log(`live store connected — ctx.products + ctx.ai → ${block.appUrl} (store ${block.storeSlug || block.storeId})`)
       return true
     }
     if (liveStore.bridge) log("live store disconnected — ctx.products back on the local mock")
     liveStore.bridge = null
     liveStore.prompts = null
+    liveStore.ai = null
     liveStore.connection = null
     return false
   }

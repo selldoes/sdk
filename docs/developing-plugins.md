@@ -253,7 +253,41 @@ replacement is the shared kit helper — the kit compiler ships it as
 The helper injects its own `<dialog>` + styles on first use — no CSS file to
 link, no dependencies, and it works in kit pages, embedded components and
 standalone UI pages alike. Never stack dialogs: calling `confirm` while one
-is open cancels the previous one (its promise resolves `null`).
+is open cancels the previous one (its promise resolves `null`). Every dialog
+has a close button; clicking outside never closes one.
+
+#### Full-page dialogs (embedded components)
+
+A dialog inside an embedded `component` iframe is clipped to that frame's
+box — the frame auto-resizes to its content, so a modal can end up far below
+the visible page. The host can lift the frame out of the flow instead: the
+page asks for an **overlay** and the frame covers the whole page until the
+dialog closes.
+
+```js
+// SelldoesDialog.confirm() does this for you.
+const ok = await SelldoesDialog.confirm({ title: "Add to store?", confirmLabel: "Add" });
+
+// Your own <dialog>: ask for the overlay first, then show it.
+const supported = await SelldoesDialog.overlay(true);   // false when standalone
+const dialog = document.createElement("dialog");
+dialog.className = supported ? "overlay-dialog" : "";
+document.body.appendChild(dialog);
+dialog.showModal();
+dialog.addEventListener("close", () => {
+  dialog.remove();
+  if (supported) SelldoesDialog.overlay(false);   // the frame goes back into the flow
+});
+```
+
+`SelldoesDialog.overlay(open)` posts `{ type: "selldesk:kit-overlay", open, id }`
+to the host and resolves `true` when the host confirms it (an older host never
+answers → `false`, and the dialog stays inline). Under the hood the kit
+runtime adds the `kit-frame-overlay` class to the frame: it becomes a
+fixed, full-viewport layer with a dimmed backdrop, so the dialog covers the
+whole dashboard page instead of the component's box. Style your dialog for
+that mode yourself (e.g. a transparent, full-screen `<dialog>` with the card
+inside).
 
 Manual alternative (no helper): build your own `<form method="dialog">` and
 call `dialog.showModal()` — but do not reach for `window.confirm` anywhere in
@@ -403,6 +437,8 @@ no test job is declared.
 - `storeId` / `storeSlug` / `storeName` — the mock store identity.
 - `port`, `host` — where the server listens.
 - `ai.mockReply`, `email.disabled` — runtime mocks for `ctx.ai` / `ctx.email`.
+  `ai.mockReply` is only used while the preview runs on the local mock store —
+  connect a real store and `ctx.ai` uses the store's real provider.
 - `sampleJobs` — prefill for the Jobs page and quick runs, e.g.
   `{ "import-products": { "input": { "url": "https://…" }, "maxTicks": 10 } }`.
 - `assistant.model` — optional per-project model override; the provider, key
@@ -410,7 +446,10 @@ no test job is declared.
 
 Settings entered into a plugin's `configSchema` form (Dashboard page → the
 host-page replica) are persisted to `.selldoes-dev/settings.json` and merged
-into `ctx.config`, so plugin code reads the same values the form shows.
+into `ctx.config`, so plugin code reads the same values the form shows. The
+manifest's `configSchema` **defaults are applied** to `ctx.config` — a setting
+that was never saved (or was saved empty) falls back to its declared default,
+exactly like the platform's runtime config.
 
 The mock context enforces the same rules as production: permissions must be
 declared, tables must be in `allowedTables` (or plugin-owned), rows are
@@ -435,9 +474,16 @@ settings → Store** connects a real Selldoes store to the preview:
   platform's external products API, and `ctx.files.importFromUrl` becomes a
   passthrough — the platform re-hosts the image into store media when the
   product is written.
+- `ctx.ai` goes to the **real** AI as well: `ctx.ai.complete` and
+  `ctx.ai.image` run through the platform's AI runner with the merchant API
+  key, using the store's saved provider and model, and `ctx.ai.listPrompts`
+  reads the store's prompt library. The preview therefore writes **real copy**
+  — a plugin whose AI copy is wrong shows it here, not only after publishing.
+  (`ai.mockReply` in `selldoes.config.json` is only the fallback for the
+  offline mock.)
 - Everything else stays on the local mock: plugin-owned tables (`ctx.db`),
-  `ctx.ai`, `ctx.email`, `ctx.storage`, `ctx.realtime`. So an importer can
-  stage drafts locally and only push approved products to the real catalog.
+  `ctx.email`, `ctx.storage`, `ctx.realtime`. So an importer can stage drafts
+  locally and only push approved products to the real catalog.
 - The connection applies immediately (no restart) and can be toggled from
   the same card. Logs are prefixed `[live]` so you can see every real-store
   call the preview makes.
@@ -499,6 +545,14 @@ populates the dropdown from its `{ options: [{ value, label }] }` (or
 `{ prompts: [...] }` / raw array) response — showing "Loading…" meanwhile and a
 disabled "None found" when the route answers empty or fails, e.g.
 `{ "key": "aiImagePromptId", "type": "select", "optionsFrom": "/ai/prompts?type=image" }`.
+
+The `optionsFrom` path is a **plugin API route**: it must be declared in the
+manifest's `apiRoutes` *and* exported from the plugin — the dev server and the
+platform both answer `404` for undeclared routes, so a missing declaration
+shows up as an empty dropdown ("None found"). The route's `query` is passed
+through, so `?type=image` can narrow the list server-side. When the saved
+value is not in the list (never set, or the id was deleted), the dropdown
+falls back to the first option instead of staying blank.
 
 ## API routes
 

@@ -551,6 +551,24 @@ a.kit-button.kit-outline:active {
   transition: height 0.15s ease;
 }
 
+/* A component page asked for a full-page overlay (postMessage
+   { type: "selldesk:kit-overlay", open: true }) so its dialog covers the whole
+   page instead of the frame's box. The frame leaves the flow until the page
+   closes the dialog again.
+   An iframe is a replaced element: `width: auto` would keep its intrinsic
+   300×150, so the size is set explicitly. */
+.kit-frame-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  z-index: 2147483000;
+  background: rgba(17, 24, 39, 0.45);
+  transition: none;
+}
+
 /* ── Group (collapsible container) ────────────────────────────────────────────
    A group card's header toggles the whole body (children render flat inside).
    The collapsed state is remembered in localStorage by the runtime. */

@@ -13,10 +13,14 @@ import path from "node:path"
  *
  * Scope of the bridge (deliberate):
  *   ctx.products.findBySku / upsertBySku / list / update / create  → live
+ *   ctx.ai.complete / ctx.ai.image                                 → live
+ *     (the store's own AI provider + model, authenticated with the same
+ *     merchant API key — the preview writes REAL copy)
+ *   ctx.ai.listPrompts / getPrompt                                 → live
  *   ctx.files.importFromUrl                                        → passthrough
  *     (the URL is kept as-is; the platform re-hosts it into store media)
  *   ctx.db (plugin-owned tables, e.g. staging)                     → local mock
- *   ctx.ai / ctx.email / ctx.realtime / ctx.storage                → local mock
+ *   ctx.email / ctx.realtime / ctx.storage                         → local mock
  *
  * The connection lives in selldoes.config.json:
  *   "store": { "live": true, "appUrl": "…", "storeId": 6, "storeSlug": "otrjoy" }
@@ -26,6 +30,8 @@ import path from "node:path"
 
 const EXTERNAL_PRODUCTS = "/api/external/products"
 const EXTERNAL_AI_PROMPTS = "/api/external/ai/prompts"
+/** The merchant API also exposes the AI runner (the same one the dashboard uses). */
+const AI_EXECUTE = "/api/ai/execute"
 /** Fields `full=1` returns — mirrors what plugins read back from findBySku. */
 const FULL_FIELDS = ["id", "sku", "name", "price", "status", "category", "subCategory", "image", "mainImage", "variationGroups", "customAttributes"]
 
@@ -201,6 +207,69 @@ export function createLivePromptsBridge(connection, log = () => {}) {
       // (the prompt library is small) to keep one endpoint.
       const prompts = await this.list()
       return prompts.find((prompt) => Number(prompt.id) === Number(id)) ?? null
+    },
+  }
+}
+
+/**
+ * Builds the live `ctx.ai` bridge — text and image generation through the
+ * store's own AI provider. Backed by the platform's AI runner
+ * (`POST /api/ai/execute`, authenticated with the merchant API key), which
+ * falls back to the store's saved provider + model when the request does not
+ * name one. Without this bridge the preview answers every AI call with the
+ * mock reply, so a plugin's copy never looks like the real thing.
+ */
+export function createLiveAiBridge(connection, log = () => {}) {
+  const { appUrl, apiKey, storeId } = connection
+
+  const call = async (body) => {
+    const res = await fetch(`${appUrl.replace(/\/$/, "")}${AI_EXECUTE}`, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, storeId }),
+      signal: AbortSignal.timeout(120_000),
+    })
+    const text = await res.text()
+    let data = null
+    try {
+      data = JSON.parse(text)
+    } catch {
+      // non-JSON body
+    }
+    if (!res.ok) {
+      const detail = data?.error || res.statusText || "request failed"
+      throw new Error(`${detail} [${res.status} POST ${AI_EXECUTE}]`)
+    }
+    return data ?? {}
+  }
+
+  return {
+    async complete(opts = {}) {
+      const prompt = String(opts.prompt ?? "")
+      if (!prompt) throw new Error("ctx.ai.complete needs a prompt")
+      const data = await call({
+        prompt,
+        ...(opts.model ? { model: opts.model } : {}),
+        ...(opts.provider ? { provider: opts.provider } : {}),
+      })
+      const text = String(data.text ?? data.content ?? "")
+      log(`[live] ai.complete → ${text.length} characters`)
+      return { text, tokensUsed: Number(data.tokensUsed) || 0 }
+    },
+    async image(opts = {}) {
+      const data = await call({
+        target: { type: "image", field: "mainImage" },
+        ...(opts.promptId ? { promptId: opts.promptId } : {}),
+        ...(opts.prompt ? { prompt: opts.prompt } : {}),
+        ...(opts.referenceImage ? { referenceImage: opts.referenceImage } : {}),
+        ...(opts.size ? { size: opts.size } : {}),
+        ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+      })
+      log("[live] ai.image → generated")
+      return {
+        url: String(data.url ?? ""),
+        base64: data.b64 ? String(data.b64) : undefined,
+      }
     },
   }
 }

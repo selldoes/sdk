@@ -489,8 +489,15 @@
                   node.value = String(option.value)
                   input.appendChild(node)
                 })
-                input.value = initial
-                if (input.value !== initial) input.selectedIndex = 0
+                // Keep the saved value when it still exists; otherwise fall
+                // back to the first option — the setting may be empty, or the
+                // saved id may be gone from the list. A blank select would
+                // otherwise look like "nothing is configured".
+                var known = false
+                for (var i = 0; i < options.length; i++) {
+                  if (String(options[i].value) === initial) { known = true; break }
+                }
+                input.value = known ? initial : String(options[0].value)
               })
             } else {
               (field.options || []).forEach(function (option) {
@@ -513,6 +520,9 @@
             input.placeholder = field.placeholder || ""
             wrap.appendChild(input)
           }
+          // The label's `for` points at "kit-<key>" — give the control that id
+          // so clicking the label focuses the field.
+          if (field.type !== "boolean") input.id = "kit-" + field.key
           if (field.description) wrap.appendChild(h("p", "kit-help", field.description))
           inputs[field.key] = { input: input, field: field }
           form.appendChild(wrap)
@@ -631,6 +641,15 @@
     frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals")
     frame.setAttribute("loading", "lazy")
     frame.style.height = (Number(settings.height) > 0 ? Number(settings.height) : 640) + "px"
+    // The frame's current height — remembered so the overlay can be undone.
+    var frameHeight = frame.style.height
+    var overlayOpen = false
+    // A reload means a fresh page: never leave the frame stuck as an overlay.
+    frame.addEventListener("load", function () {
+      overlayOpen = false
+      frame.classList.remove("kit-frame-overlay")
+      frame.style.height = frameHeight
+    })
     window.addEventListener("message", function (event) {
       if (event.source !== frame.contentWindow) return
       var data = event.data
@@ -640,12 +659,17 @@
         // that paginate stay far below it, and an unpaged long list must not
         // be clipped into an inner scrollbar (200k px ≈ never).
         var height = Math.max(160, Math.min(Number(data.height) || 0, 200000))
-        frame.style.height = height + "px"
+        // While the frame is a full-page overlay its size is the viewport's.
+        if (!overlayOpen) {
+          frameHeight = height + "px"
+          frame.style.height = frameHeight
+        }
         return
       }
       // The embedded page opened a dialog (kit/dialog.js) — bring the frame
       // into view so the modal isn't centered inside an off-screen frame.
       if (data.type === "selldesk:kit-scroll") {
+        if (overlayOpen) return
         if (typeof frame.scrollIntoView === "function") {
           try {
             frame.scrollIntoView({ behavior: "smooth", block: "center" })
@@ -653,6 +677,28 @@
             frame.scrollIntoView()
           }
         }
+        return
+      }
+      // The embedded page wants its dialog to cover the WHOLE page, not just
+      // this frame: the frame leaves the flow and becomes a full-screen
+      // overlay until the page closes the dialog again.
+      if (data.type === "selldesk:kit-overlay") {
+        var open = !!data.open
+        if (open && !overlayOpen) {
+          overlayOpen = true
+          frame.classList.add("kit-frame-overlay")
+          frame.style.height = ""
+        } else if (!open && overlayOpen) {
+          overlayOpen = false
+          frame.classList.remove("kit-frame-overlay")
+          frame.style.height = frameHeight
+        }
+        // Acknowledge — the page only switches to the overlay layout when the
+        // host confirms it (an older host simply never answers).
+        try {
+          frame.contentWindow.postMessage({ type: "selldesk:kit-overlay-state", id: data.id, open: open }, "*")
+        } catch (_) {}
+        return
       }
     })
     view.body.appendChild(frame)

@@ -204,6 +204,11 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
         requirePermission("ai:use", "ctx.ai.complete")
         const prompt = String(opts.prompt ?? "")
         log(`[ai] complete(${prompt.length} chars)${opts.model ? ` model=${opts.model}` : ""}`)
+        // Live store: the store's own AI provider — the preview writes REAL copy.
+        if (live.ai) {
+          const result = await live.ai.complete(opts)
+          return { text: result.text ?? "", tokensUsed: result.tokensUsed ?? 0 }
+        }
         let text = config.ai?.mockReply ?? "(mock AI reply — set `ai.mockReply` in selldoes.config.json)"
         for (const [needle, reply] of Object.entries(config.ai?.responses ?? {})) {
           if (prompt.toLowerCase().includes(String(needle).toLowerCase())) {
@@ -213,9 +218,11 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
         }
         return { text, tokensUsed: 0 }
       },
-      async image() {
+      async image(opts = {}) {
         requirePermission("ai:use", "ctx.ai.image")
         log("[ai] image()")
+        // Live store: the store's own image model.
+        if (live.ai) return live.ai.image(opts)
         return { url: config.ai?.mockImage ?? "" }
       },
       async listPrompts(opts = {}) {

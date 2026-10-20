@@ -4,7 +4,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { connectStore, createLiveProductsBridge, createLivePromptsBridge, maskKey, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import { connectStore, createLiveAiBridge, createLiveProductsBridge, createLivePromptsBridge, maskKey, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
 
 test("readStoreBlock: defaults, env fallback and normalization", () => {
   assert.deepEqual(readStoreBlock(null), { live: false, appUrl: "", apiKey: "", storeId: null, storeSlug: "" })
@@ -308,5 +308,75 @@ test("prompts bridge: an older host surfaces a deploy hint instead of an empty l
   await withStubPrompts({ mode: "missing" }, async (base) => {
     const bridge = createLivePromptsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
     await assert.rejects(() => bridge.list(), /deploy the latest Selldesk/)
+  })
+})
+
+/**
+ * Stub platform AI runner (`/api/ai/execute`) — the endpoint the dashboard
+ * and the CLI scrapers use, authenticated with the merchant API key.
+ */
+async function withStubAi(fn) {
+  const requests = []
+  const server = http
+    .createServer((req, res) => {
+      let body = ""
+      req.on("data", (chunk) => {
+        body += chunk
+      })
+      req.on("end", () => {
+        requests.push({ method: req.method, url: req.url, headers: req.headers, body: body ? JSON.parse(body) : {} })
+        if (!req.url?.startsWith("/api/ai/execute")) {
+          res.statusCode = 404
+          res.setHeader("content-type", "application/json")
+          return res.end(JSON.stringify({ error: "not found" }))
+        }
+        res.setHeader("content-type", "application/json")
+        const parsed = body ? JSON.parse(body) : {}
+        if (String(parsed.prompt || "").includes("FAIL")) {
+          res.statusCode = 500
+          return res.end(JSON.stringify({ error: "AI provider exploded" }))
+        }
+        if (parsed.target?.type === "image") return res.end(JSON.stringify({ url: "https://cdn.test/out.png" }))
+        res.end(JSON.stringify({ text: "REAL COPY" }))
+      })
+    })
+    .listen(0)
+  await new Promise((resolve) => server.once("listening", resolve))
+  const base = `http://127.0.0.1:${server.address().port}`
+  try {
+    return await fn(base, requests)
+  } finally {
+    server.close()
+  }
+}
+
+test("ai bridge: complete posts the prompt with the merchant key and the store id", async () => {
+  await withStubAi(async (base, requests) => {
+    const bridge = createLiveAiBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const result = await bridge.complete({ prompt: "Write a description" })
+    assert.equal(result.text, "REAL COPY")
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].url, "/api/ai/execute")
+    assert.equal(requests[0].headers["x-api-key"], "sk_k")
+    assert.equal(requests[0].body.prompt, "Write a description")
+    assert.equal(requests[0].body.storeId, 6)
+  })
+})
+
+test("ai bridge: image posts the saved prompt id and returns the provider url", async () => {
+  await withStubAi(async (base, requests) => {
+    const bridge = createLiveAiBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const result = await bridge.image({ promptId: 15, size: "1600x1600", aspectRatio: "1:1" })
+    assert.equal(result.url, "https://cdn.test/out.png")
+    assert.equal(requests[0].body.promptId, 15)
+    assert.equal(requests[0].body.size, "1600x1600")
+    assert.deepEqual(requests[0].body.target, { type: "image", field: "mainImage" })
+  })
+})
+
+test("ai bridge: a failing platform surfaces the error", async () => {
+  await withStubAi(async (base) => {
+    const bridge = createLiveAiBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    await assert.rejects(() => bridge.complete({ prompt: "FAIL" }), /AI provider exploded/)
   })
 })
