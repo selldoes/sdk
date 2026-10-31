@@ -40,7 +40,7 @@ const DEFAULT_MOCK_PROMPTS = [
  * the runtime executes in Node (not QuickJS), and outbound integrations are
  * mocked unless configured in `selldoes.config.json`.
  */
-export function createMockContext({ pluginDir, manifest, getManifest, db, storeId, config = {}, devDir, log = () => {}, liveStore = null }) {
+export function createMockContext({ pluginDir, manifest, getManifest, db, storeId, config = {}, devDir, log = () => {}, liveStore = null, baseUrl = "" }) {
   /**
    * Live store bridge (`{ bridge, prompts }` — mutated by the dev server's
    * /__dev/store connect/disconnect so switching modes needs no restart). When
@@ -103,7 +103,14 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
     log(`[db] created mock table ${table} (platform table from allowedTables)`)
   }
 
-  const filesUrl = (key) => `/__dev/files/${encodeURIComponent(key)}`
+  // Production hands out absolute media URLs (S3/CDN). The preview does the
+  // same when it knows its own origin — a Node job that re-fetches the
+  // artwork (a resize, a re-upload) needs a URL it can fetch.
+  const base = () => {
+    const value = typeof baseUrl === "function" ? baseUrl() : baseUrl
+    return String(value ?? "").replace(/\/+$/, "")
+  }
+  const filesUrl = (key) => `${base()}/__dev/files/${encodeURIComponent(key)}`
 
   // ctx.storage is plugin- and store-scoped in production; the mock keeps the
   // same scoping in one JSON file so switching stores cannot leak values.

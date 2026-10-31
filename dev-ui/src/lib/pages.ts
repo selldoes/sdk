@@ -12,6 +12,7 @@ export const PAGE_TITLES: Record<string, string> = {
   "/settings-dialog": "Settings dialog",
   "/api": "API routes",
   "/jobs": "Jobs",
+  "/job-logs": "Job logs",
   "/hooks": "Hooks",
   "/data": "Store data",
   "/email": "Email outbox",

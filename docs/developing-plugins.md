@@ -169,10 +169,21 @@ renderer**, and generated files travel through `pack`/`publish` like any other
 UI asset. A hand-written `entry` on the page wins over the kit and is left
 untouched.
 
+**Every `dashboardPages` entry becomes a sidebar item** in the dashboard
+(`/plugins/<slug><path>`) — so a second page is the way to give a long
+section its own place: e.g. a `logs` page at `path: "/job-logs"` lands next to
+the plugin's main page as *Job logs*. The page name follows the path
+(`/` → `home`, `/job-logs` → `job-logs`).
+
 Kit types: `text` (markdown), `stats`, `table` (your `apiRoutes` path — the
 handler returns an array or `{ rows: [...] }` / `{ items: [...] }`), `job`
-(run button + live transcript), `settings` (renders `configSchema`), `logs`,
-`links`, `component` (embed another of your own `ui/*.html` files inside the
+(run button + live transcript), `settings` (renders `configSchema`), `logs`
+(**job history** — every background job of the plugin for this store: status
+badge, name, counters, runtime, duration and "x ago"; click a run for its
+transcript, per-item results and the final result. Settings: `title?`,
+`description?`, `lines?` (log lines shown, default 20), `limit?` (runs shown,
+default 10). The list refreshes itself while a job is running), `links`,
+`component` (embed another of your own `ui/*.html` files inside the
 kit page — a sandboxed iframe that resizes itself: the embedded page posts
 `parent.postMessage({ type: "selldesk:kit-resize", height }, "*")` whenever
 its content height changes, e.g. via a `ResizeObserver` on its body). The
@@ -288,6 +299,15 @@ fixed, full-viewport layer with a dimmed backdrop, so the dialog covers the
 whole dashboard page instead of the component's box. Style your dialog for
 that mode yourself (e.g. a transparent, full-screen `<dialog>` with the card
 inside).
+
+The overlay is **reference counted**: a second dialog (a confirm on top of a
+preview) keeps the frame in overlay mode, and the frame only shrinks back into
+the page when the last dialog closes. Without that, closing the confirm would
+clip the dialog underneath back into the frame's small box.
+
+Pass `overlay: false` to `SelldoesDialog.confirm()` when the dialog belongs to
+the page's own content (a row action in a list): it then stays inside the
+frame instead of turning the whole dashboard page into a dimmed overlay.
 
 Manual alternative (no helper): build your own `<form method="dialog">` and
 call `dialog.showModal()` — but do not reach for `window.confirm` anywhere in
@@ -458,6 +478,12 @@ store-scoped, and condition operators (`like`, `in`, `ne`, `gt/gte/lt/lte`,
 code in Node, while production uses a QuickJS sandbox — avoid Node globals
 (`process`, `Buffer`, `require`, `fs`) in plugin code.
 
+Jobs the preview queues with `ctx.jobs.enqueue` are picked up on their own
+(the platform's worker does the same) — a chained or Node job runs a couple of
+seconds after it was queued, so a page can wait for the result instead of
+hanging. Media URLs handed to your code are absolute in the preview, like the
+CDN URLs in production, so a Node job can fetch them.
+
 ### Connect a real store (live mode)
 
 The mock store is great until you need real catalog data. **Project
@@ -512,6 +538,12 @@ example a `configSchema` field of type `secret`); values are never bundled with
 the plugin or written to logs. `ctx.storage` is a small JSON store scoped to
 the plugin **and** the store — use it for cursors, tokens and sync state
 instead of assuming a persistent filesystem (jobs run in disposable sandboxes).
+`ctx.storage.list(prefix)` returns `{ key, updatedAt }` rows (not bare
+strings), so read a value per key with `ctx.storage.get(key)`. It is also the
+handy place to keep the state of **background work**: a job that runs outside
+the request (a Node job, a chained job) can record "queued → running → done"
+here, and the page that triggered it can poll `ctx.storage` to show a spinner
+until the work is really finished.
 
 `ctx.ai.listPrompts({ type: "image" })` returns the store's saved AI prompt
 library (Dashboard → AI Prompts, plus the system defaults) —
@@ -570,6 +602,14 @@ requests against the local server.
 Jobs declared in `jobs` are chunked: export a handler per type and the host
 calls `step` until it returns `done: true`, checkpointing the returned `state`
 between ticks (survives pauses, restarts and tick-budget timeouts).
+
+Every run is logged. The **Job logs** page of the SDK workspace (sidebar →
+*Backend → Job logs*) lists them: status, counters, duration and the
+transcript (per-item results, log lines, final result) — click a run to open
+it. The *Jobs* page next to it renders the declared jobs (their source, the
+run buttons, the live transcript) and every job card carries its own
+*previous runs* list. The same history reaches the plugin's own dashboard
+through the kit runtime's `logs` section (`{ "type": "logs" }`).
 
 ```js
 module.exports = {

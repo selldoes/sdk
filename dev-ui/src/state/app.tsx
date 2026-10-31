@@ -119,7 +119,10 @@ export function AppProvider({
   const refreshWorkspace = React.useCallback(async () => {
     try {
       const data = await ws.bootstrap()
-      setWorkspace(data)
+      // The standalone dev server answers every /__ws/* path with the SPA
+      // shell (there is no workspace server) — treat that as "no workspace"
+      // instead of a half-initialised state.
+      setWorkspace(Array.isArray(data?.projects) ? data : null)
     } catch {
       setWorkspace(null) // standalone `selldoes dev` — no workspace server
     } finally {

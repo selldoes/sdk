@@ -25,6 +25,8 @@
  *     confirmLabel,     // default "Confirm"
  *     cancelLabel,      // default "Cancel"
  *     danger,           // red confirm button (destructive actions)
+ *     overlay,          // default true — false keeps the dialog inside the
+ *                       //   frame instead of dimming the whole page
  *     select: {         // optional extra field — resolves its value back
  *       name,           //   key in the resolved object, e.g. "status"
  *       label,          //   field label, e.g. "Status"
@@ -125,9 +127,33 @@
     })
   }
 
+  /**
+   * Reference counted overlay: several dialogs can be open at once (a confirm
+   * on top of a preview). The frame only leaves the full-page overlay when the
+   * LAST dialog closes — otherwise the dialog underneath would be clipped back
+   * into the frame's small box.
+   */
+  var overlayUsers = 0
+  var overlaySupported = null
+
   /** Public: overlay(open) → Promise<boolean> — true when the host applied it. */
   function overlay(open) {
-    return requestOverlay(open).then(function (result) { return result.supported })
+    if (open) {
+      overlayUsers++
+      if (overlayUsers > 1) return Promise.resolve(overlaySupported === true)
+      return requestOverlay(true).then(function (result) {
+        overlaySupported = result.supported
+        // The host does not know the protocol — do not keep a stale count.
+        if (!result.supported) overlayUsers--
+        return result.supported
+      })
+    }
+    overlayUsers = Math.max(0, overlayUsers - 1)
+    if (overlayUsers > 0) return Promise.resolve(true)
+    return requestOverlay(false).then(function (result) {
+      overlaySupported = result.supported
+      return result.supported
+    })
   }
 
   function closeOpen(reason) {
@@ -145,6 +171,10 @@
     var opts = options || {}
     // A second confirm while one is open cancels the first — never stack.
     closeOpen("cancel")
+    // `overlay: false` keeps the dialog inside the frame instead of turning
+    // the whole page into a dimmed overlay — use it for the dialogs a page
+    // opens on top of its own content (a row action in a list).
+    var wantsOverlay = opts.overlay !== false
 
     return new Promise(function (resolve) {
       var dialog = document.createElement("dialog")
@@ -227,7 +257,7 @@
         // The frame goes back into the page flow.
         if (overlayActive) {
           overlayActive = false
-          requestOverlay(false)
+          overlay(false)
         }
         if (dialog.returnValue === "ok") {
           var values = {}
@@ -249,23 +279,28 @@
       // frame): the frame becomes a full-screen overlay and the dialog sits on
       // top of it. The dialog is only shown once the host has answered, so it
       // never jumps from one place to another.
-      requestOverlay(true).then(function (result) {
-        if (!result.supported) {
-          dialog.showModal()
-          // Embedded in a component iframe, the dialog sits inside a frame
-          // that may be taller than the visible page — ask the host (kit
-          // runtime) to scroll this frame into view. No-op when standalone.
-          if (window.parent !== window) {
-            try {
-              window.parent.postMessage({ type: "selldesk:kit-scroll" }, "*")
-            } catch (_) {}
-          }
-          return
+      var show = function (asOverlay) {
+        if (asOverlay) {
+          overlayActive = true
+          dialog.classList.add("sd-overlay")
+          document.body.classList.add("sd-overlay-active")
         }
-        overlayActive = result.open
-        dialog.classList.add("sd-overlay")
-        document.body.classList.add("sd-overlay-active")
         dialog.showModal()
+        // Embedded in a component iframe, the dialog sits inside a frame that
+        // may be taller than the visible page — ask the host (kit runtime) to
+        // scroll this frame into view. No-op when standalone.
+        if (window.parent !== window) {
+          try {
+            window.parent.postMessage({ type: "selldesk:kit-scroll" }, "*")
+          } catch (_) {}
+        }
+      }
+      if (!wantsOverlay) {
+        show(false)
+        return
+      }
+      overlay(true).then(function (result) {
+        show(result.supported)
       })
     })
   }

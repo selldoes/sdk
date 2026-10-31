@@ -84,7 +84,7 @@ export function WorkspaceSwitcher() {
           disabled={busy.anyBusy}
           title={
             current
-              ? `${current.project.path}${workspace?.sdk.dev ? " · SDK-dev mode" : ""}`
+              ? `${current.project.path}${workspace?.sdk?.dev ? " · SDK-dev mode" : ""}`
               : "Create, import or pull a project"
           }
           className={cn(

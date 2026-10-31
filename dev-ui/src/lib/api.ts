@@ -13,6 +13,8 @@ import type {
   FileWriteResult,
   GitCommit,
   GitStatus,
+  JobRunDetail,
+  JobRunRow,
   PluginManifest,
   PublishInput,
   PublishResult,
@@ -163,6 +165,12 @@ export const dev = {
     post<PackagesResponse & { ok: boolean; rebuildError?: string }>("/__dev/packages/add", { name, ...(range ? { range } : {}) }),
   removePackage: (name: string) =>
     post<PackagesResponse & { ok: boolean; rebuildError?: string }>("/__dev/packages/remove", { name }),
+
+  // ── Job history ───────────────────────────────────────────────────────────
+  /** Every background job run of the plugin (newest first). */
+  jobRuns: (slug: string, limit = 50) => request<{ jobs: JobRunRow[] }>(`/api/plugins/${slug}/jobs?limit=${limit}`),
+  /** One run with its transcript (per-item results, log lines, result). */
+  jobRun: (slug: string, id: number) => request<JobRunDetail>(`/api/plugins/${slug}/jobs/${id}`),
 
   // ── External editor / OS terminal ─────────────────────────────────────────
   openEditor: (input: { file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>

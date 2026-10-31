@@ -5,6 +5,7 @@ import {
   Database,
   FileCode2,
   FileText,
+  History,
   LayoutDashboard,
   Mail,
   Package,
@@ -67,6 +68,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Backend",
     items: [
       { to: "/jobs", label: "Jobs", icon: Play },
+      { to: "/job-logs", label: "Job logs", icon: History },
       { to: "/hooks", label: "Hooks", icon: Webhook },
       { to: "/api", label: "API routes", icon: RouteIcon },
     ],
@@ -116,7 +118,7 @@ export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
           <span className="text-[15px] font-bold tracking-tight">Selldoes</span>
           {workspaceLoaded ? (
             <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-              {workspaceMode ? (workspace?.sdk.dev ? "SDK dev" : "workspace") : "plugin preview"}
+              {workspaceMode ? (workspace?.sdk?.dev ? "SDK dev" : "workspace") : "plugin preview"}
             </span>
           ) : (
             <Skeleton className="h-4 w-16 rounded-full" />

@@ -407,6 +407,67 @@ a.kit-button.kit-outline:active {
   margin-bottom: 6px;
 }
 
+/* ── Job history (the "logs" section) ──────────────────────────────────────── */
+
+.kit-joblog {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kit-joblog-row {
+  border: 1px solid var(--kit-border);
+  border-radius: var(--kit-radius-lg);
+  background: var(--kit-panel, #fff);
+  padding: 8px 12px;
+}
+
+.kit-joblog-row > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+}
+
+.kit-joblog-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kit-joblog-name {
+  font-weight: 600;
+  color: var(--kit-fg);
+  white-space: nowrap;
+}
+
+.kit-joblog-when {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--kit-muted-fg);
+}
+
+.kit-joblog-detail {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The run history inside a job card. */
+.kit-jobruns {
+  margin-top: 10px;
+}
+
+.kit-jobruns > summary {
+  color: var(--kit-muted-fg);
+  font-size: 12px;
+}
+
+.kit-jobruns .kit-joblog {
+  margin-top: 8px;
+}
+
 /* ── Settings form ─────────────────────────────────────────────────────────── */
 
 .kit-form {

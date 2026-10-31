@@ -326,6 +326,11 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     }
   }
 
+  // The port/host the preview listens on — resolved before the mock context
+  // so media URLs can be absolute (like production).
+  const listenPort = Number(port ?? config.port ?? 4590)
+  const listenHost = String(host ?? config.host ?? "127.0.0.1")
+
   const { ctx, outbox, events, jobEvents, pendingJobs } = createMockContext({
     pluginDir,
     manifest: manifestStore.read(),
@@ -337,6 +342,8 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     config: ctxConfig,
     devDir,
     log,
+    // The preview's own origin — media URLs are absolute, like in production.
+    baseUrl: () => `http://${listenHost === "0.0.0.0" ? "localhost" : listenHost}:${listenPort}`,
     // Live store bridge — mutated by /__dev/store connect/disconnect, so
     // switching between the mock and a real store needs no restart.
     liveStore,
@@ -375,6 +382,16 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     }
     return chained
   }
+
+  // The platform's worker picks up enqueued jobs on its own. The dev server
+  // does the same on a timer, so a plugin that enqueues work from a route
+  // (an image job, a chained import) sees it run — and its UI can wait for
+  // the result instead of hanging.
+  const chainedTimer = setInterval(() => {
+    if (pendingJobs.length === 0) return
+    void drainChainedJobs(5).catch(() => {})
+  }, 2000)
+  if (typeof chainedTimer.unref === "function") chainedTimer.unref()
 
   const runMockJob = async ({ type, input, maxTicks = 200, budgetMs = 0, resumeRow = null }) => {
     const manifest = manifestStore.read()
@@ -1955,9 +1972,6 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     }
   })
 
-  const listenPort = Number(port ?? config.port ?? 4590)
-  const listenHost = String(host ?? config.host ?? "127.0.0.1")
-
   const terminals = attachTerminalServer({
     server,
     path: "/__dev/terminal",
@@ -1983,6 +1997,7 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
     projectWatcher.close()
     terminals.closeAll()
     stream.closeAll()
+    if (chainedTimer) clearInterval(chainedTimer)
     db.saveNow()
     server.close(() => process.exit(0))
     setTimeout(() => process.exit(0), 500).unref()

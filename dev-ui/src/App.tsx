@@ -26,6 +26,7 @@ import { StorefrontPage } from "@/pages/storefront"
 import { SettingsDialogPage } from "@/pages/settings-dialog"
 import { ApiPage } from "@/pages/api-console"
 import { JobsPage } from "@/pages/jobs"
+import { JobLogsPage } from "@/pages/job-logs"
 import { HooksPage } from "@/pages/hooks"
 import { DataPage } from "@/pages/data"
 import { EmailPage } from "@/pages/email"
@@ -142,6 +143,7 @@ function Shell() {
                       <Route path="/settings-dialog" element={<SettingsDialogPage />} />
                       <Route path="/api" element={<ApiPage />} />
                       <Route path="/jobs" element={<JobsPage />} />
+                      <Route path="/job-logs" element={<JobLogsPage />} />
                       <Route path="/hooks" element={<HooksPage />} />
                       <Route path="/data" element={<DataPage />} />
                       <Route path="/email" element={<EmailPage />} />
