@@ -1,20 +1,13 @@
+import { FileCode2, Loader2, Pencil, Plus } from "lucide-react"
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { FileCode2, Loader2, Pencil, Plus } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { dev } from "@/lib/api"
-import { handlerPathFor, HOOK_CATALOG, hookModuleTemplate, normalizeHandlerPath } from "@/lib/hooks-catalog"
+import { HOOK_CATALOG, handlerPathFor, hookModuleTemplate, normalizeHandlerPath } from "@/lib/hooks-catalog"
 import { ROUTE_METHODS, routeFileHint, routeModuleTemplate, routeParamNames } from "@/lib/route-scaffold"
 import type { PluginManifest, Validation } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -146,7 +139,12 @@ export function CreateJobDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="create-job-name">Display name (optional)</Label>
-            <Input id="create-job-name" value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Import products" />
+            <Input
+              id="create-job-name"
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              placeholder="Import products"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="create-job-desc">Description (optional)</Label>
@@ -203,7 +201,8 @@ export function CreateHookDialog({
     dev
       .files()
       .then((tree) => {
-        if (!cancelled) setExistingFiles(new Set(tree.entries.filter((entry) => entry.type === "file").map((entry) => entry.path)))
+        if (!cancelled)
+          setExistingFiles(new Set(tree.entries.filter((entry) => entry.type === "file").map((entry) => entry.path)))
       })
       .catch(() => {})
     return () => {
@@ -256,7 +255,9 @@ export function CreateHookDialog({
         <DialogHeader>
           <DialogTitle>New hook</DialogTitle>
           <DialogDescription>
-            {"Pick an event the host fires — or type your own name. Creates hooks/<name>.js, declares it in plugin.json and wires it into the entry."}
+            {
+              "Pick an event the host fires — or type your own name. Creates hooks/<name>.js, declares it in plugin.json and wires it into the entry."
+            }
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -299,9 +300,7 @@ export function CreateHookDialog({
               )
             })}
             {catalog.length === 0 ? (
-              <p className="px-1 py-2 text-[11.5px] text-muted-foreground">
-                No events match — type a custom name below.
-              </p>
+              <p className="px-1 py-2 text-[11.5px] text-muted-foreground">No events match — type a custom name below.</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
@@ -401,7 +400,8 @@ export function CreateRouteDialog({
     dev
       .files()
       .then((tree) => {
-        if (!cancelled) setExistingFiles(new Set(tree.entries.filter((entry) => entry.type === "file").map((entry) => entry.path)))
+        if (!cancelled)
+          setExistingFiles(new Set(tree.entries.filter((entry) => entry.type === "file").map((entry) => entry.path)))
       })
       .catch(() => {})
     return () => {
@@ -410,9 +410,7 @@ export function CreateRouteDialog({
   }, [open])
 
   const toggleMethod = (method: string) => {
-    setMethods((previous) =>
-      previous.includes(method) ? previous.filter((entry) => entry !== method) : [...previous, method],
-    )
+    setMethods((previous) => (previous.includes(method) ? previous.filter((entry) => entry !== method) : [...previous, method]))
   }
 
   const submit = async () => {
@@ -455,7 +453,9 @@ export function CreateRouteDialog({
         <DialogHeader>
           <DialogTitle>New API route</DialogTitle>
           <DialogDescription>
-            {"Creates routes/<path>.js, declares it in plugin.json and wires it into the entry. Use :name segments for path parameters."}
+            {
+              "Creates routes/<path>.js, declares it in plugin.json and wires it into the entry. Use :name segments for path parameters."
+            }
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

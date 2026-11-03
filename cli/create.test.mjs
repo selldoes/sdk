@@ -42,7 +42,12 @@ test("example catalog: plugin and theme entries carry UI metadata", () => {
   for (const entry of [...plugins, ...themes]) {
     assert.ok(entry.name.length > 0, `${entry.id} has a name`)
     assert.ok(entry.description.length > 20, `${entry.id} has a description`)
-    assert.ok(fs.existsSync(new URL(`../templates/${EXAMPLES.plugin.concat(EXAMPLES.theme).find((e) => e.id === entry.id).dir}`, import.meta.url)), `${entry.id} template exists`)
+    assert.ok(
+      fs.existsSync(
+        new URL(`../templates/${EXAMPLES.plugin.concat(EXAMPLES.theme).find((e) => e.id === entry.id).dir}`, import.meta.url),
+      ),
+      `${entry.id} template exists`,
+    )
   }
 })
 
@@ -74,7 +79,10 @@ test("scaffoldProject: the importer example ships jobs, sections and a status UI
     assert.equal(manifest.slug, "otr-importer")
     assert.equal(manifest.name, "OTR Importer")
     assert.ok(manifest.jobs.length >= 4, "declares the import pipeline jobs")
-    assert.equal(manifest.dashboardPages[0].sections.some((section) => section.type === "job"), true)
+    assert.equal(
+      manifest.dashboardPages[0].sections.some((section) => section.type === "job"),
+      true,
+    )
     assert.equal(manifest.ui.entry, "ui/status.html")
     assert.ok(fs.existsSync(path.join(dir, "ui", "status.html")))
     const index = fs.readFileSync(path.join(dir, "index.js"), "utf8")

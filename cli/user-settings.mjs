@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { writePrivateFile } from "./util.mjs"
 
 /**
  * User (global) settings — who you are on this machine, not what a project is.
@@ -54,8 +55,7 @@ export function userAssistant() {
 
 function writeSettings(next) {
   const file = userSettingsFile()
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, "utf8")
+  writePrivateFile(file, `${JSON.stringify(next, null, 2)}\n`)
   return next
 }
 
@@ -104,7 +104,8 @@ export function applyUserSettingsPatch(patch = {}) {
   }
 
   if (patch.publish !== undefined) {
-    if (!patch.publish || typeof patch.publish !== "object" || Array.isArray(patch.publish)) throw new Error("publish must be an object")
+    if (!patch.publish || typeof patch.publish !== "object" || Array.isArray(patch.publish))
+      throw new Error("publish must be an object")
     const merged = { ...(current.publish ?? {}) }
     if ("bump" in patch.publish) {
       const value = patch.publish.bump
@@ -188,7 +189,12 @@ export function migrateProjectAssistantConfigs(projects = []) {
     // Credentials + provider preference are machine-level.
     let moved = false
     for (const field of ["provider", "apiKey", "baseUrl", "maxTokens"]) {
-      if (section[field] !== undefined && section[field] !== null && section[field] !== "" && userAssistantConfig[field] === undefined) {
+      if (
+        section[field] !== undefined &&
+        section[field] !== null &&
+        section[field] !== "" &&
+        userAssistantConfig[field] === undefined
+      ) {
         userAssistantConfig[field] = section[field]
         userChanged = true
         moved = true

@@ -75,7 +75,17 @@ interface MonacoEditorProps {
  * A thin Monaco wrapper: one editor per page, one model per open file (so
  * per-file undo stacks and cursor positions survive tab switches).
  */
-export function MonacoEditor({ path, value, readOnly, theme, problems, revealLine, onChange, onSave, onSelection }: MonacoEditorProps) {
+export function MonacoEditor({
+  path,
+  value,
+  readOnly,
+  theme,
+  problems,
+  revealLine,
+  onChange,
+  onSave,
+  onSelection,
+}: MonacoEditorProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const monacoRef = React.useRef<Monaco | null>(null)
   const editorRef = React.useRef<CodeEditor | null>(null)

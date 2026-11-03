@@ -6,8 +6,8 @@ import test from "node:test"
 import { buildPlugin, packPluginSource } from "./build.mjs"
 import {
   collectBundledPackages,
-  collectExternals,
   collectExternalPackages,
+  collectExternals,
   collectImportedPackages,
   describeLoadError,
   evaluateBundle,
@@ -93,10 +93,7 @@ test("buildPlugin: importing a package without declaring it fails the sandbox ch
     { "index.js": 'const fake = require("fake-events")\nmodule.exports = { apiRoutes: {} }\n' },
   )
   fakeEventsPackage(root)
-  await assert.rejects(
-    () => buildPlugin(root, { outDir: path.join(root, "dist"), log: () => {} }),
-    /fake-events.*not declared/,
-  )
+  await assert.rejects(() => buildPlugin(root, { outDir: path.join(root, "dist"), log: () => {} }), /fake-events.*not declared/)
 })
 
 test("buildPlugin: blocked Node builtins fail with an actionable error", async () => {
@@ -129,7 +126,11 @@ test("probePackage: a package that needs WebCrypto is blocked with the reason", 
 
 test("probePackage: a package that needs AsyncLocalStorage is blocked with the reason", async () => {
   const root = tempPlugin({ ...BASE }, {})
-  writeFakePackage(root, "fake-async", 'const { AsyncLocalStorage } = require("async_hooks")\nmodule.exports = { store: new AsyncLocalStorage() }\n')
+  writeFakePackage(
+    root,
+    "fake-async",
+    'const { AsyncLocalStorage } = require("async_hooks")\nmodule.exports = { store: new AsyncLocalStorage() }\n',
+  )
   const probe = await probePackage({ pluginDir: root, name: "fake-async" })
   assert.equal(probe.status, "blocked")
   assert.match(probe.message, /needs the "async_hooks" Node module/)
@@ -188,10 +189,7 @@ test("buildPlugin: selldoes/job bundles into the QuickJS entry", async () => {
 
 test("buildPlugin: selldoes/node in the QuickJS entry fails with an actionable error", async () => {
   const root = tempPlugin({ ...BASE }, { "index.js": 'require("selldoes/node")\nmodule.exports = {}\n' })
-  await assert.rejects(
-    () => buildPlugin(root, { log: () => {} }),
-    /selldoes\/node.*Node job entry/,
-  )
+  await assert.rejects(() => buildPlugin(root, { log: () => {} }), /selldoes\/node.*Node job entry/)
 })
 
 test("buildPlugin: Node jobs inline selldoes/node, keep peers external and skip unused-dep warnings", async () => {
@@ -203,8 +201,7 @@ test("buildPlugin: Node jobs inline selldoes/node, keep peers external and skip 
   const root = tempPlugin(manifest, {
     "index.js": "module.exports = {}\n",
     "server/import.js":
-      'const { normalizeImage } = require("selldoes/node")\n' +
-      "module.exports = async () => typeof normalizeImage\n",
+      'const { normalizeImage } = require("selldoes/node")\n' + "module.exports = async () => typeof normalizeImage\n",
   })
   const out = await buildPlugin(root, { log: () => {} })
   assert.equal(out.sandbox.ok, true)
@@ -212,7 +209,10 @@ test("buildPlugin: Node jobs inline selldoes/node, keep peers external and skip 
   assert.deepEqual(out.sandbox.unusedDependencies, [])
 
   const artifact = JSON.parse(fs.readFileSync(path.join(out.nodeDir, "artifact.json"), "utf8"))
-  assert.deepEqual(artifact.jobs.map((job) => job.type), ["import-batch"])
+  assert.deepEqual(
+    artifact.jobs.map((job) => job.type),
+    ["import-batch"],
+  )
   const bundle = fs.readFileSync(path.join(out.nodeDir, "import-batch.cjs"), "utf8")
   assert.ok(!bundle.includes('require("selldoes/node")'), "the helper is bundled, not required at runtime")
   assert.ok(bundle.includes("normalizeImage"), "the helper code is present")
@@ -221,7 +221,11 @@ test("buildPlugin: Node jobs inline selldoes/node, keep peers external and skip 
 
 test("probeNodePackage: packages that need Node builtins work in the Node runtime", async () => {
   const root = tempPlugin({ ...BASE }, {})
-  writeFakePackage(root, "fake-node", 'const fs = require("node:fs")\nmodule.exports = { read: (file) => fs.readFileSync(file, "utf8") }\n')
+  writeFakePackage(
+    root,
+    "fake-node",
+    'const fs = require("node:fs")\nmodule.exports = { read: (file) => fs.readFileSync(file, "utf8") }\n',
+  )
   const quickjs = await probePackage({ pluginDir: root, name: "fake-node" })
   assert.equal(quickjs.status, "blocked", "the QuickJS probe still refuses it")
   const node = await probeNodePackage({ pluginDir: root, name: "fake-node" })

@@ -1,11 +1,4 @@
-import {
-  useInitialProduct,
-  Price,
-  AddToCartButton,
-  Breadcrumbs,
-  Container,
-  ProductGallery,
-} from "selldoes/theme"
+import { AddToCartButton, Breadcrumbs, Container, Price, ProductGallery, useInitialProduct } from "selldoes/theme"
 
 export default function ProductPage() {
   const product = useInitialProduct()
@@ -33,9 +26,7 @@ export default function ProductPage() {
           <div style={{ marginTop: 20 }}>
             <AddToCartButton product={product} />
           </div>
-          {product.description ? (
-            <p style={{ marginTop: 24, color: "#475569", lineHeight: 1.6 }}>{product.description}</p>
-          ) : null}
+          {product.description ? <p style={{ marginTop: 24, color: "#475569", lineHeight: 1.6 }}>{product.description}</p> : null}
         </div>
       </div>
     </Container>

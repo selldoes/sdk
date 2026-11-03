@@ -85,10 +85,7 @@ const EXPLICIT_CALL = new RegExp(String.raw`\b(?:ctx|context)\s*\.\s*(${CAPABILI
 const BARE_CALL = new RegExp(String.raw`\b(${CAPABILITY_NAMES})\s*\.\s*([A-Za-z]+)\s*\(`)
 
 /** `const { db, http } = ctx` — which capabilities a file destructures. */
-const DESTRUCTURE = new RegExp(
-  String.raw`\{[^}]*\b(${CAPABILITY_NAMES})\b[^}]*\}\s*=\s*(?:ctx|context)\b`,
-  "g",
-)
+const DESTRUCTURE = new RegExp(String.raw`\{[^}]*\b(${CAPABILITY_NAMES})\b[^}]*\}\s*=\s*(?:ctx|context)\b`, "g")
 
 /** `const db = ctx.db` — aliased capability object. */
 const ALIAS = new RegExp(String.raw`\b(${CAPABILITY_NAMES})\s*=\s*(?:ctx|context)\s*\.\s*(${CAPABILITY_NAMES})\b`, "g")
@@ -121,12 +118,7 @@ function fileDestructured(preview: string): Set<string> {
   return found
 }
 
-function record(
-  needs: Map<PluginPermission, PermissionEvidence[]>,
-  permission: PluginPermission,
-  path: string,
-  line: number,
-) {
+function record(needs: Map<PluginPermission, PermissionEvidence[]>, permission: PluginPermission, path: string, line: number) {
   const evidence = needs.get(permission) ?? []
   if (evidence.length < MAX_EVIDENCE_PER_PERMISSION && !evidence.some((hit) => hit.path === path && hit.line === line)) {
     evidence.push({ path, line })

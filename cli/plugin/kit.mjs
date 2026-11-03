@@ -25,7 +25,9 @@ const RUNTIME_FILES = ["runtime.js", "runtime.css", "dialog.js"]
 
 /** "/" → "home", "/reports/daily" → "reports-daily". */
 export function kitPageName(pagePath) {
-  const clean = String(pagePath ?? "/").replace(/^\/+/, "").replace(/\/+$/, "")
+  const clean = String(pagePath ?? "/")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
   const name = clean
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -134,7 +136,7 @@ export function syncKitPages(pluginDir) {
   // renders in the plugin manager's Settings dialog. A hand-written entry wins.
   const dialog = manifest.settingsDialog
   const dialogSections = Array.isArray(dialog?.sections) ? dialog.sections : []
-  if (dialog && dialogSections.length > 0 && (!fs.existsSync(KIT_DIR))) {
+  if (dialog && dialogSections.length > 0 && !fs.existsSync(KIT_DIR)) {
     throw new Error(`Kit runtime not found at ${KIT_DIR}`)
   }
   if (dialog && dialogSections.length > 0) {

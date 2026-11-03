@@ -1,9 +1,9 @@
-import * as React from "react"
 import { ChevronDown, ChevronUp, CreditCard, FileText, ImageIcon, Store, Trash2, Upload } from "lucide-react"
+import * as React from "react"
 import { Link } from "react-router-dom"
 import { AppIcon, PLUGIN_ICON_CHOICES } from "@/components/app-icon"
 import { ManifestSaveBar } from "@/components/manifest-save-bar"
-import { PageHead, Callout, PriceBadge } from "@/components/shared"
+import { Callout, PageHead, PriceBadge } from "@/components/shared"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,10 +13,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { dev, readFileBase64 } from "@/lib/api"
 import { ICON_ACCEPT, ICON_GUIDE, prepareIconFile } from "@/lib/icon-upload"
 import { CATEGORIES } from "@/lib/permissions"
+import type { PluginPricing } from "@/lib/types"
 import { useManifestDraft } from "@/lib/use-manifest-draft"
 import { useVisit } from "@/lib/use-visit"
 import { cn, mediaUrl, priceBadge } from "@/lib/utils"
-import type { PluginPricing } from "@/lib/types"
 import { useApp } from "@/state/app"
 
 const CURRENCIES = ["USD", "EUR", "GBP", "INR"] as const
@@ -88,7 +88,10 @@ export function DetailsPage() {
     for (const file of Array.from(files)) {
       try {
         const data = await readFileBase64(file)
-        const base = file.name.replace(/\.[a-z0-9]+$/i, "").toLowerCase().replace(/[^a-z0-9.]+/g, "-")
+        const base = file.name
+          .replace(/\.[a-z0-9]+$/i, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9.]+/g, "-")
         const extension = file.name.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase() ?? ".png"
         const uploaded = await dev.uploadAsset({ folder: "screenshots", name: `${base}${extension}`, data })
         next.push(uploaded.path)
@@ -127,8 +130,8 @@ export function DetailsPage() {
         title="Details"
         description={
           <>
-            Identity, icon and screenshots — what store owners see in the marketplace and dashboard. Everything on this page is written to{" "}
-            <code>plugin.json</code>.
+            Identity, icon and screenshots — what store owners see in the marketplace and dashboard. Everything on this page is
+            written to <code>plugin.json</code>.
           </>
         }
       />
@@ -150,12 +153,20 @@ export function DetailsPage() {
                   <Label htmlFor="name">
                     Name <span className="text-destructive">*</span>
                   </Label>
-                  <Input id="name" className="mt-1.5" maxLength={60} value={manifest.name} onChange={(event) => set({ name: event.target.value })} />
+                  <Input
+                    id="name"
+                    className="mt-1.5"
+                    maxLength={60}
+                    value={manifest.name}
+                    onChange={(event) => set({ name: event.target.value })}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="slug">Slug (permanent)</Label>
                   <Input id="slug" className="mt-1.5 opacity-60" value={manifest.slug} readOnly />
-                  <p className="mt-1 text-[11px] text-muted-foreground">The plugin's identity. It cannot change once published.</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    The plugin's identity. It cannot change once published.
+                  </p>
                 </div>
               </div>
               <div>
@@ -176,7 +187,12 @@ export function DetailsPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="version">Version</Label>
-                  <Input id="version" className="mt-1.5" value={manifest.version} onChange={(event) => set({ version: event.target.value })} />
+                  <Input
+                    id="version"
+                    className="mt-1.5"
+                    value={manifest.version}
+                    onChange={(event) => set({ version: event.target.value })}
+                  />
                   <p className="mt-1 text-[11px] text-muted-foreground">Bump for every release (x.y.z).</p>
                 </div>
                 <div>
@@ -335,7 +351,9 @@ export function DetailsPage() {
                 <ImageIcon className="h-4 w-4" />
                 Icon
               </CardTitle>
-              <CardDescription>Shown in the sidebar, the dashboard and the marketplace. Pick a built-in icon or upload your own.</CardDescription>
+              <CardDescription>
+                Shown in the sidebar, the dashboard and the marketplace. Pick a built-in icon or upload your own.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap items-center gap-3">
@@ -360,7 +378,11 @@ export function DetailsPage() {
                     Upload image
                   </Button>
                   {manifest.iconUrl ? (
-                    <Button size="sm" variant="ghost" onClick={() => set({ iconUrl: undefined, icon: manifest.icon ?? "puzzle" })}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => set({ iconUrl: undefined, icon: manifest.icon ?? "puzzle" })}
+                    >
                       Remove image
                     </Button>
                   ) : null}
@@ -407,13 +429,18 @@ export function DetailsPage() {
                 <ImageIcon className="h-4 w-4" />
                 Screenshots
               </CardTitle>
-              <CardDescription>Shown on the marketplace listing. First one is the cover. 16:10 images look best (1280×800).</CardDescription>
+              <CardDescription>
+                Shown on the marketplace listing. First one is the cover. 16:10 images look best (1280×800).
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {(manifest.screenshots ?? []).length > 0 ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                   {(manifest.screenshots ?? []).map((path, index) => (
-                    <div key={`${path}-${index}`} className="group relative overflow-hidden rounded-lg border border-border bg-muted">
+                    <div
+                      key={`${path}-${index}`}
+                      className="group relative overflow-hidden rounded-lg border border-border bg-muted"
+                    >
                       <img src={mediaUrl(path)} alt="" className="h-24 w-full object-cover" />
                       <p className="truncate px-2 py-1 text-[10px] text-muted-foreground">
                         {path}
@@ -440,7 +467,13 @@ export function DetailsPage() {
                         >
                           <ChevronDown className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="icon" variant="outline" className="h-7 w-7 bg-card/90" onClick={() => void removeScreenshot(index)} title="Remove">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7 bg-card/90"
+                          onClick={() => void removeScreenshot(index)}
+                          title="Remove"
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>

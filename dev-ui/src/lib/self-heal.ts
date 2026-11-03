@@ -1,5 +1,5 @@
-import type { PluginManifest, Validation } from "@/lib/types"
 import { dev } from "@/lib/api"
+import type { PluginManifest, Validation } from "@/lib/types"
 
 /**
  * Dev-sandbox self-heal for the mock context's declaration checks
@@ -64,7 +64,10 @@ export async function healMissingDeclaration(
     applyManifest(saved.manifest, saved.validation)
     await refresh()
     if (!alreadyThere) {
-      toast(`Added "${missing.value}"${missing.action ? ` (needed for ${missing.action})` : ""} to plugin.json — re-running`, "success")
+      toast(
+        `Added "${missing.value}"${missing.action ? ` (needed for ${missing.action})` : ""} to plugin.json — re-running`,
+        "success",
+      )
     }
     return { changed: !alreadyThere }
   }

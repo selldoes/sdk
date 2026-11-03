@@ -46,9 +46,7 @@ async function deliveryProvider(storeId, order, ctx) {
   void storeId
   void ctx
   const lines = orderLines(order).filter((item) => item && typeof item === "object")
-  const digital = lines.filter(
-    (item) => item.isDigital || item.downloadUrl || item.licenseKey || item.deliveryInstructions,
-  )
+  const digital = lines.filter((item) => item.isDigital || item.downloadUrl || item.licenseKey || item.deliveryInstructions)
   if (digital.length === 0) return null
 
   return {

@@ -1,7 +1,6 @@
-import * as React from "react"
 import { AlertTriangle, ChevronDown, ExternalLink, Frame, Play, RefreshCw } from "lucide-react"
+import * as React from "react"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -105,11 +104,22 @@ function TextSection({ settings }: { settings: Record<string, unknown> }) {
   const title = str(settings.title)
   const body = str(settings.body)
   if (!title && !body) return null
+  // miniMarkdown escapes the input before adding its own markup, so rendering
+  // the result as HTML is safe (this mirrors the kit runtime's renderer).
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: miniMarkdown escapes the input first
+  const markdown = { __html: miniMarkdown(body) }
   return (
     <Card>
-      {title ? <CardHeader className="pb-2"><CardTitle className="text-base">{title}</CardTitle></CardHeader> : null}
+      {title ? (
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{title}</CardTitle>
+        </CardHeader>
+      ) : null}
       <CardContent>
-        <div className="prose prose-sm max-w-none text-sm text-muted-foreground [&_li]:my-0.5 [&_p]:my-1.5" dangerouslySetInnerHTML={{ __html: miniMarkdown(body) }} />
+        <div
+          className="prose prose-sm max-w-none text-sm text-muted-foreground [&_li]:my-0.5 [&_p]:my-1.5"
+          dangerouslySetInnerHTML={markdown}
+        />
       </CardContent>
     </Card>
   )
@@ -152,8 +162,15 @@ function TableSection({ slug, store, settings }: { slug: string; store: KitProps
         if (cancelled) return
         if (!response.ok || body.error) throw new Error(body.error || `Request failed (${response.status})`)
         // Handlers may wrap rows: { rows: [...] } | { items: [...] } | [...] | { <key>: [...] }
-        const candidate = Array.isArray(body) ? body : Array.isArray(body.rows) ? body.rows : Array.isArray(body.items) ? body.items : null
-        const nested = !candidate && body && typeof body === "object" ? Object.values(body).find((value) => Array.isArray(value)) : null
+        const candidate = Array.isArray(body)
+          ? body
+          : Array.isArray(body.rows)
+            ? body.rows
+            : Array.isArray(body.items)
+              ? body.items
+              : null
+        const nested =
+          !candidate && body && typeof body === "object" ? Object.values(body).find((value) => Array.isArray(value)) : null
         setRows(((candidate ?? nested) as Record<string, unknown>[] | null) ?? [])
         setError(null)
       } catch (cause) {
@@ -165,11 +182,12 @@ function TableSection({ slug, store, settings }: { slug: string; store: KitProps
     }
   }, [slug, store.id, store.slug, route, nonce])
 
-  const columns = rows && rows.length > 0 && Array.isArray(settings.columns)
-    ? (settings.columns as unknown[]).map(String)
-    : rows && rows.length > 0
-      ? [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(0, 8)
-      : []
+  const columns =
+    rows && rows.length > 0 && Array.isArray(settings.columns)
+      ? (settings.columns as unknown[]).map(String)
+      : rows && rows.length > 0
+        ? [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(0, 8)
+        : []
 
   return (
     <Card>
@@ -177,7 +195,11 @@ function TableSection({ slug, store, settings }: { slug: string; store: KitProps
         <div className="flex items-start justify-between gap-2">
           <div>
             <CardTitle className="text-base">{str(settings.title, "Data")}</CardTitle>
-            {route ? <CardDescription><code>{route}</code></CardDescription> : null}
+            {route ? (
+              <CardDescription>
+                <code>{route}</code>
+              </CardDescription>
+            ) : null}
           </div>
           <Button size="sm" variant="outline" onClick={() => setNonce((value) => value + 1)}>
             <RefreshCw />
@@ -187,7 +209,9 @@ function TableSection({ slug, store, settings }: { slug: string; store: KitProps
       </CardHeader>
       <CardContent>
         {!route ? (
-          <p className="text-sm text-muted-foreground">This table needs a <code>route</code> in its settings.</p>
+          <p className="text-sm text-muted-foreground">
+            This table needs a <code>route</code> in its settings.
+          </p>
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : rows === null ? (
@@ -200,7 +224,9 @@ function TableSection({ slug, store, settings }: { slug: string; store: KitProps
               <thead className="bg-muted/60 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   {columns.map((column) => (
-                    <th key={column} className="px-2.5 py-1.5 text-left">{column}</th>
+                    <th key={column} className="px-2.5 py-1.5 text-left">
+                      {column}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -209,7 +235,11 @@ function TableSection({ slug, store, settings }: { slug: string; store: KitProps
                   <tr key={index}>
                     {columns.map((column) => (
                       <td key={column} className="max-w-[280px] truncate px-2.5 py-1.5">
-                        {row[column] === null || row[column] === undefined ? "—" : typeof row[column] === "object" ? JSON.stringify(row[column]) : String(row[column])}
+                        {row[column] === null || row[column] === undefined
+                          ? "—"
+                          : typeof row[column] === "object"
+                            ? JSON.stringify(row[column])
+                            : String(row[column])}
                       </td>
                     ))}
                   </tr>
@@ -234,10 +264,16 @@ function JobSection({ settings }: { settings: Record<string, unknown> }) {
       </CardHeader>
       <CardContent>
         {!type ? (
-          <p className="text-sm text-muted-foreground">This job runner needs a <code>job</code> type in its settings.</p>
+          <p className="text-sm text-muted-foreground">
+            This job runner needs a <code>job</code> type in its settings.
+          </p>
         ) : (
           <>
-            <Button size="sm" disabled={state.running} onClick={() => void run(type, settings.input ?? {}, Number(settings.maxTicks) || 20)}>
+            <Button
+              size="sm"
+              disabled={state.running}
+              onClick={() => void run(type, settings.input ?? {}, Number(settings.maxTicks) || 20)}
+            >
               <Play />
               {state.running ? "Running…" : `Run ${type}`}
             </Button>
@@ -253,9 +289,12 @@ function LogsSection({ settings }: { settings: Record<string, unknown> }) {
   const [logs, setLogs] = React.useState<string[]>([])
   React.useEffect(() => {
     let cancelled = false
-    void dev.logs().then((data) => {
-      if (!cancelled) setLogs(data.logs ?? [])
-    }).catch(() => {})
+    void dev
+      .logs()
+      .then((data) => {
+        if (!cancelled) setLogs(data.logs ?? [])
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
@@ -425,7 +464,9 @@ function SettingsSection() {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Settings</CardTitle>
-        <CardDescription>From <code>configSchema</code> — saved values merge into <code>ctx.config</code>.</CardDescription>
+        <CardDescription>
+          From <code>configSchema</code> — saved values merge into <code>ctx.config</code>.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {fields.map((field) => (
@@ -442,7 +483,10 @@ function SettingsSection() {
               />
             ) : field.type === "select" || field.type === "model-select" ? (
               <>
-                <Select value={String(form[field.key] ?? "")} onValueChange={(value) => setForm((previous) => ({ ...previous, [field.key]: value }))}>
+                <Select
+                  value={String(form[field.key] ?? "")}
+                  onValueChange={(value) => setForm((previous) => ({ ...previous, [field.key]: value }))}
+                >
                   <SelectTrigger id={`kit-${field.key}`}>
                     <SelectValue placeholder={field.placeholder || "Select…"} />
                   </SelectTrigger>
@@ -474,7 +518,10 @@ function SettingsSection() {
                 value={String(form[field.key] ?? "")}
                 placeholder={field.placeholder}
                 onChange={(event) =>
-                  setForm((previous) => ({ ...previous, [field.key]: field.type === "number" ? Number(event.target.value) : event.target.value }))
+                  setForm((previous) => ({
+                    ...previous,
+                    [field.key]: field.type === "number" ? Number(event.target.value) : event.target.value,
+                  }))
                 }
               />
             )}

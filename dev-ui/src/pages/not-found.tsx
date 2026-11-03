@@ -1,6 +1,6 @@
+import { ArrowLeft, Compass, Home, Puzzle } from "lucide-react"
 import * as React from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { ArrowLeft, Compass, Home, Puzzle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { PAGE_TITLES } from "@/lib/pages"
@@ -18,10 +18,7 @@ export function NotFoundPage() {
   // window.location includes the project-id segment; location.pathname is
   // basename-stripped. Show the address bar — that's what the user typed.
   const fullPath = window.location.pathname
-  const links = React.useMemo(
-    () => Object.entries(PAGE_TITLES).filter(([to]) => to !== location.pathname),
-    [location.pathname],
-  )
+  const links = React.useMemo(() => Object.entries(PAGE_TITLES).filter(([to]) => to !== location.pathname), [location.pathname])
 
   return (
     <div className="mx-auto mt-10 max-w-2xl">
@@ -34,8 +31,8 @@ export function NotFoundPage() {
           <h1 className="text-xl font-bold tracking-tight">Page not found</h1>
           <code className="max-w-full truncate rounded-md border border-border bg-muted px-2 py-1 text-xs">{fullPath}</code>
           <p className="max-w-md text-sm text-muted-foreground">
-            This address doesn&rsquo;t match a page in the preview. The link may be stale, the page may have been renamed,
-            or the URL was typed by hand — jump back in from below.
+            This address doesn&rsquo;t match a page in the preview. The link may be stale, the page may have been renamed, or the
+            URL was typed by hand — jump back in from below.
           </p>
           <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
             <Button size="sm" variant="outline" onClick={() => navigate(-1)}>

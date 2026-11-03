@@ -1,10 +1,10 @@
-import * as React from "react"
 import { Database, Loader2, RefreshCw } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import * as React from "react"
 import { PageHead } from "@/components/shared"
 import { SkeletonCards } from "@/components/skeletons"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { dev } from "@/lib/api"
 import { useVisit } from "@/lib/use-visit"
 import { useApp } from "@/state/app"
@@ -61,8 +61,8 @@ export function DataPage() {
         title="Store data"
         description={
           <>
-            Everything the plugin writes locally lives here (<code>.selldoes-dev/db.json</code>). Rows are store-scoped, exactly like
-            production.
+            Everything the plugin writes locally lives here (<code>.selldoes-dev/db.json</code>). Rows are store-scoped, exactly
+            like production.
           </>
         }
       />

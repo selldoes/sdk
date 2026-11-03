@@ -1,8 +1,8 @@
 import * as React from "react"
 import { dev } from "@/lib/api"
-import { ws } from "@/lib/ws-api"
-import type { WsBootstrap } from "@/lib/ws-api"
 import type { Bootstrap, PluginManifest, Validation } from "@/lib/types"
+import type { WsBootstrap } from "@/lib/ws-api"
+import { ws } from "@/lib/ws-api"
 
 // ─── Toasts ──────────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ export function AppProvider({
     const maxRetries = 5
     const baseDelay = 500
     let lastError: unknown = null
-    let noProject = false
+    const _noProject = false
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const data = await dev.bootstrap()
@@ -156,7 +156,7 @@ export function AppProvider({
         lastError = cause
         // Exponential backoff: 500ms, 1s, 2s, 4s, 8s
         if (attempt < maxRetries) {
-          const delay = baseDelay * Math.pow(2, attempt)
+          const delay = baseDelay * 2 ** attempt
           await new Promise((resolve) => setTimeout(resolve, delay))
         }
       }

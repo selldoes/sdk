@@ -41,7 +41,9 @@ export class SnapshotStore {
    */
   create({ reason, files = [] }) {
     this.ensure()
-    const name = `${Date.now()}-${String(reason).replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`
+    const name = `${Date.now()}-${String(reason)
+      .replace(/[^a-z0-9]+/gi, "-")
+      .slice(0, 40)}`
     const target = path.join(this.root, name)
     fs.mkdirSync(target, { recursive: true })
     const entries = []

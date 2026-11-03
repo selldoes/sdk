@@ -1,12 +1,12 @@
-import * as React from "react"
 import { Mail, RefreshCw } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import * as React from "react"
 import { PageHead } from "@/components/shared"
 import { SkeletonCards } from "@/components/skeletons"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { dev } from "@/lib/api"
-import { timeAgo } from "@/lib/utils"
 import { useVisit } from "@/lib/use-visit"
+import { timeAgo } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
 interface OutboxEntry {

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm install --no-audit --no-fund
+
+      - run: npm --prefix dev-ui install --no-audit --no-fund
+
+      # Lint + format (Biome) and the dev-ui typecheck.
+      - run: npm run lint
+      - run: npm --prefix dev-ui run typecheck
+
+      # The kit runtime is generated — build it so the "up to date" test can pass,
+      # then run the whole suite (which also builds the SDK types).
+      - run: npm run build
+      - run: npm test

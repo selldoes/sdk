@@ -46,13 +46,18 @@
   "scripts": {
     "dev": "node bin/selldoes.mjs workspace --dev --open",
     "workspace": "node bin/selldoes.mjs workspace --open",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-kit.mjs",
+    "build:kit": "node scripts/build-kit.mjs",
     "build:dev-ui": "npm --prefix dev-ui run build",
     "dev-ui": "npm --prefix dev-ui run dev",
+    "lint": "biome lint",
+    "format": "biome format --write",
+    "check": "biome check",
     "test": "node --test",
     "prepack": "npm run build && npm run build:dev-ui"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
     "@types/node": "^22.10.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

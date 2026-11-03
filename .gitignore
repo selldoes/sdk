@@ -21,3 +21,6 @@ cli/plugin/dev/ui-dist/
 .DS_Store
 Thumbs.db
 nul
+
+# Accidental harness/temp spill
+UsersSelldoesAppDataLocalTemp*

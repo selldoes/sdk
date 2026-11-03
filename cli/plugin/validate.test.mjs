@@ -35,7 +35,10 @@ test("dashboardPages: entries must exist, paths must be unique and start with /"
     { "ui/index.html": "<html></html>", "ui/about.html": "<html></html>" },
   )
   const { errors } = validatePluginDir(root)
-  assert.ok(errors.some((error) => error.includes('duplicate dashboardPages path "/"')), errors.join("\n"))
+  assert.ok(
+    errors.some((error) => error.includes('duplicate dashboardPages path "/"')),
+    errors.join("\n"),
+  )
   assert.ok(errors.some((error) => error.includes('dashboardPages "/missing" entry "ui/missing.html" does not exist')))
   assert.ok(errors.some((error) => error.includes('dashboardPages path "about" must start with /')))
   assert.ok(errors.some((error) => error.includes('dashboardPages "/nolabel" needs a label')))
@@ -80,7 +83,10 @@ test("jobs: runtimes, limits and duplicates are validated", () => {
     { "package.json": `${JSON.stringify({ name: "demo-plugin", private: true }, null, 2)}\n` },
   )
   const { errors } = validatePluginDir(root)
-  assert.ok(errors.some((error) => error.includes('duplicate job type "sync"')), errors.join("\n"))
+  assert.ok(
+    errors.some((error) => error.includes('duplicate job type "sync"')),
+    errors.join("\n"),
+  )
   assert.ok(errors.some((error) => error.includes('unknown runtime "deno"')))
   assert.ok(errors.some((error) => error.includes("tickBudgetMs only applies to quickjs jobs")))
   assert.ok(errors.some((error) => error.includes("timeoutMs must be between")))

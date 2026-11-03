@@ -36,7 +36,13 @@ function savedEditor() {
 
 /** Picks the editor to open: explicit → SELDOES_EDITOR → user settings → known CLIs. */
 export async function resolveEditor(preferred) {
-  const requested = String(preferred ?? "").trim() || process.env.SELDOES_EDITOR || process.env.VISUAL || process.env.EDITOR || savedEditor() || ""
+  const requested =
+    String(preferred ?? "").trim() ||
+    process.env.SELDOES_EDITOR ||
+    process.env.VISUAL ||
+    process.env.EDITOR ||
+    savedEditor() ||
+    ""
   if (requested) {
     const known = CANDIDATES.find((candidate) => candidate.command === requested || candidate.id === requested)
     return known ?? { id: "custom", label: requested, command: requested, goto: false }

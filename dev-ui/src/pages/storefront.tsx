@@ -1,9 +1,8 @@
+import { Globe2, ShoppingBag, Sparkles } from "lucide-react"
 import * as React from "react"
 import { useSearchParams } from "react-router-dom"
-import { Globe2, ShoppingBag, Sparkles } from "lucide-react"
-import { PageHead, Callout } from "@/components/shared"
+import { Callout, PageHead } from "@/components/shared"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { useVisit } from "@/lib/use-visit"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/state/app"
@@ -24,7 +23,7 @@ export function StorefrontPage() {
   const widget = manifest.storefrontWidget
   const pages = manifest.storefrontPages ?? []
   const pagePath = params.get("page")
-  const activePage = pagePath ? pages.find((page) => page.path === pagePath) ?? null : null
+  const activePage = pagePath ? (pages.find((page) => page.path === pagePath) ?? null) : null
   const pageFrame = React.useRef<HTMLIFrameElement>(null)
   const widgetFrame = React.useRef<HTMLIFrameElement>(null)
 
@@ -39,8 +38,8 @@ export function StorefrontPage() {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
       const data = event.data as { type?: string; slug?: string; width?: number; height?: number }
-      if (!data || data.type !== "selldesk:resize") return
-      const frame = data.slug === manifest.slug ? widgetFrame.current ?? pageFrame.current : pageFrame.current
+      if (data?.type !== "selldesk:resize") return
+      const frame = data.slug === manifest.slug ? (widgetFrame.current ?? pageFrame.current) : pageFrame.current
       if (!frame) return
       if (typeof data.width === "number") frame.style.width = `${Math.max(40, Math.min(data.width, 900))}px`
       if (typeof data.height === "number") frame.style.height = `${Math.max(120, Math.min(data.height, 4000))}px`
@@ -60,8 +59,8 @@ export function StorefrontPage() {
 
       {!hasSurface ? (
         <Callout kind="info">
-          This plugin declares no <code>storefrontWidget</code> or <code>storefrontPages</code>. Add one in plugin.json to put content on
-          every storefront — a chat bubble, a help center at <code>/kb</code>, anything visitor-facing.{" "}
+          This plugin declares no <code>storefrontWidget</code> or <code>storefrontPages</code>. Add one in plugin.json to put
+          content on every storefront — a chat bubble, a help center at <code>/kb</code>, anything visitor-facing.{" "}
           <button type="button" className="font-semibold underline" onClick={() => setAssistantOpen(true)}>
             Ask the AI assistant to add one
           </button>
@@ -77,7 +76,8 @@ export function StorefrontPage() {
               Storefront page: {activePage.title} ({activePage.path})
             </CardTitle>
             <CardDescription>
-              Served by the host's storefrontPages lane inside your real store layout, self-resizing via <code>selldesk:resize</code>.
+              Served by the host's storefrontPages lane inside your real store layout, self-resizing via{" "}
+              <code>selldesk:resize</code>.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -175,8 +175,8 @@ export function StorefrontPage() {
       </div>
 
       <Callout kind="info">
-        <strong>Widget vs page:</strong> the widget is the floating bubble shown on every storefront page; pages are real routes like{" "}
-        <code>/kb</code> that your plugin owns. Both are sandboxed iframes and can resize themselves with{" "}
+        <strong>Widget vs page:</strong> the widget is the floating bubble shown on every storefront page; pages are real routes
+        like <code>/kb</code> that your plugin owns. Both are sandboxed iframes and can resize themselves with{" "}
         <code>selldesk:resize</code>. <Sparkles className="inline h-3.5 w-3.5" />
       </Callout>
     </div>

@@ -15,17 +15,17 @@ import type {
   GitStatus,
   JobRunDetail,
   JobRunRow,
+  NpmSearchResult,
+  PackagesResponse,
   PluginManifest,
   PublishInput,
   PublishResult,
-  PackagesResponse,
-  NpmSearchResult,
   SaveFileConfigInput,
+  ScaffoldCodeResult,
+  ScaffoldUiResult,
   SearchResult,
   SettingsResponse,
   SnapshotInfo,
-  ScaffoldCodeResult,
-  ScaffoldUiResult,
   StoreStatusResponse,
   StoreVerifyResponse,
   UiEntriesResponse,
@@ -92,7 +92,8 @@ export const dev = {
     post<{ path: string; url: string }>("/__dev/assets", input),
   deleteAsset: (path: string) => post<{ ok: boolean }>("/__dev/assets/delete", { path }),
   settings: () => request<SettingsResponse>("/__dev/settings"),
-  saveSettings: (settings: Record<string, unknown>) => post<{ ok: boolean; settings: Record<string, unknown> }>("/__dev/settings", { settings }),
+  saveSettings: (settings: Record<string, unknown>) =>
+    post<{ ok: boolean; settings: Record<string, unknown> }>("/__dev/settings", { settings }),
   assistant: () => request<{ configured: boolean; provider?: string; model?: string }>("/__dev/assistant"),
   assistantChat: (messages: { role: string; content: string }[], context: Record<string, unknown>) =>
     post<AssistantChatResult>("/__dev/assistant/chat", { messages, context }),
@@ -114,7 +115,8 @@ export const dev = {
   files: () => request<FileTree>("/__dev/files"),
   readFile: (path: string) => request<FileRead>(`/__dev/files/read?path=${encodeURIComponent(path)}`),
   writeFile: (path: string, content: string) => post<FileWriteResult>("/__dev/files/write", { path, content }),
-  createFile: (path: string, type: "file" | "dir") => post<{ ok: boolean; path: string; type: "file" | "dir" }>("/__dev/files/create", { path, type }),
+  createFile: (path: string, type: "file" | "dir") =>
+    post<{ ok: boolean; path: string; type: "file" | "dir" }>("/__dev/files/create", { path, type }),
   renameFile: (from: string, to: string) => post<{ ok: boolean; from: string; to: string }>("/__dev/files/rename", { from, to }),
   deleteFile: (path: string) => post<{ ok: boolean; path: string }>("/__dev/files/delete", { path }),
   search: (query: string, options?: { caseSensitive?: boolean; regex?: boolean }) =>
@@ -123,7 +125,8 @@ export const dev = {
     ),
   sdkTypes: () => request<{ path: string | null; content: string }>("/__dev/sdk-types"),
   snapshots: () => request<{ snapshots: SnapshotInfo[] }>("/__dev/snapshots"),
-  restoreSnapshot: (name: string) => post<{ ok: boolean; meta: SnapshotInfo; validation: Validation }>("/__dev/snapshots/restore", { name }),
+  restoreSnapshot: (name: string) =>
+    post<{ ok: boolean; meta: SnapshotInfo; validation: Validation }>("/__dev/snapshots/restore", { name }),
 
   // ── Assistant settings + chat history ─────────────────────────────────────
   config: () => request<DevConfigResponse>("/__dev/config"),
@@ -150,7 +153,8 @@ export const dev = {
   gitStatus: () => request<GitStatus>("/__dev/git/status"),
   gitDiff: (path?: string, staged?: boolean) =>
     request<{ diff: string }>(`/__dev/git/diff?${path ? `path=${encodeURIComponent(path)}&` : ""}${staged ? "staged=1" : ""}`),
-  gitShow: (path: string, rev = "HEAD") => request<{ content: string }>(`/__dev/git/show?path=${encodeURIComponent(path)}&rev=${encodeURIComponent(rev)}`),
+  gitShow: (path: string, rev = "HEAD") =>
+    request<{ content: string }>(`/__dev/git/show?path=${encodeURIComponent(path)}&rev=${encodeURIComponent(rev)}`),
   gitLog: () => request<{ repo: boolean; commits: GitCommit[] }>("/__dev/git/log"),
   gitStage: (paths: string[]) => post<GitStatus>("/__dev/git/stage", { paths }),
   gitUnstage: (paths: string[]) => post<GitStatus>("/__dev/git/unstage", { paths }),
@@ -177,7 +181,8 @@ export const dev = {
     post<{ opened: boolean; editor?: string; terminal?: string; error?: string }>("/__dev/open", input),
   runJob: (payload: { type: string; input?: unknown; maxTicks?: number }) =>
     post<{ ok?: boolean; error?: string; run?: JobRun; telemetry?: JobTelemetry }>("/__dev/run-job", payload),
-  runHook: (hook: string, payload: unknown) => post<{ ok?: boolean; error?: string; result?: unknown }>("/__dev/run-hook", { hook, payload }),
+  runHook: (hook: string, payload: unknown) =>
+    post<{ ok?: boolean; error?: string; result?: unknown }>("/__dev/run-hook", { hook, payload }),
   rebuild: () => post<{ ok: boolean; rebuilds: number }>("/__dev/rebuild", {}),
   resetData: () => post<{ ok: boolean }>("/__dev/reset-data", {}),
   tables: () => request<{ tables: Record<string, { rows: number; columns: string[]; sample: unknown[] }> }>("/__dev/state"),

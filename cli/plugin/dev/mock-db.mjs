@@ -90,7 +90,12 @@ export class MockDb {
         const op = value
         if (op.like !== undefined) {
           const needle = String(op.like).toLowerCase()
-          if (!String(current ?? "").toLowerCase().includes(needle)) return false
+          if (
+            !String(current ?? "")
+              .toLowerCase()
+              .includes(needle)
+          )
+            return false
           continue
         }
         if (Array.isArray(op.in)) {
@@ -191,8 +196,10 @@ export class MockDb {
 
 /** Sample commerce data so plugins that read products/orders have something to show. */
 export function seedDemoTables(db, storeId) {
-  if (!db.hasTable("products")) db.ensureTable("products", { name: "varchar", sku: "varchar", price: "decimal", status: "varchar" }, storeId)
-  if (!db.hasTable("orders")) db.ensureTable("orders", { order_number: "varchar", total: "decimal", status: "varchar", created_at: "timestamp" }, storeId)
+  if (!db.hasTable("products"))
+    db.ensureTable("products", { name: "varchar", sku: "varchar", price: "decimal", status: "varchar" }, storeId)
+  if (!db.hasTable("orders"))
+    db.ensureTable("orders", { order_number: "varchar", total: "decimal", status: "varchar", created_at: "timestamp" }, storeId)
   if (!db.hasTable("customers")) db.ensureTable("customers", { name: "varchar", email: "varchar" }, storeId)
 
   if (db.count("products", {}, storeId) === 0) {
@@ -210,8 +217,18 @@ export function seedDemoTables(db, storeId) {
     db.insertMany(
       "orders",
       [
-        { order_number: "1001", total: 49.8, status: "paid", created_at: new Date().toISOString().slice(0, 19).replace("T", " ") },
-        { order_number: "1002", total: 12.0, status: "pending", created_at: new Date().toISOString().slice(0, 19).replace("T", " ") },
+        {
+          order_number: "1001",
+          total: 49.8,
+          status: "paid",
+          created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+        },
+        {
+          order_number: "1002",
+          total: 12.0,
+          status: "pending",
+          created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+        },
       ],
       storeId,
     )

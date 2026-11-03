@@ -76,7 +76,10 @@ export function normalizeRelative(value) {
   if (/^[a-zA-Z]:/.test(posix) || posix.startsWith("/")) {
     throw new Error("Path must be relative to the project")
   }
-  posix = posix.replace(/^\.\/+/, "").replace(/\/+/g, "/").replace(/\/+$/, "")
+  posix = posix
+    .replace(/^\.\/+/, "")
+    .replace(/\/+/g, "/")
+    .replace(/\/+$/, "")
   const parts = posix.split("/")
   if (parts.some((part) => part === "" || part === "." || part === "..")) {
     throw new Error("Path escapes the project")
@@ -187,7 +190,10 @@ export function projectTree(root, options) {
   }
   return {
     root: path.basename(path.resolve(root)),
-    entries: [...dirs].sort().map((dir) => ({ path: dir, type: "dir" })).concat(files),
+    entries: [...dirs]
+      .sort()
+      .map((dir) => ({ path: dir, type: "dir" }))
+      .concat(files),
   }
 }
 

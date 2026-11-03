@@ -66,7 +66,7 @@ export async function updateCommand(args = [], flags = {}) {
   } else {
     console.error("")
     console.error(
-      `✗ Update failed (npm exit ${result.status ?? "unknown"})${result.error?.message ? `: ${result.error.message}` : ""}`
+      `✗ Update failed (npm exit ${result.status ?? "unknown"})${result.error?.message ? `: ${result.error.message}` : ""}`,
     )
     process.exitCode = result.status || 1
   }

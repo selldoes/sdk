@@ -1,10 +1,10 @@
+import { AlertCircle, Check, ChevronRight, ListChecks, Play, Puzzle, Rocket, Shield, Sparkles } from "lucide-react"
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { AlertCircle, Check, ChevronRight, ListChecks, Play, Puzzle, Rocket, Shield, Sparkles } from "lucide-react"
-import { PageHead, Callout, EmptyState, SectionTitle } from "@/components/shared"
 import { JobTranscript, useJobRunner } from "@/components/job-runner"
+import { Callout, EmptyState, PageHead, SectionTitle } from "@/components/shared"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { buildChecklist } from "@/lib/checklist"
 import { highestRisk } from "@/lib/permissions"
 import { useVisit } from "@/lib/use-visit"
@@ -153,7 +153,11 @@ export function OverviewPage() {
                       variant={index === 0 ? "default" : "outline"}
                       disabled={state.running}
                       onClick={() =>
-                        void run(job.type, activity.sampleJobs?.[job.type]?.input ?? {}, activity.sampleJobs?.[job.type]?.maxTicks ?? 5)
+                        void run(
+                          job.type,
+                          activity.sampleJobs?.[job.type]?.input ?? {},
+                          activity.sampleJobs?.[job.type]?.maxTicks ?? 5,
+                        )
                       }
                     >
                       {job.name ?? job.type}
@@ -211,7 +215,11 @@ export function OverviewPage() {
                   label="Storefront pages"
                   value={String((manifest.storefrontPages ?? []).length) + (manifest.storefrontWidget?.entry ? " + widget" : "")}
                 />
-                <Stat label="Permissions" value={String((manifest.permissions ?? []).length)} hint={`highest ${highestRisk(manifest.permissions as string[])}`} />
+                <Stat
+                  label="Permissions"
+                  value={String((manifest.permissions ?? []).length)}
+                  hint={`highest ${highestRisk(manifest.permissions as string[])}`}
+                />
               </div>
             </CardContent>
           </Card>
@@ -234,10 +242,19 @@ export function OverviewPage() {
         {[
           { to: "/details", title: "Edit details", note: "Description, icon and screenshots.", icon: AlertCircle },
           { to: "/permissions", title: "Edit permissions", note: "Requested permissions and allowed tables.", icon: Shield },
-          { to: "/listing", title: "See the listing", note: "Marketplace card, install dialog and dashboard page.", icon: Rocket },
+          {
+            to: "/listing",
+            title: "See the listing",
+            note: "Marketplace card, install dialog and dashboard page.",
+            icon: Rocket,
+          },
           { to: "/ship", title: "Ship it", note: "Validate, build and publish for review.", icon: Check },
         ].map((entry) => (
-          <Link key={entry.to} to={entry.to} className="rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted">
+          <Link
+            key={entry.to}
+            to={entry.to}
+            className="rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted"
+          >
             <entry.icon className="mb-2 h-4 w-4 text-primary" />
             <p className="text-[13px] font-bold">{entry.title}</p>
             <p className="mt-0.5 text-[11.5px] text-muted-foreground">{entry.note}</p>

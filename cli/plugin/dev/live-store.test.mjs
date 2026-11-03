@@ -1,10 +1,24 @@
-import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { connectStore, createLiveAiBridge, createLiveModelsBridge, createLiveProductsBridge, createLivePromptsBridge, findLocalPlatformDir, LOCAL_PLATFORM_URL, maskKey, readStoreBlock, resolveLiveAppUrl, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import test from "node:test"
+import {
+  connectStore,
+  createLiveAiBridge,
+  createLiveModelsBridge,
+  createLiveProductsBridge,
+  createLivePromptsBridge,
+  findLocalPlatformDir,
+  LOCAL_PLATFORM_URL,
+  maskKey,
+  readStoreBlock,
+  resolveLiveAppUrl,
+  storeView,
+  verifyStoreKey,
+  writeStoreBlock,
+} from "./live-store.mjs"
 
 /** Run `fn` with the given env vars set (undefined deletes), restoring after. */
 function withEnv(vars, fn) {
@@ -31,11 +45,20 @@ test("findLocalPlatformDir: detects a checkout via SELLDOES_LOCAL_PLATFORM and '
   fs.writeFileSync(path.join(nextDir, "package.json"), "{}")
 
   // Pointing at the repo root finds the nested next/ dir.
-  assert.equal(withEnv({ SELLDOES_LOCAL_PLATFORM: repo }, () => findLocalPlatformDir()), nextDir)
+  assert.equal(
+    withEnv({ SELLDOES_LOCAL_PLATFORM: repo }, () => findLocalPlatformDir()),
+    nextDir,
+  )
   // Pointing straight at next/ works too.
-  assert.equal(withEnv({ SELLDOES_LOCAL_PLATFORM: nextDir }, () => findLocalPlatformDir()), nextDir)
+  assert.equal(
+    withEnv({ SELLDOES_LOCAL_PLATFORM: nextDir }, () => findLocalPlatformDir()),
+    nextDir,
+  )
   // off disables detection entirely.
-  assert.equal(withEnv({ SELLDOES_LOCAL_PLATFORM: "off" }, () => findLocalPlatformDir()), null)
+  assert.equal(
+    withEnv({ SELLDOES_LOCAL_PLATFORM: "off" }, () => findLocalPlatformDir()),
+    null,
+  )
   fs.rmSync(repo, { recursive: true, force: true })
 })
 
@@ -51,7 +74,9 @@ test("resolveLiveAppUrl: explicit > SELLDOES_APP_URL > local platform > saved", 
   )
   // SELLDOES_APP_URL wins over a local checkout (trailing slash stripped).
   assert.equal(
-    withEnv({ ...base, SELLDOES_LOCAL_PLATFORM: repo, SELLDOES_APP_URL: "https://env.com/" }, () => resolveLiveAppUrl("https://saved.com")),
+    withEnv({ ...base, SELLDOES_LOCAL_PLATFORM: repo, SELLDOES_APP_URL: "https://env.com/" }, () =>
+      resolveLiveAppUrl("https://saved.com"),
+    ),
     "https://env.com",
   )
   // A local checkout wins over the saved URL.
@@ -75,7 +100,9 @@ test("resolveLiveAppUrl: explicit > SELLDOES_APP_URL > local platform > saved", 
 test("readStoreBlock: defaults, env fallback and normalization", () => {
   assert.deepEqual(readStoreBlock(null), { live: false, appUrl: "", apiKey: "", storeId: null, storeSlug: "" })
 
-  const block = readStoreBlock({ store: { live: true, appUrl: "https://selldoes.com/", apiKey: "sk_abc", storeId: "6", storeSlug: "otrjoy" } })
+  const block = readStoreBlock({
+    store: { live: true, appUrl: "https://selldoes.com/", apiKey: "sk_abc", storeId: "6", storeSlug: "otrjoy" },
+  })
   assert.equal(block.live, true)
   assert.equal(block.appUrl, "https://selldoes.com") // trailing slash stripped
   assert.equal(block.storeId, 6)
@@ -139,14 +166,16 @@ const STORES = [
 ]
 
 async function withStubPlatform(fn) {
-  const server = http.createServer((req, res) => {
-    if (req.url === "/api/templates/me" && req.headers["x-api-key"] === KEY) {
-      res.setHeader("content-type", "application/json")
-      return res.end(JSON.stringify({ userId: 7, stores: STORES }))
-    }
-    res.statusCode = 401
-    res.end(JSON.stringify({ error: "invalid key" }))
-  }).listen(0)
+  const server = http
+    .createServer((req, res) => {
+      if (req.url === "/api/templates/me" && req.headers["x-api-key"] === KEY) {
+        res.setHeader("content-type", "application/json")
+        return res.end(JSON.stringify({ userId: 7, stores: STORES }))
+      }
+      res.statusCode = 401
+      res.end(JSON.stringify({ error: "invalid key" }))
+    })
+    .listen(0)
   await new Promise((r) => server.once("listening", r))
   const base = `http://127.0.0.1:${server.address().port}`
   try {
@@ -277,7 +306,10 @@ test("bridge: list honors offset and hydrates only the requested page", async ()
   await withStubProducts(async (base, requests) => {
     const bridge = createLiveProductsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
     const page = await bridge.list({ limit: 2, offset: 1 })
-    assert.deepEqual(page.map((row) => row.sku), ["sku-b", "sku-c"])
+    assert.deepEqual(
+      page.map((row) => row.sku),
+      ["sku-b", "sku-c"],
+    )
     const hydrated = requests
       .filter((request) => request.url.includes("sku="))
       .map((request) => new URL(request.url, "http://stub").searchParams.get("sku"))
@@ -318,8 +350,30 @@ async function withStubPrompts(options, fn) {
   const { mode = "full" } = options ?? {}
   const requests = []
   const PROMPTS = [
-    { id: 2, name: "Album cover", description: null, type: "image", field: "mainImage", template: "T1", provider: "openai", model: "gpt-image-1", isDefault: true, aspectRatio: "1:1" },
-    { id: 15, name: "Vintage radio", description: "style", type: "image", field: "mainImage", template: "T2", provider: "openai", model: "gpt-image-1", isDefault: false, aspectRatio: null },
+    {
+      id: 2,
+      name: "Album cover",
+      description: null,
+      type: "image",
+      field: "mainImage",
+      template: "T1",
+      provider: "openai",
+      model: "gpt-image-1",
+      isDefault: true,
+      aspectRatio: "1:1",
+    },
+    {
+      id: 15,
+      name: "Vintage radio",
+      description: "style",
+      type: "image",
+      field: "mainImage",
+      template: "T2",
+      provider: "openai",
+      model: "gpt-image-1",
+      isDefault: false,
+      aspectRatio: null,
+    },
   ]
   const server = http
     .createServer((req, res) => {
@@ -353,7 +407,10 @@ test("prompts bridge: list is store-scoped and type-filterable", async () => {
   await withStubPrompts(async (base, requests) => {
     const bridge = createLivePromptsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
     const all = await bridge.list()
-    assert.deepEqual(all.map((prompt) => prompt.id), [2, 15])
+    assert.deepEqual(
+      all.map((prompt) => prompt.id),
+      [2, 15],
+    )
     const images = await bridge.list({ type: "image" })
     assert.equal(images.length, 2)
     assert.ok(requests.every((request) => request.url.startsWith("/api/external/ai/prompts?storeId=6")))
@@ -389,8 +446,32 @@ async function withStubModels(options, fn) {
   const { mode = "full" } = options ?? {}
   const requests = []
   const MODELS = [
-    { provider: "apiraven", modelId: "amazon/nova-micro", name: "Nova Micro", type: "text", vendor: "Amazon", contextLength: 128000, maxCompletionTokens: 8192, inputCostPer1M: "0.035000", outputCostPer1M: "0.140000", supportedParameters: [], supportsReferenceImage: false },
-    { provider: "apiraven", modelId: "black-forest-labs/flux-3-image", name: "FLUX 3", type: "image", vendor: "Black Forest Labs", contextLength: null, maxCompletionTokens: null, inputCostPer1M: null, outputCostPer1M: null, supportedParameters: [], supportsReferenceImage: true },
+    {
+      provider: "apiraven",
+      modelId: "amazon/nova-micro",
+      name: "Nova Micro",
+      type: "text",
+      vendor: "Amazon",
+      contextLength: 128000,
+      maxCompletionTokens: 8192,
+      inputCostPer1M: "0.035000",
+      outputCostPer1M: "0.140000",
+      supportedParameters: [],
+      supportsReferenceImage: false,
+    },
+    {
+      provider: "apiraven",
+      modelId: "black-forest-labs/flux-3-image",
+      name: "FLUX 3",
+      type: "image",
+      vendor: "Black Forest Labs",
+      contextLength: null,
+      maxCompletionTokens: null,
+      inputCostPer1M: null,
+      outputCostPer1M: null,
+      supportedParameters: [],
+      supportsReferenceImage: true,
+    },
   ]
   const server = http
     .createServer((req, res) => {
@@ -424,7 +505,10 @@ test("models bridge: list is store-scoped and type-filterable", async () => {
   await withStubModels(async (base, requests) => {
     const bridge = createLiveModelsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
     const all = await bridge.list()
-    assert.deepEqual(all.map((model) => model.modelId), ["amazon/nova-micro", "black-forest-labs/flux-3-image"])
+    assert.deepEqual(
+      all.map((model) => model.modelId),
+      ["amazon/nova-micro", "black-forest-labs/flux-3-image"],
+    )
     const images = await bridge.list({ type: "image" })
     assert.equal(images.length, 1)
     assert.equal(images[0].modelId, "black-forest-labs/flux-3-image")

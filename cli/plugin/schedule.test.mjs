@@ -82,7 +82,10 @@ test("validateSchedules checks job references, cron, names and the limit", () =>
   assert.match(broken.errors.join("\n"), /duplicate schedule name "nightly"/)
   assert.match(broken.warnings.join("\n"), /disabled/)
 
-  const tooMany = validateSchedules(Array.from({ length: MAX_SCHEDULES + 1 }, () => ({ job: "sync", cron: "* * * * *" })), jobs)
+  const tooMany = validateSchedules(
+    Array.from({ length: MAX_SCHEDULES + 1 }, () => ({ job: "sync", cron: "* * * * *" })),
+    jobs,
+  )
   assert.match(tooMany.errors.join("\n"), /too many schedules/)
 })
 

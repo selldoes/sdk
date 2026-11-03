@@ -106,7 +106,10 @@ async function generateForProduct(ctx, config, productId) {
     bulletpoints: bulletpoints || product.bulletpoints,
   })
 
-  return { descriptionChars: String(description.text ?? "").length, bulletCount: bulletpoints ? bulletpoints.split("\n").length : 0 }
+  return {
+    descriptionChars: String(description.text ?? "").length,
+    bulletCount: bulletpoints ? bulletpoints.split("\n").length : 0,
+  }
 }
 
 /** @type {NonNullable<PluginExports["jobs"]>} */
@@ -155,7 +158,7 @@ const jobs = {
           ref: `#${productId}`,
           status: "failed",
           productId,
-          error: (error && error.message) || String(error),
+          error: error?.message || String(error),
         })
       }
 

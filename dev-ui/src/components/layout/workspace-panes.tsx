@@ -1,11 +1,11 @@
-import * as React from "react"
 import { AlertCircle, Eye, EyeOff, FolderOpen, KeyRound, Loader2, Package, RefreshCw, Search } from "lucide-react"
+import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useApp } from "@/state/app"
-import { ws } from "@/lib/ws-api"
 import type { WsBootstrap, WsPackage, WsProject } from "@/lib/ws-api"
+import { ws } from "@/lib/ws-api"
+import { useApp } from "@/state/app"
 
 /**
  * Import pane of the New-workspace dialog: point the workspace at a folder
@@ -13,13 +13,7 @@ import type { WsBootstrap, WsPackage, WsProject } from "@/lib/ws-api"
  * button opens the native OS folder picker on the machine running the server;
  * the text field stays as the fallback (and the only way to type a .zip path).
  */
-export function ImportPane({
-  busy,
-  onImport,
-}: {
-  busy: boolean
-  onImport: (folderPath: string) => void
-}) {
+export function ImportPane({ busy, onImport }: { busy: boolean; onImport: (folderPath: string) => void }) {
   const { toast } = useApp()
   const [path, setPath] = React.useState("")
   const [picking, setPicking] = React.useState(false)
@@ -68,8 +62,8 @@ export function ImportPane({
         </Button>
       </div>
       <p className="text-[10.5px] text-muted-foreground">
-        The folder stays where it is and keeps its own git history — the workspace only references it. The project is selected right
-        after importing.
+        The folder stays where it is and keeps its own git history — the workspace only references it. The project is selected
+        right after importing.
       </p>
     </div>
   )
@@ -160,7 +154,9 @@ export function PullPane({
           <Package className="h-3.5 w-3.5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold">{connected ? (account?.name ?? "Your developer account") : "Your developer account"}</p>
+          <p className="truncate text-xs font-semibold">
+            {connected ? (account?.name ?? "Your developer account") : "Your developer account"}
+          </p>
           <p className="truncate text-[10.5px] text-muted-foreground">
             {connected ? (account?.email ?? account?.appUrl ?? "Connected") : "Paste a developer token to pull packages you own"}
           </p>
@@ -170,7 +166,13 @@ export function PullPane({
             <Badge variant="outline" className="shrink-0 text-[9px]">
               connected
             </Badge>
-            <Button size="sm" variant="ghost" className="h-7 shrink-0 px-2 text-[10.5px] text-muted-foreground" disabled={connecting} onClick={() => void doDisconnect()}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 shrink-0 px-2 text-[10.5px] text-muted-foreground"
+              disabled={connecting}
+              onClick={() => void doDisconnect()}
+            >
               Disconnect
             </Button>
           </>
@@ -212,8 +214,10 @@ export function PullPane({
           </div>
           {connectError ? <p className="text-[10.5px] text-destructive">{connectError}</p> : null}
           <p className="text-[10.5px] text-muted-foreground">
-            Developer tokens start with <code className="text-[11px]">sk_dev_</code> — create one in the developer portal → API tokens. It is verified and saved to
-            <code className="text-[11px]"> ~/.selldoes.json</code>, the same place as <code className="text-[11px]">selldoes login</code>.
+            Developer tokens start with <code className="text-[11px]">sk_dev_</code> — create one in the developer portal → API
+            tokens. It is verified and saved to
+            <code className="text-[11px]"> ~/.selldoes.json</code>, the same place as{" "}
+            <code className="text-[11px]">selldoes login</code>.
           </p>
         </div>
       ) : null}
@@ -253,9 +257,7 @@ export function PullPane({
                     {local?.version ? ` · local v${local.version}` : ""} · {pkg.status}
                   </p>
                 </div>
-                {update ? (
-                  <Badge className="shrink-0 border-0 bg-amber-100 text-[9px] text-amber-800">update</Badge>
-                ) : null}
+                {update ? <Badge className="shrink-0 border-0 bg-amber-100 text-[9px] text-amber-800">update</Badge> : null}
                 {local ? (
                   <Button
                     size="sm"

@@ -1,4 +1,4 @@
-import { useStore, useProducts, ProductGrid } from "selldoes/theme"
+import { ProductGrid, useProducts, useStore } from "selldoes/theme"
 
 /**
  * Minimal home — quiet type, generous whitespace, the catalogue front and
@@ -10,8 +10,24 @@ export default function HomePage() {
   const products = data?.products || []
 
   return (
-    <div style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", background: "#ffffff", color: "#111111", minHeight: "100vh" }}>
-      <header style={{ maxWidth: 1200, margin: "0 auto", padding: "36px 32px 72px", display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+    <div
+      style={{
+        fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+        background: "#ffffff",
+        color: "#111111",
+        minHeight: "100vh",
+      }}
+    >
+      <header
+        style={{
+          maxWidth: 1200,
+          margin: "0 auto",
+          padding: "36px 32px 72px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+        }}
+      >
         <span style={{ fontSize: 14, letterSpacing: "0.22em", textTransform: "uppercase" }}>{store?.name}</span>
         <span style={{ fontSize: 12, color: "#9ca3af" }}>Catalogue</span>
       </header>
@@ -20,7 +36,17 @@ export default function HomePage() {
         {loading ? <p style={{ color: "#9ca3af", fontSize: 13 }}>Loading…</p> : <ProductGrid products={products} columns={5} />}
       </div>
 
-      <footer style={{ borderTop: "1px solid #f3f4f6", padding: "28px 32px", textAlign: "center", color: "#9ca3af", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+      <footer
+        style={{
+          borderTop: "1px solid #f3f4f6",
+          padding: "28px 32px",
+          textAlign: "center",
+          color: "#9ca3af",
+          fontSize: 11,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+        }}
+      >
         {store?.name}
       </footer>
     </div>

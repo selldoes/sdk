@@ -1,5 +1,5 @@
-import * as React from "react"
 import { Check, ChevronDown, Plus } from "lucide-react"
+import { resolveIcon } from "@/components/app-icon"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,13 +8,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { resolveIcon } from "@/components/app-icon"
-import { ACCENTS, accentFor } from "@/lib/project-colors"
-import { cn, timeAgo } from "@/lib/utils"
 import { confirmDiscardChanges } from "@/lib/dirty-guard"
+import { ACCENTS, accentFor } from "@/lib/project-colors"
 import { useBusySet } from "@/lib/use-busy"
-import { ws, projectIconUrl } from "@/lib/ws-api"
+import { cn, timeAgo } from "@/lib/utils"
 import type { WsProject } from "@/lib/ws-api"
+import { projectIconUrl, ws } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
 function ProjectGlyph({
@@ -27,7 +26,12 @@ function ProjectGlyph({
   const src = projectIconUrl(project)
   if (src) {
     return (
-      <span className={cn("flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/40", className)}>
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted/40",
+          className,
+        )}
+      >
         <img src={src} alt="" className="h-full w-full object-cover" />
       </span>
     )
@@ -123,7 +127,9 @@ export function WorkspaceSwitcher() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="truncate text-xs font-semibold">{project.name}</span>
-                    {project.missing ? <span className="shrink-0 text-[9px] font-bold uppercase text-destructive">missing</span> : null}
+                    {project.missing ? (
+                      <span className="shrink-0 text-[9px] font-bold uppercase text-destructive">missing</span>
+                    ) : null}
                   </span>
                   <span className="block truncate text-[10px] font-normal text-muted-foreground">
                     /{project.slug} · {project.kind}
@@ -137,10 +143,7 @@ export function WorkspaceSwitcher() {
         )}
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => openWorkspaceDialog("new")}
-          className="gap-2.5 text-primary focus:text-primary"
-        >
+        <DropdownMenuItem onSelect={() => openWorkspaceDialog("new")} className="gap-2.5 text-primary focus:text-primary">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 border-dashed border-primary/40">
             <Plus className="h-3.5 w-3.5" />
           </span>

@@ -170,7 +170,7 @@ Hosts may enforce lower caps; log the clamp so authors can see it.
 
 - [Developing plugins](developing-plugins.md) — author-facing docs.
 - `cli/plugin/build.mjs` — artifact builder.
-- `cli/plugin/sandbox.mjs` — QuickJS profile, Node build profile, probes.
+- `cli/plugin/sandbox.mjs` (+ `cli/plugin/sandbox/`) — QuickJS profile, Node build profile, probes.
 - `cli/plugin/schedule.mjs` — cron validation and next-run.
 - Reference host: `next/src/lib/plugins/sandbox/{node-jobs,node-bundle,scheduler,schedule}.ts`
   and `infra/lambda/plugin-node-runtime/` in the platform repo.

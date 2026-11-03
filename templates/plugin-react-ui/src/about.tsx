@@ -50,8 +50,8 @@ export default function AboutPage() {
         </li>
         <li>
           <span>
-            <strong>Page 2</strong> — this page: <code>ui/about.html</code> ← <code>ui/src/about.tsx</code>. It reads the same notes API —{" "}
-            {noteCount === null ? "…" : `${noteCount} note(s)`} so far.
+            <strong>Page 2</strong> — this page: <code>ui/about.html</code> ← <code>ui/src/about.tsx</code>. It reads the same
+            notes API — {noteCount === null ? "…" : `${noteCount} note(s)`} so far.
           </span>
         </li>
         <li>

@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
-import { buildPlugin } from "./build.mjs"
 import { readJson } from "../util.mjs"
+import { buildPlugin } from "./build.mjs"
 
 async function postJson(url, body, headers) {
   const response = await fetch(url, {
@@ -84,7 +84,9 @@ export async function publishPlugin({
       data,
       notes: typeof notes === "string" && notes ? notes : undefined,
       price: resolvedPrice,
-      currency: String(resolvedCurrency || "USD").slice(0, 3).toUpperCase(),
+      currency: String(resolvedCurrency || "USD")
+        .slice(0, 3)
+        .toUpperCase(),
       billingPeriod: String(resolvedBilling ?? "one_time"),
       trialDays: Math.max(0, Math.min(Number(resolvedTrial) || 0, 90)),
     },

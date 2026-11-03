@@ -43,7 +43,7 @@ export const HOOK_CATALOG: HookCatalogEntry[] = [
     name: "dashboard:stats:cards",
     description: "Add a stat card to a dashboard page.",
     group: "Dashboard",
-    samplePayload: '{\n  "storeId": 1,\n  "range": "30d"\}',
+    samplePayload: '{\n  "storeId": 1,\n  "range": "30d"}',
     payloadNote: "Store id plus the reporting range the page is showing.",
     returns: "Stat cards ({ label, value, hint }) the host renders on the page.",
   },

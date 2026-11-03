@@ -6,12 +6,12 @@ import {
   Frame,
   Layers,
   Link2,
+  type LucideIcon,
   Play,
   ScrollText,
   Settings,
   SlidersHorizontal,
   Table,
-  type LucideIcon,
 } from "lucide-react"
 import type { PluginDashboardSection, PluginManifest } from "@/lib/types"
 
@@ -30,16 +30,58 @@ export interface KitComponentMeta {
 }
 
 export const KIT_COMPONENTS: KitComponentMeta[] = [
-  { type: "text", label: "Text", description: "Title + markdown body — intros, guides, notes.", icon: FileText, group: "Content" },
-  { type: "stats", label: "Stats", description: "A row of metric cards (label, value, hint).", icon: BarChart2, group: "Content" },
-  { type: "links", label: "Links", description: "Buttons linking to docs, dashboards or your site.", icon: Link2, group: "Content" },
-  { type: "component", label: "Embedded UI", description: "Embed another of your plugin's UI files (ui/*.html) in a self-resizing iframe.", icon: Frame, group: "Content" },
-  { type: "group", label: "Group (collapsible)", description: "Nest other components inside one card — the header collapses/expands the whole group.", icon: Layers, group: "Content" },
+  {
+    type: "text",
+    label: "Text",
+    description: "Title + markdown body — intros, guides, notes.",
+    icon: FileText,
+    group: "Content",
+  },
+  {
+    type: "stats",
+    label: "Stats",
+    description: "A row of metric cards (label, value, hint).",
+    icon: BarChart2,
+    group: "Content",
+  },
+  {
+    type: "links",
+    label: "Links",
+    description: "Buttons linking to docs, dashboards or your site.",
+    icon: Link2,
+    group: "Content",
+  },
+  {
+    type: "component",
+    label: "Embedded UI",
+    description: "Embed another of your plugin's UI files (ui/*.html) in a self-resizing iframe.",
+    icon: Frame,
+    group: "Content",
+  },
+  {
+    type: "group",
+    label: "Group (collapsible)",
+    description: "Nest other components inside one card — the header collapses/expands the whole group.",
+    icon: Layers,
+    group: "Content",
+  },
   { type: "table", label: "Table", description: "Live rows from one of your API routes.", icon: Table, group: "Data" },
   { type: "logs", label: "Logs", description: "Recent dev-server output in a monospace panel.", icon: ScrollText, group: "Data" },
   { type: "job", label: "Job runner", description: "Run a declared job with a live transcript.", icon: Play, group: "Actions" },
-  { type: "settings", label: "Settings form", description: "Renders your whole configSchema form, saved per store.", icon: Settings, group: "Actions" },
-  { type: "field", label: "Config field", description: "A single configSchema field on its own — compose a form inside a Group.", icon: SlidersHorizontal, group: "Actions" },
+  {
+    type: "settings",
+    label: "Settings form",
+    description: "Renders your whole configSchema form, saved per store.",
+    icon: Settings,
+    group: "Actions",
+  },
+  {
+    type: "field",
+    label: "Config field",
+    description: "A single configSchema field on its own — compose a form inside a Group.",
+    icon: SlidersHorizontal,
+    group: "Actions",
+  },
 ]
 
 export function kitComponent(type: string): KitComponentMeta | undefined {

@@ -1,19 +1,19 @@
+import { Loader2, Pencil, Play, Plug, Plus, Send } from "lucide-react"
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { Loader2, Pencil, Play, Plug, Plus, Send } from "lucide-react"
 import { CreateRouteDialog } from "@/components/create-dialogs"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmptyState, PageHead } from "@/components/shared"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { EmptyState, PageHead } from "@/components/shared"
 import { dev } from "@/lib/api"
 import { resolveRouteUrl, routeFileHint, routeParamNames } from "@/lib/route-scaffold"
 import { healMissingDeclaration, parseMissingDeclaration } from "@/lib/self-heal"
-import { timeAgo, cn } from "@/lib/utils"
 import type { PluginManifest, Validation } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
+import { cn, timeAgo } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
 interface RouteRow {
@@ -98,14 +98,16 @@ function urlMatchesRoute(url: string, route: RouteRow): boolean {
   const pathname = url.split("?")[0]
   const pattern = route.base + route.path
   if (routeParamNames(route.path).length === 0) return pathname === pattern
-  const regex = new RegExp(
-    `^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/:[A-Za-z0-9_]+/g, "[^/]+")}$`,
-  )
+  const regex = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/:[A-Za-z0-9_]+/g, "[^/]+")}$`)
   return regex.test(pathname)
 }
 
 const statusTone = (status: number) =>
-  status >= 200 && status < 300 ? "bg-emerald-100 text-emerald-700" : status >= 400 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+  status >= 200 && status < 300
+    ? "bg-emerald-100 text-emerald-700"
+    : status >= 400
+      ? "bg-red-100 text-red-700"
+      : "bg-amber-100 text-amber-700"
 
 export function ApiPage() {
   const { bootstrap, toast, setAssistantPage, applyManifest, refresh } = useApp()
@@ -161,7 +163,9 @@ export function ApiPage() {
       .then((tree) => setFilePaths(new Set(tree.entries.filter((entry) => entry.type === "file").map((entry) => entry.path))))
       .catch(() => setFilePaths(null))
   }, [])
-  const entryFile = String(manifest.entry ?? "index.js").replace(/^\.\//, "").replace(/\\/g, "/")
+  const entryFile = String(manifest.entry ?? "index.js")
+    .replace(/^\.\//, "")
+    .replace(/\\/g, "/")
 
   // ── Creation: New route (scaffold into routes/ + plugin.json + entry) ────
   const [createOpen, setCreateOpen] = React.useState(false)
@@ -240,7 +244,19 @@ export function ApiPage() {
         }
       }
       const ms = Date.now() - started
-      pushHistory({ at: Date.now(), method: m, path: rawPath, url, query: q, body: b, params, status: response.status, statusText: response.statusText, ms, routeKey: draft?.routeKey })
+      pushHistory({
+        at: Date.now(),
+        method: m,
+        path: rawPath,
+        url,
+        query: q,
+        body: b,
+        params,
+        status: response.status,
+        statusText: response.statusText,
+        ms,
+        routeKey: draft?.routeKey,
+      })
       let formatted = text
       try {
         formatted = JSON.stringify(JSON.parse(text), null, 2)
@@ -252,7 +268,19 @@ export function ApiPage() {
       else toast(`${m} ${url} → ${response.status}`, "error")
     } catch (error) {
       const ms = Date.now() - started
-      pushHistory({ at: Date.now(), method: m, path: rawPath, url, query: q, body: b, params, status: 0, statusText: "Network error", ms, routeKey: draft?.routeKey })
+      pushHistory({
+        at: Date.now(),
+        method: m,
+        path: rawPath,
+        url,
+        query: q,
+        body: b,
+        params,
+        status: 0,
+        statusText: "Network error",
+        ms,
+        routeKey: draft?.routeKey,
+      })
       setResult(String(error))
       toast(error instanceof Error ? error.message : String(error), "error")
     } finally {
@@ -271,7 +299,14 @@ export function ApiPage() {
     setPathParams(saved.params)
     setRunningChip(`${route.key}:${entry}`)
     try {
-      await send({ method: entry, path: route.full, query: saved.query, body: saved.body, params: saved.params, routeKey: route.key })
+      await send({
+        method: entry,
+        path: route.full,
+        query: saved.query,
+        body: saved.body,
+        params: saved.params,
+        routeKey: route.key,
+      })
     } finally {
       setRunningChip(null)
     }
@@ -312,8 +347,8 @@ export function ApiPage() {
           title="No routes declared"
           message={
             <>
-              Declare <code>apiRoutes</code> (dashboard) or <code>publicRoutes</code> (visitors) in plugin.json and export matching handlers
-              from your entry — or scaffold one.
+              Declare <code>apiRoutes</code> (dashboard) or <code>publicRoutes</code> (visitors) in plugin.json and export
+              matching handlers from your entry — or scaffold one.
             </>
           }
           action={
@@ -355,7 +390,12 @@ export function ApiPage() {
                       </span>
                       <code className="min-w-0 flex-1 truncate text-[11px] font-semibold">{route.path}</code>
                       {last ? (
-                        <span className={cn("shrink-0 rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold", statusTone(last.status || 500))}>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold",
+                            statusTone(last.status || 500),
+                          )}
+                        >
                           {last.status || "ERR"} · {last.ms}ms
                         </span>
                       ) : null}
@@ -497,7 +537,12 @@ export function ApiPage() {
                         onClick={() => loadRun(run)}
                         className="flex w-full items-center gap-2 rounded-md border border-border px-2 py-1 text-left text-[10.5px] transition-colors hover:bg-muted"
                       >
-                        <span className={cn("shrink-0 rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold", statusTone(run.status || 500))}>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold",
+                            statusTone(run.status || 500),
+                          )}
+                        >
                           {run.status || "ERR"}
                         </span>
                         <span className="shrink-0 font-mono font-semibold">{run.method}</span>

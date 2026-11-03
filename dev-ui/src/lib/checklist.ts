@@ -1,5 +1,5 @@
-import type { DevActivity, PluginManifest, Validation } from "./types"
 import { highestRisk } from "./permissions"
+import type { DevActivity, PluginManifest, Validation } from "./types"
 
 export interface ChecklistItem {
   key: string
@@ -22,7 +22,9 @@ export function buildChecklist(manifest: PluginManifest, activity: DevActivity, 
       title: "Describe your plugin",
       note: "Name, description, icon and category — the first thing store owners see.",
       to: "/details",
-      done: Boolean(manifest.name && String(manifest.description ?? "").trim().length > 12 && (manifest.icon || manifest.iconUrl)),
+      done: Boolean(
+        manifest.name && String(manifest.description ?? "").trim().length > 12 && (manifest.icon || manifest.iconUrl),
+      ),
     },
     {
       key: "permissions",
@@ -62,7 +64,9 @@ export function buildChecklist(manifest: PluginManifest, activity: DevActivity, 
       ? {
           key: "storefront",
           title: "Check the storefront",
-          note: manifest.storefrontWidget?.entry ? "Widget + pages rendered on a demo store." : "Your public pages on a demo store.",
+          note: manifest.storefrontWidget?.entry
+            ? "Widget + pages rendered on a demo store."
+            : "Your public pages on a demo store.",
           to: "/storefront",
           done: visits.storefront === true,
         }

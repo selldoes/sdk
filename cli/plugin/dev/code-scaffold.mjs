@@ -17,13 +17,15 @@ const UNSAFE = /[^a-z0-9:_-]+/gi
 const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 
 function safeFileStem(value) {
-  return String(value)
-    .replace(/^\//, "")
-    .replace(/:/g, "-")
-    .replace(UNSAFE, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase() || "item"
+  return (
+    String(value)
+      .replace(/^\//, "")
+      .replace(/:/g, "-")
+      .replace(UNSAFE, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "item"
+  )
 }
 
 function titleFrom(value) {
@@ -158,8 +160,10 @@ export function planCodeScaffold({ pluginDir, manifest, kind, name, description,
   let blockName = BLOCK_FOR[kind]
   if (kind === "job") {
     const type = label.replace(/^\//, "").replace(/\s+/g, "-").toLowerCase()
-    if (!/^[a-z0-9][a-z0-9_-]*$/.test(type)) throw new Error(`Job types use lowercase letters, digits and dashes (got "${label}")`)
-    if ((current.jobs ?? []).some((job) => job?.type === type)) throw new Error(`Job "${type}" is already declared in plugin.json`)
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(type))
+      throw new Error(`Job types use lowercase letters, digits and dashes (got "${label}")`)
+    if ((current.jobs ?? []).some((job) => job?.type === type))
+      throw new Error(`Job "${type}" is already declared in plugin.json`)
     const jobDescription = String(description ?? "").trim() || `The ${titleFrom(type)} job.`
     if (nodeJob) {
       file = `server/${type}.js`
@@ -175,17 +179,19 @@ export function planCodeScaffold({ pluginDir, manifest, kind, name, description,
     }
   } else if (kind === "hook") {
     const name2 = label
-    if ((current.hooks ?? {})[name2]) throw new Error(`Hook "${name2}" is already declared in plugin.json`)
+    if (current.hooks?.[name2]) throw new Error(`Hook "${name2}" is already declared in plugin.json`)
     file = `hooks/${safeFileStem(name2)}.js`
     content = hookModule(name2)
     current.hooks = { ...(current.hooks ?? {}), [name2]: { handler: file } }
   } else if (kind === "route") {
     const routePath = label.startsWith("/") ? label : `/${label}`
     // Static segments and `:params` — lowercase, digits, dashes, slashes, colons.
-    if (!/^\/[a-z0-9/_:-]*$/i.test(routePath)) throw new Error(`Routes are lowercase paths like /stats or /products/:id (got "${label}")`)
+    if (!/^\/[a-z0-9/_:-]*$/i.test(routePath))
+      throw new Error(`Routes are lowercase paths like /stats or /products/:id (got "${label}")`)
     const listKey = isPublicRoute ? "publicRoutes" : "apiRoutes"
     const list = current[listKey] ?? []
-    if (list.some((route) => route?.path === routePath)) throw new Error(`Route "${routePath}" is already declared in plugin.json`)
+    if (list.some((route) => route?.path === routePath))
+      throw new Error(`Route "${routePath}" is already declared in plugin.json`)
     const routeMethods = normalizeRouteMethods(methods)
     file = `routes/${safeFileStem(routePath)}.js`
     content = routeModule(routePath, routeMethods, isPublicRoute)
@@ -219,7 +225,8 @@ export function applyCodePlan(pluginDir, plan) {
   const written = []
   for (const target of plan.targets) {
     const full = path.resolve(pluginDir, target.path)
-    if (!full.startsWith(path.resolve(pluginDir) + path.sep)) throw new Error(`Refusing to write outside the plugin: ${target.path}`)
+    if (!full.startsWith(path.resolve(pluginDir) + path.sep))
+      throw new Error(`Refusing to write outside the plugin: ${target.path}`)
     if (fs.existsSync(full)) continue
     fs.mkdirSync(path.dirname(full), { recursive: true })
     fs.writeFileSync(full, target.content)

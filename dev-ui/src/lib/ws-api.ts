@@ -127,8 +127,7 @@ export const ws = {
   bootstrap: () => request<WsBootstrap>("/__ws/bootstrap"),
   importFolder: (folderPath: string) => post<{ project: WsProject }>("/__ws/import", { path: folderPath }),
   /** Starting points for the New-workspace dialog (served by the CLI). */
-  examples: () =>
-    request<{ plugin: WsExample[]; theme: WsExample[] }>("/__ws/examples"),
+  examples: () => request<{ plugin: WsExample[]; theme: WsExample[] }>("/__ws/examples"),
   create: (input: {
     name: string
     parentDir?: string
@@ -208,6 +207,7 @@ export const ws = {
     }),
   setColor: (projectId: string, color: string | null) =>
     post<{ ok: boolean; project: WsProject }>("/__ws/color", { projectId, color }),
-  openEditor: (input: { projectId?: string; file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {}) =>
-    post<{ opened: boolean; editor?: string; terminal?: string; error?: string }>("/__ws/open-editor", input),
+  openEditor: (
+    input: { projectId?: string; file?: string; line?: number; column?: number; editor?: string; terminal?: boolean } = {},
+  ) => post<{ opened: boolean; editor?: string; terminal?: string; error?: string }>("/__ws/open-editor", input),
 }

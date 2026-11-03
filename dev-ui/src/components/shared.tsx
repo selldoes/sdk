@@ -1,9 +1,9 @@
+import { AlertCircle, AlertTriangle, Check, Copy, Info, type LucideIcon, Star } from "lucide-react"
 import * as React from "react"
-import { AlertCircle, AlertTriangle, Check, Copy, Info, Star, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { cn, priceBadge } from "@/lib/utils"
 import type { PluginPricing } from "@/lib/types"
+import { cn, priceBadge } from "@/lib/utils"
 
 export function PageHead({
   title,
@@ -111,7 +111,10 @@ export function Stars({ rating = 0, count = 0, className }: { rating?: number; c
           />
         ))}
       </span>
-      <span className="text-muted-foreground">{rating > 0 ? rating.toFixed(1) : "New"}{count ? ` (${count})` : ""}</span>
+      <span className="text-muted-foreground">
+        {rating > 0 ? rating.toFixed(1) : "New"}
+        {count ? ` (${count})` : ""}
+      </span>
     </span>
   )
 }

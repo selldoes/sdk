@@ -49,7 +49,10 @@ const PACK_EXCLUDED_FILES = new Set(["package-lock.json", "yarn.lock", "pnpm-loc
 export function collectUiEntries(manifest) {
   const entries = new Set()
   const add = (value) => {
-    const entry = String(value ?? "").replace(/^\.\//, "").replace(/\\/g, "/").trim()
+    const entry = String(value ?? "")
+      .replace(/^\.\//, "")
+      .replace(/\\/g, "/")
+      .trim()
     if (entry) entries.add(entry)
   }
   add(manifest.ui?.entry)
@@ -246,7 +249,9 @@ export async function buildPlugin(pluginDir, { outDir, zip = false, log = consol
 
     const undeclared = [...imported].filter((name) => !(name in declared)).sort()
     if (undeclared.length > 0) {
-      log(`  ! Node jobs import ${undeclared.join(", ")} but plugin.json does not declare them — add them so the image installs them`)
+      log(
+        `  ! Node jobs import ${undeclared.join(", ")} but plugin.json does not declare them — add them so the image installs them`,
+      )
     }
 
     nodeArtifact = {

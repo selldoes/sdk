@@ -1,3 +1,5 @@
+import { escapeHtml } from "./util.mjs"
+
 /**
  * A styled, self-contained 404 page shared by the Selldoes dev servers
  * (workspace shell, plugin preview, theme preview).
@@ -5,14 +7,6 @@
  * Browsers navigating to a missing page get this HTML page; API clients
  * (fetch/XHR) keep the JSON `{ error }` body they already parse.
  */
-
-function escapeHtml(value) {
-  return String(value).replace(
-    /[&<>"']/g,
-    (char) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
-  )
-}
 
 /** True when the request comes from a browser address-bar / link navigation. */
 export function wantsHtmlPage(req) {
@@ -36,7 +30,7 @@ export function notFoundHtml({ pathname = "/", homeUrl = "/", homeLabel = "Open 
   const home = escapeHtml(homeUrl)
   const label = escapeHtml(homeLabel)
   const chips = links
-    .filter((link) => link && link.to)
+    .filter((link) => link?.to)
     .map((link) => `<a class="chip" href="${escapeHtml(link.to)}">${escapeHtml(link.label ?? link.to)}</a>`)
     .join("")
   const hintHtml = hint ? `<p class="hint">${escapeHtml(hint)}</p>` : ""
@@ -201,11 +195,7 @@ export function notFoundHtml({ pathname = "/", homeUrl = "/", homeLabel = "Open 
         <button class="btn ghost" type="button" onclick="history.length > 1 ? history.back() : (location.href = ${JSON.stringify(home)})">Go back</button>
         <a class="btn primary" href="${home}">${label}</a>
       </div>
-      ${
-        chips
-          ? `<div class="chips"><span class="label">Jump to</span>${chips}</div>`
-          : ""
-      }
+      ${chips ? `<div class="chips"><span class="label">Jump to</span>${chips}</div>` : ""}
       <footer>
         Need help? See the <a href="https://selldoes.com/docs/plugins" target="_blank" rel="noreferrer">Selldoes plugin docs</a>.
       </footer>

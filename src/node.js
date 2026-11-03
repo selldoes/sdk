@@ -175,7 +175,11 @@ export async function launchBrowser(options = {}) {
   let executablePath = options.executablePath
   let args = options.args ?? []
   if (!executablePath && process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    const chromium = await loadOptional("@sparticuz/chromium", "selldoes add @sparticuz/chromium", () => import("@sparticuz/chromium"))
+    const chromium = await loadOptional(
+      "@sparticuz/chromium",
+      "selldoes add @sparticuz/chromium",
+      () => import("@sparticuz/chromium"),
+    )
     executablePath = await chromium.executablePath()
     args = [...chromium.args, ...args]
   }
@@ -202,6 +206,8 @@ async function loadOptional(name, hint, loader) {
     const mod = /** @type {any} */ (await loader())
     return /** @type {T} */ (mod.default ?? mod)
   } catch (error) {
-    throw new Error(`"${name}" is required for this helper — run \`${hint}\` and redeploy (Node jobs only). ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(
+      `"${name}" is required for this helper — run \`${hint}\` and redeploy (Node jobs only). ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 }

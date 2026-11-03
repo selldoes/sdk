@@ -1,8 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import readline from "node:readline/promises"
-import { die, findPluginRoot } from "./util.mjs"
 import { validatePluginDir } from "./plugin/validate.mjs"
+import { die, findPluginRoot } from "./util.mjs"
 
 /**
  * `selldoes ask` — the assistant in your terminal, no browser required.
@@ -86,7 +86,9 @@ export async function askCommand(args, flags) {
     console.log(`\nProposed changes${result.edits.summary ? ` — ${result.edits.summary}` : ""}:`)
     for (const file of result.edits.files) {
       const before = file.before ?? ""
-      console.log(`  • ${file.path}  (${file.exists === false ? "new file" : "modified"}, ${before.length} → ${file.content.length} chars)`)
+      console.log(
+        `  • ${file.path}  (${file.exists === false ? "new file" : "modified"}, ${before.length} → ${file.content.length} chars)`,
+      )
     }
 
     if (flags["dry-run"] === true) {
@@ -114,11 +116,14 @@ export async function askCommand(args, flags) {
     }
   }
 
-  const question = args.filter((arg) => !arg.startsWith("-")).join(" ").trim()
+  const question = args
+    .filter((arg) => !arg.startsWith("-"))
+    .join(" ")
+    .trim()
   if (question) await round(question)
 
   if (!rl) {
-    if (!question) die("Ask a question: selldoes ask \"…\" (an interactive chat needs a TTY)")
+    if (!question) die('Ask a question: selldoes ask "…" (an interactive chat needs a TTY)')
     return
   }
   if (!question) console.log(`Selldoes assistant — ${manifest.slug} v${manifest.version ?? "?"} (Ctrl+C or "exit" to quit)`)

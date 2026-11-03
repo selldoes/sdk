@@ -1,4 +1,4 @@
-import { useInitialProduct, useRelatedProducts, Price, AddToCartButton, ProductGallery, ProductCard } from "selldoes/theme"
+import { AddToCartButton, Price, ProductCard, ProductGallery, useInitialProduct, useRelatedProducts } from "selldoes/theme"
 
 /** Bold product page — full-bleed gallery, sticky buy column, related grid. */
 export default function ProductPage() {
@@ -14,10 +14,29 @@ export default function ProductPage() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: "#0a0a0a", color: "#fafafa", minHeight: "100vh" }}>
-      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "40px 24px", display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 40, alignItems: "start" }}>
+      <div
+        style={{
+          maxWidth: 1120,
+          margin: "0 auto",
+          padding: "40px 24px",
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1fr",
+          gap: 40,
+          alignItems: "start",
+        }}
+      >
         <ProductGallery images={images} alt={product.name} />
         <div style={{ position: "sticky", top: 24 }}>
-          <p style={{ margin: 0, color: "#facc15", fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          <p
+            style={{
+              margin: 0,
+              color: "#facc15",
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+            }}
+          >
             In stock
           </p>
           <h1 style={{ fontSize: 40, lineHeight: 1.05, fontWeight: 900, letterSpacing: "-0.03em", margin: "12px 0 14px" }}>

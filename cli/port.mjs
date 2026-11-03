@@ -1,5 +1,5 @@
-import net from "node:net"
 import { execFile } from "node:child_process"
+import net from "node:net"
 
 /**
  * Port reclamation for the workspace server.

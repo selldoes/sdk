@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process"
 import { WebSocketServer } from "ws"
+import { isLoopbackRequest } from "./http.mjs"
 
 /**
  * Terminal sessions for the dev shell.
@@ -108,6 +109,12 @@ export function attachTerminalServer({ server, path: wsPath, resolveCwd, log = (
       return
     }
     if (url.pathname !== wsPath) return
+    // Same DNS-rebinding guard as the HTTP endpoints — the terminal is a shell.
+    if (!isLoopbackRequest(req)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n")
+      socket.destroy()
+      return
+    }
     const cwd = resolveCwd(url)
     if (!cwd) {
       socket.write("HTTP/1.1 404 Not Found\r\n\r\n")

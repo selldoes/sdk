@@ -1,43 +1,22 @@
 import * as React from "react"
-import { Link } from "react-router-dom"
-import {
-  AlertTriangle,
-  Check,
-  Database,
-  History,
-  Loader2,
-  Palette,
-  Plug,
-  Puzzle,
-  RefreshCw,
-  Rocket,
-  Sparkles,
-  SquarePen,
-  SquareTerminal,
-  Store,
-  Trash2,
-  Unplug,
-} from "lucide-react"
 import { PageHead } from "@/components/shared"
-import { SkeletonCard } from "@/components/skeletons"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { ConfirmDialog, DeleteFilesDialog } from "@/components/settings-dialogs"
 import { dev } from "@/lib/api"
-import { useBusySet } from "@/lib/use-busy"
-import { ACCENTS, ACCENT_NAMES, accentFor, type AccentName } from "@/lib/project-colors"
+import { type AccentName, accentFor } from "@/lib/project-colors"
 import type { BumpMode, DevConfigResponse, StoreStatusResponse, StoreVerifyResponse } from "@/lib/types"
+import { useBusySet } from "@/lib/use-busy"
 import { useVisit } from "@/lib/use-visit"
-import { cn } from "@/lib/utils"
-import { ws } from "@/lib/ws-api"
 import type { WsProject } from "@/lib/ws-api"
+import { ws } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
+import { AssistantModelCard } from "./settings/assistant-model-card"
+import { DangerZoneCard } from "./settings/danger-zone-card"
+import { DevServerCard } from "./settings/dev-server-card"
+import { SettingsDialogs } from "./settings/dialogs"
+import { ProjectCard } from "./settings/project-card"
+import { ReleasesCard } from "./settings/releases-card"
+import type { ConfirmAction } from "./settings/shared"
+import { StoreCard } from "./settings/store-card"
+import { StorePickerDialog } from "./settings/store-picker-dialog"
 
 /**
  * Project settings — everything scoped to the current plugin folder
@@ -72,13 +51,7 @@ export function SettingsPage() {
 
   // ── Dialog state ──────────────────────────────────────────────────────────
   const [deleteFilesFor, setDeleteFilesFor] = React.useState<WsProject | null>(null)
-  const [confirmAction, setConfirmAction] = React.useState<{
-    title: string
-    description: React.ReactNode
-    confirmLabel: string
-    danger?: boolean
-    onConfirm: () => Promise<void>
-  } | null>(null)
+  const [confirmAction, setConfirmAction] = React.useState<ConfirmAction | null>(null)
   const confirmBusy = useBusySet()
 
   const doConfirm = async () => {
@@ -104,6 +77,40 @@ export function SettingsPage() {
   }
 
   const quickAction = (key: string, action: () => Promise<void>) => void run(key, action, projectBusy)
+
+  const openEditor = () =>
+    quickAction("open-editor", async () => {
+      const result = await ws.openEditor()
+      toast(`Opened in ${result.editor ?? "your editor"}`, "success")
+    })
+
+  const openTerminal = () =>
+    quickAction("open-terminal", async () => {
+      await ws.openEditor({ terminal: true })
+      toast("Terminal opened", "success")
+    })
+
+  const restartPreview = () =>
+    quickAction("restart", async () => {
+      await ws.restart()
+      toast("Preview restarted", "success")
+    })
+
+  const removeFromWorkspace = (project: WsProject | null) => {
+    if (!project) return
+    setConfirmAction({
+      title: `Remove ${project.name} from the workspace?`,
+      description:
+        "The project is unregistered from the list — its folder stays on disk and can be re-imported anytime with `selldoes import`.",
+      confirmLabel: "Remove from workspace",
+      onConfirm: async () => {
+        await ws.remove(project.id)
+        await refreshWorkspace()
+        await refresh()
+        toast(`Removed ${project.name} from the workspace list`, "success")
+      },
+    })
+  }
 
   // ── Dev-server + release config ───────────────────────────────────────────
   const [config, setConfig] = React.useState<DevConfigResponse | null>(null)
@@ -214,7 +221,10 @@ export function SettingsPage() {
         setStore(result)
         setLiveApiKey("")
         closeStorePicker()
-        toast(`Connected to ${result.storeName || result.storeSlug || result.storeId} — ctx.products now writes to the real store`, "success")
+        toast(
+          `Connected to ${result.storeName || result.storeSlug || result.storeId} — ctx.products now writes to the real store`,
+          "success",
+        )
       },
       configBusy,
     )
@@ -293,7 +303,10 @@ export function SettingsPage() {
         const result = await dev.saveFileConfig({ assistant: { model: value }, scope: "project" })
         setConfig(result)
         setModelOverride(result.assistant.projectModel ?? "")
-        toast(value ? "Project model override saved" : "Project model override cleared — using your User settings model", "success")
+        toast(
+          value ? "Project model override saved" : "Project model override cleared — using your User settings model",
+          "success",
+        )
       },
       configBusy,
     )
@@ -340,525 +353,98 @@ export function SettingsPage() {
       />
 
       {/* ── Project ─────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Puzzle className="h-4 w-4" />
-            Project
-          </CardTitle>
-          <CardDescription>The workspace entry for {workspaceMode ? "the current project" : "this preview"}.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className={cn("flex h-10 w-10 items-center justify-center rounded-lg", ACCENTS[activeAccent].tile)}>
-              {current?.kind === "theme" ? <Palette className="h-5 w-5" /> : <Puzzle className="h-5 w-5" />}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 text-sm font-bold">
-                {current?.name ?? manifest.name}
-                <Badge variant="outline" className="text-[9px] uppercase">
-                  {current?.kind ?? "plugin"}
-                </Badge>
-                {current?.missing ? <span className="text-[10px] font-bold uppercase text-destructive">missing on disk</span> : null}
-              </p>
-              <p className="truncate font-mono text-[11px] text-muted-foreground">
-                /{current?.slug ?? manifest.slug} v{manifest.version}
-                {current ? "" : " · standalone preview"}
-              </p>
-            </div>
-          </div>
-
-          {current ? (
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-muted-foreground">Accent</span>
-                {ACCENT_NAMES.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    title={name}
-                    disabled={projectBusy.anyBusy}
-                    onClick={() => setColor(name)}
-                    className={cn(
-                      "h-5 w-5 rounded-full ring-offset-2 ring-offset-background transition-all hover:scale-110",
-                      ACCENTS[name].swatch,
-                      current.color === name && `ring-2 ${ACCENTS[name].ring}`,
-                    )}
-                  />
-                ))}
-              </div>
-              <div className="ml-auto flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={projectBusy.anyBusy || current.missing}
-                  onClick={() =>
-                    quickAction("open-editor", async () => {
-                      const result = await ws.openEditor()
-                      toast(`Opened in ${result.editor ?? "your editor"}`, "success")
-                    })
-                  }
-                >
-                  {projectBusy.isBusy("open-editor") ? <Loader2 className="animate-spin" /> : <SquarePen />}
-                  Open in editor
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={projectBusy.anyBusy || current.missing}
-                  onClick={() =>
-                    quickAction("open-terminal", async () => {
-                      await ws.openEditor({ terminal: true })
-                      toast("Terminal opened", "success")
-                    })
-                  }
-                >
-                  {projectBusy.isBusy("open-terminal") ? <Loader2 className="animate-spin" /> : <SquareTerminal />}
-                  Terminal
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={projectBusy.anyBusy || current.missing}
-                  onClick={() =>
-                    quickAction("restart", async () => {
-                      await ws.restart()
-                      toast("Preview restarted", "success")
-                    })
-                  }
-                >
-                  {projectBusy.isBusy("restart") ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                  Restart preview
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {workspaceMode && current ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-bold text-destructive">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Danger zone — local
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={current.missing}
-                  onClick={() =>
-                    setConfirmAction({
-                      title: `Remove ${current.name} from the workspace?`,
-                      description:
-                        "The project is unregistered from the list — its folder stays on disk and can be re-imported anytime with `selldoes import`.",
-                      confirmLabel: "Remove from workspace",
-                      onConfirm: async () => {
-                        await ws.remove(current.id)
-                        await refreshWorkspace()
-                        await refresh()
-                        toast(`Removed ${current.name} from the workspace list`, "success")
-                      },
-                    })
-                  }
-                >
-                  Remove from workspace
-                </Button>
-                <span className="text-[11px] text-muted-foreground">unregisters it — files stay on disk</span>
-                <span className="mx-1 hidden h-4 w-px bg-border sm:block" />
-                <Button variant="outline" size="sm" className="text-destructive" disabled={current.missing} onClick={() => setDeleteFilesFor(current)}>
-                  <Trash2 />
-                  Delete files from disk
-                </Button>
-                <span className="text-[11px] text-muted-foreground">deletes the folder — typed-slug confirm</span>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+      <ProjectCard
+        workspaceMode={workspaceMode}
+        current={current}
+        manifest={manifest}
+        activeAccent={activeAccent}
+        busy={projectBusy}
+        onSetColor={setColor}
+        onOpenEditor={openEditor}
+        onOpenTerminal={openTerminal}
+        onRestartPreview={restartPreview}
+        onRemove={() => removeFromWorkspace(current)}
+        onDeleteFiles={() => setDeleteFilesFor(current)}
+      />
 
       {/* ── Releases ────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Rocket className="h-4 w-4" />
-            Releases
-          </CardTitle>
-          <CardDescription>
-            Default version bump the Ship page proposes when you publish. Saved per project in{" "}
-            <code className="font-mono">selldoes.config.json</code> — overrides the User settings fallback.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {config === null && !configError ? (
-            <SkeletonCard rows={2} className="border-0 bg-transparent p-0" />
-          ) : (
-            <>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Default bump</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(
-                    [
-                      { value: "patch", label: "Patch", hint: "0.4.1 → 0.4.2" },
-                      { value: "minor", label: "Minor", hint: "0.4.1 → 0.5.0" },
-                      { value: "major", label: "Major", hint: "0.4.1 → 1.0.0" },
-                    ] as const
-                  ).map((entry) => (
-                    <button
-                      key={entry.value}
-                      type="button"
-                      disabled={configBusy.anyBusy}
-                      onClick={() => setReleaseBump(entry.value)}
-                      title={entry.hint}
-                      className={cn(
-                        "rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                        releaseBump === entry.value
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border text-muted-foreground hover:bg-muted",
-                      )}
-                    >
-                      {entry.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10.5px] leading-snug text-muted-foreground">
-                  The Ship page pre-checks “Bump version before publish” with this mode; you can still change it per release. The platform
-                  rejects re-publishing a version that already exists.
-                </p>
-              </div>
-              <Button size="sm" disabled={configBusy.anyBusy} onClick={() => void saveRelease()}>
-                {configBusy.isBusy("release") ? <Loader2 className="animate-spin" /> : <Check />}
-                Save
-              </Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <ReleasesCard
+        busy={configBusy}
+        config={config}
+        configError={configError}
+        releaseBump={releaseBump}
+        onReleaseBumpChange={setReleaseBump}
+        onSave={() => void saveRelease()}
+      />
 
       {/* ── Assistant model override ────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4" />
-            Assistant model override
-          </CardTitle>
-          <CardDescription>
-            This project pins its own assistant model — the provider, API key and base URL stay in{" "}
-            <Link to="/user-settings" className="text-primary hover:underline">
-              User settings
-            </Link>
-            .
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {config === null && !configError ? (
-            <SkeletonCard rows={2} className="border-0 bg-transparent p-0" />
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                <span>
-                  Effective: <strong className="font-semibold text-foreground">{config?.assistant.provider ?? "openrouter"}</strong> ·{" "}
-                  <code className="font-mono">{config?.assistant.model ?? "default"}</code>
-                </span>
-                {config?.assistant.apiKeySet ? <Badge variant="outline" className="text-[9px]">key saved (user)</Badge> : null}
-                {config?.assistant.projectModel ? <Badge variant="outline" className="text-[9px] text-primary">project override</Badge> : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  value={modelOverride}
-                  onChange={(event) => setModelOverride(event.target.value)}
-                  placeholder={config?.assistant.model ?? "model id — blank uses your User settings model"}
-                  className="h-9 w-72 font-mono text-xs"
-                  disabled={configBusy.anyBusy}
-                />
-                <Button size="sm" disabled={configBusy.anyBusy} onClick={() => void saveModelOverride(modelOverride.trim() || null)}>
-                  {configBusy.isBusy("model-override") ? <Loader2 className="animate-spin" /> : <Check />}
-                  Save override
-                </Button>
-                {config?.assistant.projectModel ? (
-                  <Button size="sm" variant="outline" disabled={configBusy.anyBusy} onClick={() => void saveModelOverride(null)}>
-                    Clear
-                  </Button>
-                ) : null}
-              </div>
-              <p className="text-[10.5px] leading-snug text-muted-foreground">
-                Saved as <code className="font-mono">assistant.model</code> in this project's selldoes.config.json — safe to commit, no
-                credentials involved.
-              </p>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <AssistantModelCard
+        busy={configBusy}
+        config={config}
+        configError={configError}
+        modelOverride={modelOverride}
+        onModelOverrideChange={setModelOverride}
+        onSaveOverride={(value) => void saveModelOverride(value)}
+      />
 
       {/* ── Live store connection ──────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Plug className="h-4 w-4" />
-            Store
-          </CardTitle>
-          <CardDescription>
-            Connect a real store to test against live catalog data — no publish needed. When connected,{" "}
-            <code className="font-mono">ctx.products</code> (and image re-hosting) proxy to the store through the merchant API; everything
-            else (plugin tables, AI, email) stays on the local mock.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {store === null ? (
-            storeError === null ? (
-              <SkeletonCard rows={2} className="border-0 bg-transparent p-0" />
-            ) : (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2.5">
-                <p className="text-xs font-semibold text-amber-600">The running dev server does not know /__dev/store</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Restart <code className="font-mono">selldoes dev</code> (and the workspace shell if you use it) so the preview picks up
-                  the SDK update — the Store card talks to a dev server that is older than the UI.
-                </p>
-              </div>
-            )
-          ) : store.active ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 px-3 py-2.5">
-                <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-                <span className="text-xs font-semibold">
-                  Live — {store.connection?.storeSlug || store.connection?.storeId} @ {store.connection?.appUrl}
-                </span>
-                <span className="ml-auto flex gap-2">
-                  <Button size="sm" variant="outline" disabled={configBusy.anyBusy} onClick={() => void openStorePicker(true)}>
-                    {configBusy.isBusy("store-verify") ? <Loader2 className="animate-spin" /> : <Store />}
-                    Change store
-                  </Button>
-                  <Button size="sm" variant="outline" disabled={configBusy.anyBusy} onClick={() => void disconnectLiveStore()}>
-                    {configBusy.isBusy("store-disconnect") ? <Loader2 className="animate-spin" /> : <Unplug />}
-                    Disconnect
-                  </Button>
-                </span>
-              </div>
-              <p className="text-[10.5px] leading-snug text-muted-foreground">
-                Jobs and API routes you run now read and write the real store catalog. Disconnect to go back to the mock.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="live-api-key" className="text-xs">
-                  Merchant API key
-                </Label>
-                <Input
-                  id="live-api-key"
-                  type="password"
-                  value={liveApiKey}
-                  onChange={(event) => setLiveApiKey(event.target.value)}
-                  placeholder={store.apiKeySet ? store.apiKeyMasked ?? "sk_…" : "sk_… (Dashboard → Settings → API Keys)"}
-                  className="h-9 font-mono text-xs"
-                  disabled={configBusy.anyBusy}
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" disabled={configBusy.anyBusy || !liveApiKey.trim()} onClick={() => void openStorePicker(false)}>
-                  {configBusy.isBusy("store-verify") ? <Loader2 className="animate-spin" /> : <Plug />}
-                  Connect store
-                </Button>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <StoreCard
+        busy={configBusy}
+        store={store}
+        storeError={storeError}
+        liveApiKey={liveApiKey}
+        onLiveApiKeyChange={setLiveApiKey}
+        onOpenStorePicker={(usingStoredKey) => void openStorePicker(usingStoredKey)}
+        onDisconnect={() => void disconnectLiveStore()}
+      />
 
       {/* ── Dev-server config ───────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Database className="h-4 w-4" />
-            Dev-server config
-          </CardTitle>
-          <CardDescription>
-            Writes <code className="font-mono">selldoes.config.json</code> — the mock store identity, listen address and runtime mocks.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {config === null && !configError ? (
-            <SkeletonCard rows={5} className="border-0 bg-transparent p-0" />
-          ) : (
-            <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="cfg-store-id" className="text-xs">
-                    Mock store id
-                  </Label>
-                  <Input id="cfg-store-id" value={storeId} onChange={(event) => setStoreId(event.target.value)} className="h-9 font-mono text-xs" inputMode="numeric" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cfg-store-slug" className="text-xs">
-                    Mock store slug
-                  </Label>
-                  <Input id="cfg-store-slug" value={storeSlug} onChange={(event) => setStoreSlug(event.target.value)} className="h-9 font-mono text-xs" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cfg-store-name" className="text-xs">
-                    Mock store name
-                  </Label>
-                  <Input id="cfg-store-name" value={storeName} onChange={(event) => setStoreName(event.target.value)} className="h-9" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cfg-port" className="text-xs">
-                    Port <span className="font-normal text-muted-foreground">(no --port)</span>
-                  </Label>
-                  <Input id="cfg-port" value={port} onChange={(event) => setPort(event.target.value)} className="h-9 font-mono text-xs" inputMode="numeric" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cfg-host" className="text-xs">
-                    Host
-                  </Label>
-                  <Input id="cfg-host" value={host} onChange={(event) => setHost(event.target.value)} className="h-9 font-mono text-xs" />
-                </div>
-                <div className="flex items-end gap-2 pb-1">
-                  <Switch checked={emailDisabled} onCheckedChange={setEmailDisabled} id="cfg-email" />
-                  <Label htmlFor="cfg-email" className="cursor-pointer text-xs">
-                    Disable email sending
-                  </Label>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="cfg-mock-reply" className="text-xs">
-                  Mock AI reply <span className="font-normal text-muted-foreground">(ctx.ai mock text)</span>
-                </Label>
-                <Input id="cfg-mock-reply" value={mockReply} onChange={(event) => setMockReply(event.target.value)} placeholder="(mock AI reply — set ai.mockReply in selldoes.config.json)" className="h-9 text-xs" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="cfg-sample-jobs" className="text-xs">
-                  Sample jobs <span className="font-normal text-muted-foreground">(JSON — prefill for the Jobs page)</span>
-                </Label>
-                <Textarea
-                  id="cfg-sample-jobs"
-                  value={sampleJobs}
-                  onChange={(event) => setSampleJobs(event.target.value)}
-                  placeholder={'{ "import-products": { "input": { "url": "https://…" }, "maxTicks": 10 } }'}
-                  rows={3}
-                  className="font-mono text-xs"
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" disabled={configBusy.anyBusy} onClick={() => void saveServerConfig()}>
-                  {configBusy.isBusy("server") ? <Loader2 className="animate-spin" /> : <Check />}
-                  Save dev-server config
-                </Button>
-                <span className="text-[10.5px] text-muted-foreground">
-                  Store identity, port and mocks apply on preview restart — the workspace restarts it for you.
-                </span>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <DevServerCard
+        busy={configBusy}
+        config={config}
+        configError={configError}
+        storeId={storeId}
+        onStoreIdChange={setStoreId}
+        storeSlug={storeSlug}
+        onStoreSlugChange={setStoreSlug}
+        storeName={storeName}
+        onStoreNameChange={setStoreName}
+        port={port}
+        onPortChange={setPort}
+        host={host}
+        onHostChange={setHost}
+        emailDisabled={emailDisabled}
+        onEmailDisabledChange={setEmailDisabled}
+        mockReply={mockReply}
+        onMockReplyChange={setMockReply}
+        sampleJobs={sampleJobs}
+        onSampleJobsChange={setSampleJobs}
+        onSave={() => void saveServerConfig()}
+      />
 
       {/* ── Danger zone (local preview data) ────────────────────────────── */}
-      <Card className="border-destructive/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base text-destructive">
-            <Trash2 className="h-4 w-4" />
-            Danger zone
-          </CardTitle>
-          <CardDescription>Local preview data for this project. None of this touches a published plugin.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2.5">
-            <Database className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold">Reset mock store data</p>
-              <p className="text-[11px] text-muted-foreground">
-                Deletes <code className="font-mono">.selldoes-dev/db.json</code> and reseeds the demo tables — see the{" "}
-                <Link to="/data" className="text-primary hover:underline">
-                  Store data
-                </Link>{" "}
-                page.
-              </p>
-            </div>
-            <Button size="sm" variant="outline" className="shrink-0 text-destructive" onClick={resetData}>
-              Reset data
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2.5">
-            <History className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold">Clear undo history</p>
-              <p className="text-[11px] text-muted-foreground">
-                Deletes every snapshot under <code className="font-mono">.selldoes-dev/undo/</code> — History can no longer restore past saves.
-              </p>
-            </div>
-            <Button size="sm" variant="outline" className="shrink-0 text-destructive" onClick={clearUndo}>
-              Clear snapshots
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <DangerZoneCard onResetData={resetData} onClearUndo={clearUndo} />
 
       {/* ── Dialogs ─────────────────────────────────────────────────────── */}
-      <Dialog
-        open={storePicker !== null}
-        onOpenChange={(open) => {
-          if (!open) closeStorePicker()
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Which store to connect?</DialogTitle>
-            <DialogDescription>
-              {storePickerUsingStoredKey ? "Stores on your saved API key" : `Stores on the account at ${storePicker?.appUrl ?? "https://selldoes.com"}`} —{" "}
-              <code className="font-mono">ctx.products</code> will proxy to the one you pick.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-72 space-y-1.5 overflow-y-auto">
-            {storePicker?.stores.map((option, index) => (
-              <button
-                key={option.id}
-                type="button"
-                disabled={configBusy.anyBusy}
-                onClick={() => setStorePickId(option.id)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  storePickId === option.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted",
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-3.5 w-3.5 shrink-0 rounded-full border",
-                    storePickId === option.id ? "border-primary bg-primary" : "border-muted-foreground/40",
-                  )}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-semibold">
-                    {option.name || option.slug || `Store #${option.id}`}
-                    {index === 0 ? <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(first)</span> : null}
-                  </span>
-                  <span className="block truncate font-mono text-[10.5px] text-muted-foreground">
-                    {option.slug ? `${option.slug} · ` : ""}id {option.id}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" disabled={configBusy.anyBusy} onClick={closeStorePicker}>
-              Cancel
-            </Button>
-            <Button size="sm" disabled={configBusy.anyBusy || storePickId === null} onClick={() => void connectPickedStore()}>
-              {configBusy.isBusy("store-connect") ? <Loader2 className="animate-spin" /> : <Plug />}
-              Connect
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <DeleteFilesDialog project={deleteFilesFor} onClose={() => setDeleteFilesFor(null)} onDone={() => void refreshWorkspace()} />
-      <ConfirmDialog
-        open={confirmAction !== null}
-        busy={confirmBusy.anyBusy}
-        title={confirmAction?.title ?? ""}
-        description={confirmAction?.description ?? ""}
-        confirmLabel={confirmAction?.confirmLabel ?? "Confirm"}
-        danger={confirmAction?.danger}
-        onOpenChange={(open) => {
+      <StorePickerDialog
+        storePicker={storePicker}
+        usingStoredKey={storePickerUsingStoredKey}
+        storePickId={storePickId}
+        busy={configBusy}
+        onPick={setStorePickId}
+        onClose={closeStorePicker}
+        onConnect={() => void connectPickedStore()}
+      />
+      <SettingsDialogs
+        deleteFilesFor={deleteFilesFor}
+        onCloseDeleteFiles={() => setDeleteFilesFor(null)}
+        onDeleteFilesDone={() => void refreshWorkspace()}
+        confirmAction={confirmAction}
+        confirmBusy={confirmBusy}
+        onConfirm={() => void doConfirm()}
+        onConfirmOpenChange={(open) => {
           if (!open) setConfirmAction(null)
         }}
-        onConfirm={() => void doConfirm()}
       />
     </div>
   )

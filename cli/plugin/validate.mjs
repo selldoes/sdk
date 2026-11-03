@@ -82,7 +82,8 @@ export function validatePluginDir(pluginDir, { expectedSlug } = {}) {
     dashboardPaths.add(page?.path)
     if (!page?.label) errors.push(`dashboardPages "${page?.path}" needs a label`)
     if (page?.entry) {
-      if (!UI_PATH.test(page.entry)) errors.push(`dashboardPages "${page.path}" entry "${page.entry}" contains invalid characters`)
+      if (!UI_PATH.test(page.entry))
+        errors.push(`dashboardPages "${page.path}" entry "${page.entry}" contains invalid characters`)
       else if (!fileExists(path.join(pluginDir, page.entry))) {
         errors.push(`dashboardPages "${page.path}" entry "${page.entry}" does not exist`)
       }
@@ -154,15 +155,24 @@ export function validatePluginDir(pluginDir, { expectedSlug } = {}) {
         errors.push(`job "${label}": node jobs need an "entry" file (for example "./server/${job.type || "job"}.js")`)
       } else {
         const normalized = String(job.entry).replace(/^\.\//, "").replace(/\\/g, "/")
-        if (normalized.startsWith("..") || path.isAbsolute(normalized)) errors.push(`job "${label}": entry must be inside the plugin`)
+        if (normalized.startsWith("..") || path.isAbsolute(normalized))
+          errors.push(`job "${label}": entry must be inside the plugin`)
         else if (!fileExists(path.join(pluginDir, normalized))) errors.push(`job "${label}": entry "${job.entry}" does not exist`)
       }
       const timeout = job.timeoutMs === undefined ? null : Number(job.timeoutMs)
-      if (timeout !== null && (!Number.isFinite(timeout) || timeout < NODE_JOB_LIMITS.minTimeoutMs || timeout > NODE_JOB_LIMITS.maxTimeoutMs)) {
-        errors.push(`job "${label}": timeoutMs must be between ${NODE_JOB_LIMITS.minTimeoutMs} and ${NODE_JOB_LIMITS.maxTimeoutMs}`)
+      if (
+        timeout !== null &&
+        (!Number.isFinite(timeout) || timeout < NODE_JOB_LIMITS.minTimeoutMs || timeout > NODE_JOB_LIMITS.maxTimeoutMs)
+      ) {
+        errors.push(
+          `job "${label}": timeoutMs must be between ${NODE_JOB_LIMITS.minTimeoutMs} and ${NODE_JOB_LIMITS.maxTimeoutMs}`,
+        )
       }
       const memory = job.memoryMb === undefined ? null : Number(job.memoryMb)
-      if (memory !== null && (!Number.isFinite(memory) || memory < NODE_JOB_LIMITS.minMemoryMb || memory > NODE_JOB_LIMITS.maxMemoryMb)) {
+      if (
+        memory !== null &&
+        (!Number.isFinite(memory) || memory < NODE_JOB_LIMITS.minMemoryMb || memory > NODE_JOB_LIMITS.maxMemoryMb)
+      ) {
         errors.push(`job "${label}": memoryMb must be between ${NODE_JOB_LIMITS.minMemoryMb} and ${NODE_JOB_LIMITS.maxMemoryMb}`)
       }
     }

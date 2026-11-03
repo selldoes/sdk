@@ -1,4 +1,3 @@
-import type { ReactNode } from "react"
 import {
   BarChart2,
   Bell,
@@ -13,6 +12,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   LifeBuoy,
+  type LucideIcon,
   Mail,
   MessageCircle,
   Package,
@@ -33,8 +33,8 @@ import {
   Users,
   Wand2,
   Zap,
-  type LucideIcon,
 } from "lucide-react"
+import type { ReactNode } from "react"
 import { cn, mediaUrl } from "@/lib/utils"
 
 /**

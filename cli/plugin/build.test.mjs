@@ -32,7 +32,7 @@ const JS_MANIFEST = {
 
 test("buildPlugin (js): multi-page entries land in dist/ui", async () => {
   const root = tempPlugin(JS_MANIFEST, {
-    "ui/index.html": "<html><script src=\"app.js\"></script></html>",
+    "ui/index.html": '<html><script src="app.js"></script></html>',
     "ui/app.js": "console.log('notes')",
     "ui/app.css": "body{}",
     "ui/about.html": "<html>about</html>",
@@ -142,11 +142,17 @@ test("buildPlugin: Node jobs emit a dist/node artifact with external packages an
     path.join(root, "node_modules", "fake-lib", "package.json"),
     JSON.stringify({ name: "fake-lib", version: "1.0.0", main: "index.js" }),
   )
-  fs.writeFileSync(path.join(root, "node_modules", "fake-lib", "index.js"), "module.exports = { scrape: (input) => ({ scraped: input }) }\n")
+  fs.writeFileSync(
+    path.join(root, "node_modules", "fake-lib", "index.js"),
+    "module.exports = { scrape: (input) => ({ scraped: input }) }\n",
+  )
 
   const built = await buildPlugin(root, { outDir: path.join(root, "dist"), zip: true, log: () => {} })
   assert.ok(built.nodeArtifact, "node artifact is reported")
-  assert.deepEqual(built.nodeArtifact.jobs.map((job) => job.type), ["scrape"])
+  assert.deepEqual(
+    built.nodeArtifact.jobs.map((job) => job.type),
+    ["scrape"],
+  )
   assert.equal(built.nodeArtifact.jobs[0].file, "scrape.cjs")
   assert.equal(built.nodeArtifact.jobs[0].timeoutMs, 60_000)
   assert.equal(built.nodeArtifact.jobs[0].memoryMb, 1024)

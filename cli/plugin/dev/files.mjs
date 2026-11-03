@@ -101,7 +101,9 @@ export function createFilesService({ pluginDir, sdkRoot, snapshots, rebuild, log
       if (!fs.existsSync(full)) throw new Error(`${normalized} does not exist`)
       const stat = fs.statSync(full)
       const files = stat.isDirectory()
-        ? listProjectFiles(pluginDir, { depth: 12 }).map((file) => file.path).filter((file) => file === normalized || file.startsWith(`${normalized}/`))
+        ? listProjectFiles(pluginDir, { depth: 12 })
+            .map((file) => file.path)
+            .filter((file) => file === normalized || file.startsWith(`${normalized}/`))
         : [normalized]
       snapshot(`delete ${normalized}`.slice(0, 40), files.length ? files : [normalized])
       fs.rmSync(full, { recursive: true, force: true })
@@ -114,10 +116,7 @@ export function createFilesService({ pluginDir, sdkRoot, snapshots, rebuild, log
     },
 
     sdkTypes() {
-      const candidates = [
-        path.join(sdkRoot, "dist", "index.d.ts"),
-        path.join(sdkRoot, "src", "index.ts"),
-      ]
+      const candidates = [path.join(sdkRoot, "dist", "index.d.ts"), path.join(sdkRoot, "src", "index.ts")]
       for (const candidate of candidates) {
         if (fs.existsSync(candidate)) return { path: candidate, content: fs.readFileSync(candidate, "utf8") }
       }

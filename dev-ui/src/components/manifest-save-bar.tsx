@@ -1,4 +1,3 @@
-import * as React from "react"
 import { Check, Loader2, RefreshCw } from "lucide-react"
 import { Callout } from "@/components/shared"
 import { Button } from "@/components/ui/button"

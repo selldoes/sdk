@@ -139,7 +139,10 @@ export const PLUGIN_SCHEMA = {
           description: { type: "string" },
           placeholder: { type: "string" },
           default: { type: ["string", "number", "boolean"] },
-          options: { type: "array", items: { type: "object", properties: { value: { type: "string" }, label: { type: "string" } } } },
+          options: {
+            type: "array",
+            items: { type: "object", properties: { value: { type: "string" }, label: { type: "string" } } },
+          },
           required: { type: "boolean" },
         },
       },

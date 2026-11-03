@@ -1,6 +1,6 @@
 import fs from "node:fs"
-import path from "node:path"
 import { createRequire } from "node:module"
+import path from "node:path"
 import { build, context } from "esbuild"
 import { readJson } from "../../util.mjs"
 import { checkSandboxBundle, collectExternalPackages, nodeBuildOptions, nodeJobLimits, sandboxBuildOptions } from "../sandbox.mjs"
@@ -212,7 +212,9 @@ export class PluginRunner {
             buildContext.onEnd((result) => {
               if (result.errors.length > 0) {
                 for (const error of result.errors) {
-                  const location = error.location ? `${error.location.file}:${error.location.line}:${error.location.column}: ` : ""
+                  const location = error.location
+                    ? `${error.location.file}:${error.location.line}:${error.location.column}: `
+                    : ""
                   this.log(`[esbuild] ${location}${error.text}`)
                 }
                 return
@@ -280,7 +282,7 @@ export class PluginRunner {
     const bundle = this.bundle()
     // Dashboard (`apiRoutes`) and visitor (`publicRoutes`) maps are separate —
     // a path declared in both must never resolve across kinds.
-    return scope === "public" ? bundle.publicRoutes ?? {} : bundle.apiRoutes ?? {}
+    return scope === "public" ? (bundle.publicRoutes ?? {}) : (bundle.apiRoutes ?? {})
   }
 
   /** Mirrors the host's handler lookup (leading slash optional, trailing slash tolerated). */
@@ -340,7 +342,7 @@ export class PluginRunner {
         kind: "function",
         ticks,
         state: null,
-        result: last && typeof last === "object" ? last.result ?? null : last ?? null,
+        result: last && typeof last === "object" ? (last.result ?? null) : (last ?? null),
         done: true,
       }
     }
@@ -418,7 +420,10 @@ export class PluginRunner {
     const declared = this.manifest.hooks?.[name]
     if (typeof bundle.default === "function") return bundle.default(payload, ctx)
     const basename = declared?.handler
-      ? String(declared.handler).split("/").pop().replace(/\.(js|ts|tsx|jsx)$/, "")
+      ? String(declared.handler)
+          .split("/")
+          .pop()
+          .replace(/\.(js|ts|tsx|jsx)$/, "")
       : ""
     if (basename && typeof bundle[basename] === "function") return bundle[basename](payload, ctx)
     for (const value of Object.values(bundle)) {

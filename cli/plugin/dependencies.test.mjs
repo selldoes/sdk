@@ -3,6 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { packageManagerEnv } from "../util.mjs"
 import {
   detectPackageManager,
   ensurePackageJson,
@@ -11,13 +12,21 @@ import {
   validateDependencySpec,
   writeDependencies,
 } from "./dependencies.mjs"
-import { packageManagerEnv } from "../util.mjs"
 
 test("validateDependencySpec accepts registry ranges only", () => {
   for (const spec of ["^1.2.3", "~0.2.1", "1.2.3", "1.2", "^1.2", "2.0.0-beta.1"]) {
     assert.equal(validateDependencySpec("cheerio", spec), null, spec)
   }
-  for (const spec of ["*", "latest", "file:../local", "link:../x", "github:a/b", "https://example.com/a.tgz", "workspace:*", ""]) {
+  for (const spec of [
+    "*",
+    "latest",
+    "file:../local",
+    "link:../x",
+    "github:a/b",
+    "https://example.com/a.tgz",
+    "workspace:*",
+    "",
+  ]) {
     assert.ok(validateDependencySpec("cheerio", spec), `expected "${spec}" to be rejected`)
   }
   assert.ok(validateDependencySpec("bad name!", "^1.0.0"))
@@ -47,7 +56,10 @@ test("detectPackageManager: lockfile detection with npm fallback", () => {
 
 test("writeDependencies: updates plugin.json, removes the key when empty", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "selldoes-deps-"))
-  fs.writeFileSync(path.join(root, "plugin.json"), `${JSON.stringify({ slug: "x", name: "X", description: "d", version: "1.0.0" }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(root, "plugin.json"),
+    `${JSON.stringify({ slug: "x", name: "X", description: "d", version: "1.0.0" }, null, 2)}\n`,
+  )
   writeDependencies(root, { zod: "^3.23.0", cheerio: "^1.2.0" })
   const written = JSON.parse(fs.readFileSync(path.join(root, "plugin.json"), "utf8"))
   assert.deepEqual(Object.keys(written.dependencies), ["cheerio", "zod"])

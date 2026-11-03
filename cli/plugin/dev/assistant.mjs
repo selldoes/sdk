@@ -1,11 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
-import {
-  EDITABLE_EXTENSIONS,
-  MAX_FILE_BYTES,
-  listProjectFiles,
-} from "./project-files.mjs"
 import { userAssistant } from "../../user-settings.mjs"
+import { EDITABLE_EXTENSIONS, listProjectFiles, MAX_FILE_BYTES } from "./project-files.mjs"
 
 /**
  * The AI rightbar brain: talks to the developer's own provider (OpenRouter,
@@ -266,15 +262,23 @@ export function normalizeEdits(payload) {
   if (!payload || typeof payload !== "object") return null
   const files = []
   for (const entry of Array.isArray(payload.files) ? payload.files : []) {
-    const relative = String(entry?.path ?? "").replace(/\\/g, "/").replace(/^\.\//, "")
-    if (!relative || relative.includes("..") || relative.split("/").some((part) => part === "node_modules" || part.startsWith("."))) continue
+    const relative = String(entry?.path ?? "")
+      .replace(/\\/g, "/")
+      .replace(/^\.\//, "")
+    if (
+      !relative ||
+      relative.includes("..") ||
+      relative.split("/").some((part) => part === "node_modules" || part.startsWith("."))
+    )
+      continue
     const extension = path.extname(relative).toLowerCase()
     if (!EDITABLE_EXTENSIONS.has(extension)) continue
     const content = typeof entry?.content === "string" ? entry.content : null
     if (content === null || content.length > MAX_FILE_BYTES) continue
     files.push({ path: relative, content })
   }
-  const manifest = payload.manifest && typeof payload.manifest === "object" && !Array.isArray(payload.manifest) ? payload.manifest : undefined
+  const manifest =
+    payload.manifest && typeof payload.manifest === "object" && !Array.isArray(payload.manifest) ? payload.manifest : undefined
   if (files.length === 0 && !manifest) return null
   return {
     summary: typeof payload.summary === "string" ? payload.summary.slice(0, 300) : undefined,
@@ -302,7 +306,9 @@ export function parseAssistantReply(text) {
  */
 export async function callProvider(resolved, { system, messages, log = () => {} }) {
   const history = (Array.isArray(messages) ? messages : [])
-    .filter((message) => message && (message.role === "user" || message.role === "assistant") && typeof message.content === "string")
+    .filter(
+      (message) => message && (message.role === "user" || message.role === "assistant") && typeof message.content === "string",
+    )
     .slice(-12)
     .map((message) => ({ role: message.role, content: message.content.slice(0, 20_000) }))
 

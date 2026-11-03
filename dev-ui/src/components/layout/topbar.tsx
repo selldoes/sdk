@@ -1,13 +1,13 @@
+import { Check, Menu, Moon, Sparkles, SquarePen, Store, Sun, UserRoundCog } from "lucide-react"
 import * as React from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { Check, Menu, Moon, SquarePen, Sparkles, Store, Sun, UserRoundCog } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { dev } from "@/lib/api"
-import { ws } from "@/lib/ws-api"
 import { PAGE_TITLES } from "@/lib/pages"
-import { useDevStream } from "@/lib/use-dev-stream"
 import type { DevStatus } from "@/lib/types"
+import { useDevStream } from "@/lib/use-dev-stream"
+import { ws } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
 export function Topbar() {
@@ -73,7 +73,13 @@ export function Topbar() {
                 : "building…"}
           </Badge>
         </button>
-        <Button variant="outline" size="sm" className="hidden sm:inline-flex" title="Open the project in your editor" onClick={openInEditor}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="hidden sm:inline-flex"
+          title="Open the project in your editor"
+          onClick={openInEditor}
+        >
           <SquarePen />
           Open in editor
         </Button>

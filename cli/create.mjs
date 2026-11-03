@@ -1,10 +1,9 @@
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import { packageManagerEnv } from "./util.mjs"
 import * as prompts from "@clack/prompts"
-import { die } from "./util.mjs"
+import { die, packageManagerEnv } from "./util.mjs"
 
 const PACKAGE = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"))
 
@@ -124,7 +123,8 @@ export function resolveExample(kind, example, { withUi = true, uiFlavor = "js" }
   const catalog = EXAMPLES[kind === "theme" ? "theme" : "plugin"]
   if (example) {
     const found = catalog.find((entry) => entry.id === example)
-    if (!found) throw new Error(`Unknown ${kind} example "${example}" (available: ${catalog.map((entry) => entry.id).join(", ")})`)
+    if (!found)
+      throw new Error(`Unknown ${kind} example "${example}" (available: ${catalog.map((entry) => entry.id).join(", ")})`)
     return found
   }
   if (kind === "theme") return catalog.find((entry) => entry.id === "starter")
@@ -225,7 +225,11 @@ export async function scaffoldProject({
     // Swap the plain-JS UI for the React + TypeScript one, and wire up the
     // dependencies esbuild needs to bundle it (ui/src → assets/index.js).
     fs.rmSync(path.join(targetDir, "ui"), { recursive: true, force: true })
-    copyTemplate(fileURLToPath(new URL("../templates/plugin-react-ui/", import.meta.url)), path.join(targetDir, "ui"), replacements)
+    copyTemplate(
+      fileURLToPath(new URL("../templates/plugin-react-ui/", import.meta.url)),
+      path.join(targetDir, "ui"),
+      replacements,
+    )
     const packagePath = path.join(targetDir, "package.json")
     const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"))
     pkg.dependencies = { react: "^19.0.0", "react-dom": "^19.0.0", ...(pkg.dependencies ?? {}) }
@@ -371,7 +375,11 @@ export async function createCommand(args, flags) {
     let description = flags.ai === true ? null : String(flags.ai)
     if (!description) {
       if (!interactive) die('Pass a description: selldoes create <dir> --ai "…"')
-      const answer = await prompts.text({ message: "Describe the plugin you want", placeholder: "e.g. a plugin that…", defaultValue: "" })
+      const answer = await prompts.text({
+        message: "Describe the plugin you want",
+        placeholder: "e.g. a plugin that…",
+        defaultValue: "",
+      })
       if (prompts.isCancel(answer)) cancel()
       description = String(answer ?? "").trim()
     }
@@ -518,7 +526,7 @@ export async function createCommand(args, flags) {
       "  npx selldoes login --api-key sk_…    # Dashboard → Settings → API Keys",
       "  npx selldoes dev --store <slug>",
       "",
-      "Docs: https://selldoes.com/docs/themes"
+      "Docs: https://selldoes.com/docs/themes",
     )
   }
   prompts.outro(lines.join("\n"))

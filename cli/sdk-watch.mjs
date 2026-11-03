@@ -47,7 +47,9 @@ function isSource(relative) {
 
 /** Normalizes an fs.watch filename to a POSIX-style path relative to the root. */
 function normalizeName(filename) {
-  return String(filename ?? "").replace(/\\/g, "/").replace(/^\/+/, "")
+  return String(filename ?? "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
 }
 
 /** `path\0size\0mtime` lines for every watched source under `root`. */

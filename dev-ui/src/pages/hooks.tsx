@@ -1,12 +1,12 @@
+import { Check, FileCode2, Loader2, Pencil, Plus, Save, Webhook } from "lucide-react"
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { Check, FileCode2, Loader2, Pencil, Plus, Save, Webhook } from "lucide-react"
 import { CreateHookDialog } from "@/components/create-dialogs"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { EmptyState, PageHead } from "@/components/shared"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 import { dev } from "@/lib/api"
 import { findHookCatalog, handlerPathFor, hookModuleTemplate, normalizeHandlerPath } from "@/lib/hooks-catalog"
 import { healMissingDeclaration, parseMissingDeclaration } from "@/lib/self-heal"
@@ -42,8 +42,7 @@ export function HooksPage() {
 
   /** Declared handlers can carry a legacy "./" prefix; the real file path doesn't. */
   const handlerFileFor = React.useCallback(
-    (name: string, declaration: HookDeclaration) =>
-      normalizeHandlerPath(declaration.handler ?? handlerPathFor(name)),
+    (name: string, declaration: HookDeclaration) => normalizeHandlerPath(declaration.handler ?? handlerPathFor(name)),
     [],
   )
 

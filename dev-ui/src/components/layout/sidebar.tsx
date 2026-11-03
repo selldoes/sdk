@@ -1,4 +1,3 @@
-import { NavLink } from "react-router-dom"
 import {
   BookOpen,
   Compass,
@@ -7,6 +6,7 @@ import {
   FileText,
   History,
   LayoutDashboard,
+  type LucideIcon,
   Mail,
   Package,
   Paintbrush,
@@ -25,13 +25,13 @@ import {
   SquareTerminal,
   Store,
   Webhook,
-  type LucideIcon,
 } from "lucide-react"
+import { NavLink } from "react-router-dom"
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher"
 import { SkeletonWorkspaceSwitcher } from "@/components/skeletons"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useApp } from "@/state/app"
 import { cn } from "@/lib/utils"
+import { useApp } from "@/state/app"
 
 interface NavItem {
   to: string
@@ -95,16 +95,23 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 ]
 
 export function Sidebar({ onOpenGlossary }: { onOpenGlossary: () => void }) {
-  const { bootstrap, sidebarOpen, setSidebarOpen, setAssistantOpen, workspace, workspaceLoaded, setTerminalOpen, setPaletteOpen } = useApp()
+  const {
+    bootstrap,
+    sidebarOpen,
+    setSidebarOpen,
+    setAssistantOpen,
+    workspace,
+    workspaceLoaded,
+    setTerminalOpen,
+    setPaletteOpen,
+  } = useApp()
   const manifest = bootstrap?.manifest
   const store = bootstrap?.store
   const workspaceMode = workspace !== null
 
   return (
     <>
-      {sidebarOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      ) : null}
+      {sidebarOpen ? <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} /> : null}
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-border bg-card transition-transform duration-200 lg:static lg:translate-x-0",

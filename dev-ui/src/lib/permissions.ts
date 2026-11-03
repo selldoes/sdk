@@ -174,10 +174,7 @@ export function filterPermissions<T extends string>(permissions: T[] = [], query
   if (!needle) return permissions
   return permissions.filter((permission) => {
     const info = permissionInfo(permission)
-    return [permission, info.label, info.description, info.impact, info.risk]
-      .join(" ")
-      .toLowerCase()
-      .includes(needle)
+    return [permission, info.label, info.description, info.impact, info.risk].join(" ").toLowerCase().includes(needle)
   })
 }
 

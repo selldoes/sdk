@@ -26,12 +26,20 @@ const BASE = {
 
 test("job scaffold: module + manifest entry + entry wiring", () => {
   const root = tempPlugin(BASE)
-  const plan = planCodeScaffold({ pluginDir: root, manifest: JSON.parse(fs.readFileSync(path.join(root, "plugin.json"), "utf8")), kind: "job", name: "Import Products" })
+  const plan = planCodeScaffold({
+    pluginDir: root,
+    manifest: JSON.parse(fs.readFileSync(path.join(root, "plugin.json"), "utf8")),
+    kind: "job",
+    name: "Import Products",
+  })
   assert.equal(plan.file, "jobs/import-products.js")
   assert.equal(plan.manifest.jobs.length, 1)
   assert.equal(plan.manifest.jobs[0].type, "import-products")
   assert.equal(plan.manifest.jobs[0].name, "Import Products")
-  assert.match(plan.wiring, /module\.exports\.jobs = \{ \.\.\.module\.exports\.jobs, \.\.\.require\("\.\/jobs\/import-products\.js"\) \}/)
+  assert.match(
+    plan.wiring,
+    /module\.exports\.jobs = \{ \.\.\.module\.exports\.jobs, \.\.\.require\("\.\/jobs\/import-products\.js"\) \}/,
+  )
 
   const written = applyCodePlan(root, plan)
   assert.deepEqual(written, ["jobs/import-products.js", "index.js"])
@@ -95,7 +103,13 @@ test("route scaffold: declares GET and wires apiRoutes", () => {
 
 test("route scaffold: honors the requested methods (upper-cased, deduped, validated)", () => {
   const root = tempPlugin(BASE)
-  const plan = planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "stats", methods: ["get", "POST", "post", "BOGUS"] })
+  const plan = planCodeScaffold({
+    pluginDir: root,
+    manifest: BASE,
+    kind: "route",
+    name: "stats",
+    methods: ["get", "POST", "post", "BOGUS"],
+  })
   assert.deepEqual(plan.manifest.apiRoutes[plan.manifest.apiRoutes.length - 1], { path: "/stats", methods: ["GET", "POST"] })
   applyCodePlan(root, plan)
   const module = fs.readFileSync(path.join(root, plan.file), "utf8")
@@ -127,9 +141,18 @@ test("route scaffold: public routes land in publicRoutes with their own wiring b
 
 test("route scaffold: :params are allowed in paths and documented in the module", () => {
   const root = tempPlugin(BASE)
-  const plan = planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "/products/:id/restock", methods: ["POST"] })
+  const plan = planCodeScaffold({
+    pluginDir: root,
+    manifest: BASE,
+    kind: "route",
+    name: "/products/:id/restock",
+    methods: ["POST"],
+  })
   assert.equal(plan.file, "routes/products-id-restock.js")
-  assert.deepEqual(plan.manifest.apiRoutes[plan.manifest.apiRoutes.length - 1], { path: "/products/:id/restock", methods: ["POST"] })
+  assert.deepEqual(plan.manifest.apiRoutes[plan.manifest.apiRoutes.length - 1], {
+    path: "/products/:id/restock",
+    methods: ["POST"],
+  })
   applyCodePlan(root, plan)
   const module = fs.readFileSync(path.join(root, plan.file), "utf8")
   assert.match(module, /request\.params/)
@@ -138,8 +161,20 @@ test("route scaffold: :params are allowed in paths and documented in the module"
 test("scaffolds reject duplicates and bad names", () => {
   const root = tempPlugin(BASE)
   assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "notes" }), /already declared/)
-  assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: { ...BASE, jobs: [{ type: "sync" }] }, kind: "job", name: "sync" }), /already declared/)
-  assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: { ...BASE, hooks: { "order:delivered": {} } }, kind: "hook", name: "order:delivered" }), /already declared/)
+  assert.throws(
+    () => planCodeScaffold({ pluginDir: root, manifest: { ...BASE, jobs: [{ type: "sync" }] }, kind: "job", name: "sync" }),
+    /already declared/,
+  )
+  assert.throws(
+    () =>
+      planCodeScaffold({
+        pluginDir: root,
+        manifest: { ...BASE, hooks: { "order:delivered": {} } },
+        kind: "hook",
+        name: "order:delivered",
+      }),
+    /already declared/,
+  )
   assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "job", name: "Bad Type!" }), /lowercase/)
   assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "route", name: "has space" }), /lowercase paths/)
   assert.throws(() => planCodeScaffold({ pluginDir: root, manifest: BASE, kind: "job", name: "" }), /name is required/i)

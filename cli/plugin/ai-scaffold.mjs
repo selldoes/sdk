@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
-import { callProvider, parseAssistantReply, resolveAssistant } from "./dev/assistant.mjs"
 import { touchProject } from "../workspace.mjs"
+import { callProvider, parseAssistantReply, resolveAssistant } from "./dev/assistant.mjs"
 
 /**
  * "Describe your plugin" — AI-first scaffolding.
@@ -54,7 +54,7 @@ function validateScaffold(edits) {
   if (!manifest.slug || !/^[a-z0-9-]+$/.test(String(manifest.slug))) {
     return { ok: false, error: "plugin.json needs a valid slug (lowercase a-z, 0-9 and -)" }
   }
-  if (!manifest.entry) return { ok: false, error: "plugin.json needs an \"entry\" field" }
+  if (!manifest.entry) return { ok: false, error: 'plugin.json needs an "entry" field' }
   const entryPath = String(manifest.entry).replace(/^\.\//, "")
   if (!edits.files.some((file) => file.path === entryPath)) {
     return { ok: false, error: `the entry file "${entryPath}" is missing from the generated files` }
@@ -97,7 +97,7 @@ export async function scaffoldWithAi({ prompt, dir, config = {}, log = console.l
   const resolved = resolveAssistant({ config })
   if (!resolved.configured) {
     throw new Error(
-      'No AI provider for scaffolding. Set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, use Ollama (local, no key), or save an assistant key in User settings (~/.selldoes/settings.json).',
+      "No AI provider for scaffolding. Set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / DEEPINFRA_API_KEY, use Ollama (local, no key), or save an assistant key in User settings (~/.selldoes/settings.json).",
     )
   }
 
@@ -112,7 +112,10 @@ export async function scaffoldWithAi({ prompt, dir, config = {}, log = console.l
     log(`[scaffold] rejected (${check.error}) — retrying with feedback…`)
     conversation.push(
       { role: "assistant", content: first.text || "(no prose reply)" },
-      { role: "user", content: `Your plugin was rejected: ${check.error}. Return a corrected, complete plugin in one selldoes-edits block.` },
+      {
+        role: "user",
+        content: `Your plugin was rejected: ${check.error}. Return a corrected, complete plugin in one selldoes-edits block.`,
+      },
     )
     const retry = await generate(resolved, conversation, log)
     edits = retry.edits
@@ -123,7 +126,9 @@ export async function scaffoldWithAi({ prompt, dir, config = {}, log = console.l
   // Write files (path-traversal safe).
   const written = []
   for (const file of edits.files) {
-    const relative = String(file.path ?? "").replace(/\\/g, "/").replace(/^\.?\//, "")
+    const relative = String(file.path ?? "")
+      .replace(/\\/g, "/")
+      .replace(/^\.?\//, "")
     const segments = relative.split("/").filter(Boolean)
     if (!relative || segments.some(UNSAFE_SEGMENT) || path.posix.isAbsolute(relative)) continue
     const destination = path.join(target, ...segments)

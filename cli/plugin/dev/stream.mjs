@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { SKIP_DIRS, listProjectFiles } from "./project-files.mjs"
+import { listProjectFiles, SKIP_DIRS } from "./project-files.mjs"
 
 /**
  * One SSE channel per dev server for everything the UI wants to react to:

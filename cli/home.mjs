@@ -9,7 +9,6 @@ import {
   getProject,
   listProjects,
   normalizePath,
-  projectMeta,
   relativeTime,
   removeProject,
   touchProject,
@@ -60,7 +59,8 @@ export function importZip(zipPath, { dir } = {}) {
       prefix = `${only}/`
     }
   }
-  const manifestEntry = names.find((name) => name === `${prefix}plugin.json`) ?? names.find((name) => name === `${prefix}manifest.json`)
+  const manifestEntry =
+    names.find((name) => name === `${prefix}plugin.json`) ?? names.find((name) => name === `${prefix}manifest.json`)
   if (!manifestEntry) throw new Error("No plugin.json or manifest.json in the zip (root or single top folder)")
   const kind = manifestEntry.endsWith("manifest.json") ? "theme" : "plugin"
 
@@ -70,7 +70,8 @@ export function importZip(zipPath, { dir } = {}) {
   } catch (error) {
     throw new Error(`Manifest in the zip is not valid JSON: ${error.message}`)
   }
-  const slug = (kind === "plugin" && typeof manifest.slug === "string" ? manifest.slug : "") || path.basename(zip, path.extname(zip))
+  const slug =
+    (kind === "plugin" && typeof manifest.slug === "string" ? manifest.slug : "") || path.basename(zip, path.extname(zip))
   const target = path.resolve(String(dir ?? path.join(defaultProjectsDir(), slug)))
   if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
     throw new Error(`${target} is not empty — the zip would overwrite existing files.`)
@@ -224,13 +225,22 @@ export async function homeCommand(args, flags = {}, opts = {}) {
   for (;;) {
     const projects = listProjects()
     const options = [
-      ...(projects.length > 0 ? projects.map(projectOption) : [{ value: "none", label: "No projects yet", hint: "import or create one below", disabled: true }]),
+      ...(projects.length > 0
+        ? projects.map(projectOption)
+        : [{ value: "none", label: "No projects yet", hint: "import or create one below", disabled: true }]),
       ADD_DIVIDER,
-      { value: "import", label: "Import existing plugin/theme…", hint: "register a folder that already has plugin.json / manifest.json" },
+      {
+        value: "import",
+        label: "Import existing plugin/theme…",
+        hint: "register a folder that already has plugin.json / manifest.json",
+      },
       { value: "create", label: "Create new plugin/theme…", hint: "scaffold from a template" },
       { value: "packages", label: "Your packages (Selldoes account)…", hint: accountHint },
       ...(projects.length > 0
-        ? [MANAGE_DIVIDER, { value: "remove", label: "Remove a project from the list…", hint: "untracks it — files stay on disk" }]
+        ? [
+            MANAGE_DIVIDER,
+            { value: "remove", label: "Remove a project from the list…", hint: "untracks it — files stay on disk" },
+          ]
         : []),
     ]
 
@@ -336,7 +346,6 @@ export async function homeCommand(args, flags = {}, opts = {}) {
       } catch (error) {
         prompts.log.error(error instanceof Error ? error.message : String(error))
       }
-      continue
     }
   }
 }

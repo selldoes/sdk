@@ -1,12 +1,12 @@
-import * as React from "react"
 import { Radio, RefreshCw } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import * as React from "react"
 import { PageHead } from "@/components/shared"
 import { SkeletonList } from "@/components/skeletons"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { dev } from "@/lib/api"
-import { timeAgo } from "@/lib/utils"
 import { useVisit } from "@/lib/use-visit"
+import { timeAgo } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
 interface EventEntry {
@@ -48,8 +48,8 @@ export function RealtimePage() {
         title="Realtime"
         description={
           <>
-            Events published through <code>ctx.realtime.publish()</code> in this session. Production pushes them to subscribed clients;
-            here you can inspect the stream.
+            Events published through <code>ctx.realtime.publish()</code> in this session. Production pushes them to subscribed
+            clients; here you can inspect the stream.
           </>
         }
       />
@@ -89,7 +89,8 @@ export function RealtimePage() {
             <Radio className="mx-auto mb-2 h-6 w-6 text-muted-foreground/50" />
             <p className="text-sm font-semibold">No events yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Publish with <code>ctx.realtime.publish(channel, event, data)</code> (needs the <code>realtime:publish</code> permission).
+              Publish with <code>ctx.realtime.publish(channel, event, data)</code> (needs the <code>realtime:publish</code>{" "}
+              permission).
             </p>
           </CardContent>
         </Card>

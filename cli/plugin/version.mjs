@@ -37,7 +37,9 @@ export function parseVersion(value) {
 export function bumpVersion(value, mode = "patch") {
   const parsed = parseVersion(value)
   if (!parsed) throw new Error(`"${value}" is not a valid x.y.z version`)
-  const clean = String(mode ?? "").trim().toLowerCase()
+  const clean = String(mode ?? "")
+    .trim()
+    .toLowerCase()
   if (!BUMP_MODES.includes(clean)) {
     throw new Error(`Unknown bump "${mode}" — use patch, minor or major`)
   }

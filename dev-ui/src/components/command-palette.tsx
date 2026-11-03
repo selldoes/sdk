@@ -1,5 +1,3 @@
-import * as React from "react"
-import { useNavigate } from "react-router-dom"
 import {
   Braces,
   Database,
@@ -8,6 +6,7 @@ import {
   FileText,
   Hammer,
   LayoutDashboard,
+  type LucideIcon,
   Mail,
   Moon,
   Play,
@@ -26,13 +25,14 @@ import {
   Sun,
   UserRoundCog,
   Webhook,
-  type LucideIcon,
 } from "lucide-react"
+import * as React from "react"
+import { useNavigate } from "react-router-dom"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { dev } from "@/lib/api"
-import { ws } from "@/lib/ws-api"
 import { cn } from "@/lib/utils"
+import { ws } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
 interface PaletteItem {
@@ -64,7 +64,8 @@ const PAGES: { to: string; label: string; icon: LucideIcon }[] = [
 ]
 
 export function CommandPalette() {
-  const { paletteOpen, setPaletteOpen, workspace, theme, toggleTheme, setTerminalOpen, setAssistantOpen, setSearchOpen, toast } = useApp()
+  const { paletteOpen, setPaletteOpen, workspace, theme, toggleTheme, setTerminalOpen, setAssistantOpen, setSearchOpen, toast } =
+    useApp()
   const navigate = useNavigate()
   const [query, setQuery] = React.useState("")
   const [files, setFiles] = React.useState<string[]>([])
@@ -90,7 +91,10 @@ export function CommandPalette() {
         hint: "dev",
         icon: Hammer,
         run: () => {
-          void dev.rebuild().then(() => toast("Rebuilt", "success")).catch((error) => toast(String(error.message ?? error), "error"))
+          void dev
+            .rebuild()
+            .then(() => toast("Rebuilt", "success"))
+            .catch((error) => toast(String(error.message ?? error), "error"))
         },
       },
       {
@@ -99,9 +103,15 @@ export function CommandPalette() {
         icon: RefreshCw,
         run: () => {
           if (workspaceMode) {
-            void ws.restart().then(() => toast("Preview restarted", "success")).catch((error) => toast(String(error.message ?? error), "error"))
+            void ws
+              .restart()
+              .then(() => toast("Preview restarted", "success"))
+              .catch((error) => toast(String(error.message ?? error), "error"))
           } else {
-            void dev.rebuild().then(() => toast("Rebuilt", "success")).catch((error) => toast(String(error.message ?? error), "error"))
+            void dev
+              .rebuild()
+              .then(() => toast("Rebuilt", "success"))
+              .catch((error) => toast(String(error.message ?? error), "error"))
           }
         },
       },
@@ -111,13 +121,20 @@ export function CommandPalette() {
         icon: FileCode2,
         run: () => {
           const request = workspaceMode ? ws.openEditor() : dev.openEditor()
-          void request.then((result) => toast(`Opened in ${result.editor ?? "your editor"}`, "success")).catch((error) => toast(String(error.message ?? error), "error"))
+          void request
+            .then((result) => toast(`Opened in ${result.editor ?? "your editor"}`, "success"))
+            .catch((error) => toast(String(error.message ?? error), "error"))
         },
       },
       { id: "terminal", label: "Toggle terminal", hint: "Ctrl+`", icon: SquareTerminal, run: () => setTerminalOpen(true) },
       { id: "search", label: "Search in project", hint: "Ctrl+Shift+F", icon: Search, run: () => setSearchOpen(true) },
       { id: "ask", label: "Ask the AI assistant", icon: Sparkles, run: () => setAssistantOpen(true) },
-      { id: "theme", label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme", icon: theme === "dark" ? Sun : Moon, run: toggleTheme },
+      {
+        id: "theme",
+        label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme",
+        icon: theme === "dark" ? Sun : Moon,
+        run: toggleTheme,
+      },
     ]
     const pageItems: PaletteItem[] = PAGES.map((page) => ({
       id: `page:${page.to}`,
@@ -198,7 +215,11 @@ export function CommandPalette() {
               >
                 <item.icon className="h-4 w-4 shrink-0 opacity-80" />
                 <span className="flex-1 truncate">{item.label}</span>
-                {item.hint ? <span className={cn("text-[10.5px]", index === selected ? "opacity-80" : "text-muted-foreground")}>{item.hint}</span> : null}
+                {item.hint ? (
+                  <span className={cn("text-[10.5px]", index === selected ? "opacity-80" : "text-muted-foreground")}>
+                    {item.hint}
+                  </span>
+                ) : null}
               </button>
             ))
           )}
@@ -217,7 +238,11 @@ export function SearchDialog() {
   const [caseSensitive, setCaseSensitive] = React.useState(false)
   const [regex, setRegex] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
-  const [result, setResult] = React.useState<{ hits: { path: string; line: number; column: number; preview: string }[]; files: number; truncated: boolean } | null>(null)
+  const [result, setResult] = React.useState<{
+    hits: { path: string; line: number; column: number; preview: string }[]
+    files: number
+    truncated: boolean
+  } | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -261,7 +286,10 @@ export function SearchDialog() {
           />
           <button
             type="button"
-            className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", caseSensitive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[11px] font-bold",
+              caseSensitive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+            )}
             title="Match case"
             onClick={() => setCaseSensitive((value) => !value)}
           >
@@ -269,7 +297,10 @@ export function SearchDialog() {
           </button>
           <button
             type="button"
-            className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", regex ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[11px] font-bold",
+              regex ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+            )}
             title="Regular expression"
             onClick={() => setRegex((value) => !value)}
           >
@@ -299,7 +330,9 @@ export function SearchDialog() {
             </button>
           ))}
           {result?.truncated ? (
-            <p className="px-3 py-2 text-center text-[10.5px] text-muted-foreground">Showing the first {result.hits.length} results.</p>
+            <p className="px-3 py-2 text-center text-[10.5px] text-muted-foreground">
+              Showing the first {result.hits.length} results.
+            </p>
           ) : null}
         </div>
       </DialogContent>

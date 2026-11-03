@@ -1,13 +1,13 @@
-import * as React from "react"
 import { Loader2, Trash2 } from "lucide-react"
+import * as React from "react"
 import { Callout } from "@/components/shared"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ws } from "@/lib/ws-api"
 import type { WsPackage, WsProject } from "@/lib/ws-api"
+import { ws } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
 /**
@@ -162,7 +162,12 @@ export function DeleteFilesDialog({
           <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" variant="destructive" disabled={!confirmed || busy || (dirty && !allowDirty)} onClick={() => void run()}>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={!confirmed || busy || (dirty && !allowDirty)}
+            onClick={() => void run()}
+          >
             {busy ? <Loader2 className="animate-spin" /> : <Trash2 />}
             Delete files
           </Button>
@@ -221,9 +226,7 @@ export function DeleteRemoteDialog({
             <Trash2 className="h-4 w-4" />
             Delete workspace copy of {pkg.name}?
           </DialogTitle>
-          <DialogDescription>
-            Deletes the developer workspace package and its stored files on {appUrl}.
-          </DialogDescription>
+          <DialogDescription>Deletes the developer workspace package and its stored files on {appUrl}.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <Callout kind="warn">

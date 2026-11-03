@@ -1,8 +1,8 @@
-import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import test from "node:test"
 import { watchSdkSources } from "./workspace-server.mjs"
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -15,7 +15,10 @@ test("watchSdkSources: reports server source edits (debounced)", async () => {
     if (!stop.active) return // recursive fs.watch unsupported on this platform
     fs.writeFileSync(path.join(dir, "server.mjs"), "// edit\n")
     await sleep(1200)
-    assert.ok(calls.some((file) => file.includes("server.mjs")), `expected server.mjs, got ${JSON.stringify(calls)}`)
+    assert.ok(
+      calls.some((file) => file.includes("server.mjs")),
+      `expected server.mjs, got ${JSON.stringify(calls)}`,
+    )
   } finally {
     stop()
     fs.rmSync(dir, { recursive: true, force: true })

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile, mkdir, readdir, copyFile, rm, stat } from "node:fs/promises"
 import { existsSync } from "node:fs"
-import path from "node:path"
-import os from "node:os"
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import http from "node:http"
 import { createRequire } from "node:module"
-import { unzipSync, zipSync, strFromU8 } from "fflate"
+import os from "node:os"
+import path from "node:path"
+import { strFromU8, unzipSync, zipSync } from "fflate"
 import { sendNotFound } from "./not-found-page.mjs"
 
 const require = createRequire(import.meta.url)
@@ -14,7 +14,20 @@ const esbuild = require("esbuild")
 
 const PACKAGE_NAME = "selldoes/theme"
 const CONFIG_PATH = path.join(os.homedir(), ".selldoes.json")
-const PAGE_TYPES = ["home", "product", "category", "search", "cart", "checkout", "thankyou", "login", "profile", "pages", "wishlist", "error"]
+const PAGE_TYPES = [
+  "home",
+  "product",
+  "category",
+  "search",
+  "cart",
+  "checkout",
+  "thankyou",
+  "login",
+  "profile",
+  "pages",
+  "wishlist",
+  "error",
+]
 
 let FLAGS = {}
 let ARGS = []
@@ -73,7 +86,7 @@ function log(msg) {
   console.log(msg)
 }
 function fail(msg) {
-  console.error("Error: " + msg)
+  console.error(`Error: ${msg}`)
   process.exit(1)
 }
 
@@ -83,7 +96,9 @@ async function findSrcPages() {
   const manifest = await readManifest()
   const declared = Object.keys(manifest.pages || {})
   if (declared.length > 0) {
-    const existing = declared.filter((p) => existsSync(path.resolve("src", `${p}.tsx`)) || existsSync(path.resolve("src", `${p}.jsx`)))
+    const existing = declared.filter(
+      (p) => existsSync(path.resolve("src", `${p}.tsx`)) || existsSync(path.resolve("src", `${p}.jsx`)),
+    )
     if (existing.length > 0) return existing
   }
   const srcDir = path.resolve("src")
@@ -233,7 +248,7 @@ async function devCommand() {
     const url = new URL(req.url, `http://localhost:${port}`)
     if (url.pathname === "/proxy") {
       const target = url.searchParams.get("url")
-      if (!target || !target.startsWith("/api/store/")) {
+      if (!target?.startsWith("/api/store/")) {
         res.writeHead(403)
         res.end("blocked")
         return
@@ -275,7 +290,12 @@ async function devCommand() {
         res.writeHead(200, { "content-type": file.endsWith(".js") ? "text/javascript" : "application/octet-stream" })
         res.end(data)
       } catch {
-        sendNotFound(req, res, { pathname: url.pathname, homeUrl: "/", homeLabel: "Back to the preview", hint: "This theme asset hasn't been built yet — save a change in src/ and the dev server will rebuild it." })
+        sendNotFound(req, res, {
+          pathname: url.pathname,
+          homeUrl: "/",
+          homeLabel: "Back to the preview",
+          hint: "This theme asset hasn't been built yet — save a change in src/ and the dev server will rebuild it.",
+        })
       }
       return
     }
@@ -284,7 +304,10 @@ async function devCommand() {
       homeUrl: "/",
       homeLabel: "Back to the preview",
       hint: "The template preview serves /, /page and /dev/* — other addresses aren't part of it.",
-      links: [{ to: "/", label: "Preview home" }, { to: "/page", label: "Theme frame" }],
+      links: [
+        { to: "/", label: "Preview home" },
+        { to: "/page", label: "Theme frame" },
+      ],
     })
   })
 
@@ -415,11 +438,15 @@ async function applyCommand() {
   const me = await api("/api/templates/me", {}, key)
   const store = (me.stores || []).find((s) => s.slug === slug)
   if (!store) fail(`Store "/${slug}" not found on this account`)
-  await api(`/api/templates/${templateId}/apply`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ storeId: store.id }),
-  }, key)
+  await api(
+    `/api/templates/${templateId}/apply`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ storeId: store.id }),
+    },
+    key,
+  )
   log(`Applied ${templateId} → /store/${slug}`)
 }
 
@@ -520,17 +547,29 @@ export async function themeCommand(command, args, flags = {}) {
   ARGS = args || []
   try {
     switch (command) {
-      case "login": return await loginCommand()
-      case "logout": return await logoutCommand()
-      case "whoami": return await whoamiCommand()
-      case "init": return await initCommand()
-      case "dev": return await devCommand()
-      case "build": return await buildCommand()
-      case "publish": await buildCommand(); return await uploadCommand()
-      case "upload": return await uploadCommand()
-      case "apply": return await applyCommand()
-      case "validate": return await validateCommand()
-      default: help()
+      case "login":
+        return await loginCommand()
+      case "logout":
+        return await logoutCommand()
+      case "whoami":
+        return await whoamiCommand()
+      case "init":
+        return await initCommand()
+      case "dev":
+        return await devCommand()
+      case "build":
+        return await buildCommand()
+      case "publish":
+        await buildCommand()
+        return await uploadCommand()
+      case "upload":
+        return await uploadCommand()
+      case "apply":
+        return await applyCommand()
+      case "validate":
+        return await validateCommand()
+      default:
+        help()
     }
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err))

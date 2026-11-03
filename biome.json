@@ -1,0 +1,55 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "cli/**/*.mjs",
+      "scripts/**/*.mjs",
+      "theme/**/*.js",
+      "src/**/*.js",
+      "src/**/*.ts",
+      "dev-ui/src/**/*.ts",
+      "dev-ui/src/**/*.tsx",
+      "templates/**/*.js",
+      "templates/**/*.jsx",
+      "templates/**/*.ts",
+      "templates/**/*.tsx",
+      "!kit/runtime.js",
+      "!kit/src"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 130,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "asNeeded",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": { "noExplicitAny": "off", "noAssignInExpressions": "off", "noArrayIndexKey": "warn" },
+      "style": { "noNonNullAssertion": "off" },
+      "complexity": { "useOptionalChain": "warn", "useMathMinMax": "warn" },
+      "security": { "noDangerouslySetInnerHtml": "warn" },
+      "correctness": { "noUnusedFunctionParameters": "off", "useExhaustiveDependencies": "off" },
+      "a11y": {
+        "useValidAnchor": "off",
+        "noLabelWithoutControl": "warn",
+        "noStaticElementInteractions": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useSemanticElements": "warn",
+        "useButtonType": "warn"
+      }
+    }
+  }
+}

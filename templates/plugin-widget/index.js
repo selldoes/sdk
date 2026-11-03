@@ -44,8 +44,12 @@ const apiRoutes = {
 
       await ensureMessages(ctx)
       const created = await ctx.db.insert(TABLE, {
-        name: String(payload.name ?? "").trim().slice(0, 120),
-        email: String(payload.email ?? "").trim().slice(0, 200),
+        name: String(payload.name ?? "")
+          .trim()
+          .slice(0, 120),
+        email: String(payload.email ?? "")
+          .trim()
+          .slice(0, 200),
         body,
         handled: 0,
       })

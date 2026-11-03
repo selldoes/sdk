@@ -161,11 +161,7 @@ export function createQueue(ctx, name, options = {}) {
       for (const row of rows) {
         const attempts = Number(row.attempts ?? 0) + 1
         // Conditional update: two concurrent claims cannot both win a row.
-        const result = await ctx.db.update(
-          table,
-          { id: Number(row.id), status: "pending" },
-          { status: "processing", attempts },
-        )
+        const result = await ctx.db.update(table, { id: Number(row.id), status: "pending" }, { status: "processing", attempts })
         if (Number(result?.affected ?? 0) > 0) {
           claimed.push(toItem({ ...row, status: "processing", attempts }))
         }
@@ -189,7 +185,11 @@ export function createQueue(ctx, name, options = {}) {
         const [row] = await ctx.db.select(table, { id }, { limit: 1 })
         const attempts = Number(row?.attempts ?? maxAttempts)
         const nextStatus = attempts < maxAttempts ? "pending" : "failed"
-        await ctx.db.update(table, { id }, { status: nextStatus, error: error === undefined ? null : String(error).slice(0, 1000) })
+        await ctx.db.update(
+          table,
+          { id },
+          { status: nextStatus, error: error === undefined ? null : String(error).slice(0, 1000) },
+        )
         if (nextStatus === "failed") failed += 1
         else retried += 1
       }
@@ -245,7 +245,9 @@ export function createQueue(ctx, name, options = {}) {
 
     async drain(handler, drainOptions = {}) {
       const batchSize = Math.max(Math.min(Math.trunc(Number(drainOptions.batchSize) || 10), 200), 1)
-      const maxBatches = Number.isFinite(drainOptions.maxBatches) ? Math.max(Math.trunc(Number(drainOptions.maxBatches)), 1) : Infinity
+      const maxBatches = Number.isFinite(drainOptions.maxBatches)
+        ? Math.max(Math.trunc(Number(drainOptions.maxBatches)), 1)
+        : Infinity
       let processed = 0
       let failed = 0
       let batches = 0

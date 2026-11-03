@@ -13,10 +13,7 @@ const PROTOCOL_SOURCE = "selldesk"
  */
 export function createStorefrontBridge() {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("Bridge timeout: the host did not initialize the template")),
-      15000
-    )
+    const timeout = setTimeout(() => reject(new Error("Bridge timeout: the host did not initialize the template")), 15000)
 
     let payload = null
     const pendingFetches = new Map()

@@ -1,8 +1,8 @@
-import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import test from "node:test"
 import { watchSdkSources } from "./sdk-watch.mjs"
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -36,7 +36,10 @@ test("watchSdkSources: ignores ui-dist build output", async () => {
     fs.writeFileSync(path.join(dir, "styles.css"), "/* watched */\n")
     await sleep(1200)
     assert.ok(!calls.some((file) => file.includes("ui-dist")), `ui-dist must be ignored, got ${JSON.stringify(calls)}`)
-    assert.ok(calls.some((file) => file.includes("styles.css")), `styles.css should be reported, got ${JSON.stringify(calls)}`)
+    assert.ok(
+      calls.some((file) => file.includes("styles.css")),
+      `styles.css should be reported, got ${JSON.stringify(calls)}`,
+    )
   } finally {
     stop()
     fs.rmSync(dir, { recursive: true, force: true })

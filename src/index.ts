@@ -167,7 +167,10 @@ export interface PluginDB {
    * Creates a store-scoped table owned by the plugin. The sandbox forces
    * `store_id` on every read/write, so plugins never see another store's rows.
    */
-  ensureTable(name: string, columns: Record<string, "int" | "bigint" | "text" | "varchar" | "boolean" | "json" | "timestamp" | "decimal">): Promise<{ table: string; created: boolean }>
+  ensureTable(
+    name: string,
+    columns: Record<string, "int" | "bigint" | "text" | "varchar" | "boolean" | "json" | "timestamp" | "decimal">,
+  ): Promise<{ table: string; created: boolean }>
 }
 
 export interface PluginHttp {
@@ -181,7 +184,12 @@ export interface PluginHttp {
    * POST JSON to a public URL. 60s default timeout (override per call with
    * `opts.timeoutMs`, capped at 60s). Responses are capped at 4 MB.
    */
-  post(url: string, body: unknown, headers?: Record<string, string>, opts?: { timeoutMs?: number }): Promise<{ status: number; data: unknown }>
+  post(
+    url: string,
+    body: unknown,
+    headers?: Record<string, string>,
+    opts?: { timeoutMs?: number },
+  ): Promise<{ status: number; data: unknown }>
 }
 
 export interface PluginAI {
@@ -283,7 +291,12 @@ export interface PluginFileRecord {
 
 export interface PluginFiles {
   upload(input: PluginFileUploadInput): Promise<{ url: string; key: string; size: number }>
-  importFromUrl(input: { url: string; name?: string; folder?: string; contentType?: string }): Promise<{ url: string; key: string; size: number }>
+  importFromUrl(input: {
+    url: string
+    name?: string
+    folder?: string
+    contentType?: string
+  }): Promise<{ url: string; key: string; size: number }>
   list(prefix?: string): Promise<PluginFileRecord[]>
   delete(key: string): Promise<{ deleted: boolean }>
 }
@@ -342,7 +355,10 @@ export interface PluginProducts {
 
 export interface PluginRealtime {
   publish(channel: string, event: string, data?: unknown): Promise<{ id: number; pushed: boolean }>
-  poll(channel: string, opts?: { since?: number; limit?: number }): Promise<{ events: { id: number; event: string; data: unknown }[]; cursor: number }>
+  poll(
+    channel: string,
+    opts?: { since?: number; limit?: number },
+  ): Promise<{ events: { id: number; event: string; data: unknown }[]; cursor: number }>
 }
 
 export interface PluginEmail {

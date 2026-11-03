@@ -9,7 +9,11 @@ export const ASSET_FOLDERS = new Set(["assets", "screenshots"])
 function sanitizeName(name) {
   const base = path.basename(String(name ?? "file"))
   const extension = path.extname(base).toLowerCase()
-  const stem = path.basename(base, extension).replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "") || "file"
+  const stem =
+    path
+      .basename(base, extension)
+      .replace(/[^a-z0-9._-]+/gi, "-")
+      .replace(/^-+|-+$/g, "") || "file"
   return `${stem}${extension}`
 }
 

@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import * as prompts from "@clack/prompts"
-import { die, openBrowser } from "./util.mjs"
+import { die, openBrowser, writePrivateFile } from "./util.mjs"
 import { defaultProjectsDir } from "./workspace.mjs"
 
 /**
@@ -34,8 +34,7 @@ export function loadConfig() {
 }
 
 function saveConfig(cfg) {
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true })
-  fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(cfg, null, 2)}\n`, "utf8")
+  writePrivateFile(CONFIG_PATH, `${JSON.stringify(cfg, null, 2)}\n`)
 }
 
 /** Resolved developer-token auth (flag/env fallbacks included). */
@@ -85,7 +84,9 @@ export async function connectDeveloper(token, appUrlOverride) {
   const value = String(token ?? "").trim()
   if (!value) throw new Error("Provide a developer token (create one in the developer portal → API tokens).")
   if (!isDeveloperToken(value)) {
-    throw new Error("Developer tokens start with sk_dev_. A plain sk_… key is a merchant API key — that's the theme lane (`selldoes login --api-key sk_…`).")
+    throw new Error(
+      "Developer tokens start with sk_dev_. A plain sk_… key is a merchant API key — that's the theme lane (`selldoes login --api-key sk_…`).",
+    )
   }
 
   const cfg = loadConfig()
@@ -350,7 +351,9 @@ export async function packagesCommand(args, flags) {
     const localHint = local
       ? `  ·  local v${local.version ?? "?"}${update ? ` (update available — selldoes pull ${plugin.slug} --update)` : ""}`
       : ""
-    console.log(`  • ${plugin.slug} v${plugin.latestVersion}  ${plugin.name}  (${plugin.status}, updated ${String(plugin.updatedAt).slice(0, 10)})${localHint}`)
+    console.log(
+      `  • ${plugin.slug} v${plugin.latestVersion}  ${plugin.name}  (${plugin.status}, updated ${String(plugin.updatedAt).slice(0, 10)})${localHint}`,
+    )
   }
   console.log("\nKeep developing one: `selldoes pull <slug>`")
 }
@@ -398,7 +401,9 @@ export async function pullPackage(slug, flags = {}) {
       throw new Error(`Could not read ${manifestPath}: ${error.message}`)
     }
     if (String(current.slug ?? "") !== cleanSlug) {
-      throw new Error(`${target} contains "${current.slug ?? "another project"}", not "${cleanSlug}" — pull somewhere else with --dir.`)
+      throw new Error(
+        `${target} contains "${current.slug ?? "another project"}", not "${cleanSlug}" — pull somewhere else with --dir.`,
+      )
     }
     previousVersion = String(current.version ?? "")
     const { gitProbe } = await import("./workspace.mjs")
@@ -414,12 +419,17 @@ export async function pullPackage(slug, flags = {}) {
 
   let written = 0
   for (const file of snapshot.files ?? []) {
-    const relative = String(file?.path ?? "").replace(/\\/g, "/").replace(/^\.?\//, "")
+    const relative = String(file?.path ?? "")
+      .replace(/\\/g, "/")
+      .replace(/^\.?\//, "")
     const segments = relative.split("/").filter(Boolean)
     if (!relative || segments.length === 0 || segments.some(UNSAFE_SEGMENT) || path.posix.isAbsolute(relative)) continue
     const destination = path.join(target, ...segments)
     fs.mkdirSync(path.dirname(destination), { recursive: true })
-    fs.writeFileSync(destination, file.encoding === "base64" ? Buffer.from(file.content, "base64") : Buffer.from(file.content, "utf8"))
+    fs.writeFileSync(
+      destination,
+      file.encoding === "base64" ? Buffer.from(file.content, "base64") : Buffer.from(file.content, "utf8"),
+    )
     written++
   }
   if (written === 0) throw new Error("The stored source had no usable files — try re-publishing from the portal.")

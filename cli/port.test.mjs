@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
+import { spawn } from "node:child_process"
 import http from "node:http"
 import net from "node:net"
-import { spawn } from "node:child_process"
 import test from "node:test"
 import { listenerPids, probePort, reclaimPort } from "./port.mjs"
 

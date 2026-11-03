@@ -1,5 +1,5 @@
-import path from "node:path"
 import fs from "node:fs"
+import path from "node:path"
 import { openInEditor, openTerminal, resolveEditor } from "./open-editor.mjs"
 import { die, fileExists } from "./util.mjs"
 
@@ -77,4 +77,4 @@ export async function openCommand(args, flags) {
   console.log(`✓ opened ${target} in ${result.editor === "os" ? "the system default" : result.editor}`)
 }
 
-export { splitFileSpec, findProjectDir, resolveEditor }
+export { findProjectDir, resolveEditor, splitFileSpec }

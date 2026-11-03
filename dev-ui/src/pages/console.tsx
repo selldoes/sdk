@@ -1,12 +1,12 @@
+import { AlertCircle, CheckCircle2, Eraser, Pause, Play, RefreshCw } from "lucide-react"
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { AlertCircle, CheckCircle2, Eraser, Pause, Play, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { dev } from "@/lib/api"
-import { cn } from "@/lib/utils"
-import { useDevStream } from "@/lib/use-dev-stream"
 import type { DevStatus } from "@/lib/types"
+import { useDevStream } from "@/lib/use-dev-stream"
+import { cn } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
 interface LogLine {
@@ -121,13 +121,21 @@ export function ConsolePage() {
               onClick={() => setFilter(entry.id)}
               className={cn(
                 "rounded-md px-2 py-1 text-[11px] font-semibold",
-                filter === entry.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                filter === entry.id
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               {entry.label}
             </button>
           ))}
-          <Button variant="ghost" size="icon" className="h-7 w-7" title={paused ? "Resume" : "Pause"} onClick={() => setPaused((value) => !value)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title={paused ? "Resume" : "Pause"}
+            onClick={() => setPaused((value) => !value)}
+          >
             {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7" title="Clear" onClick={() => setLines([])}>
@@ -141,7 +149,9 @@ export function ConsolePage() {
 
       {status?.lastError ? (
         <div className="border-b border-red-200 bg-red-50 px-3 py-2">
-          <pre className="max-h-32 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-red-800">{status.lastError}</pre>
+          <pre className="max-h-32 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-red-800">
+            {status.lastError}
+          </pre>
         </div>
       ) : null}
 

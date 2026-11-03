@@ -1,4 +1,4 @@
-import { useInitialProduct, Price, AddToCartButton, ProductGallery, Container } from "selldoes/theme"
+import { AddToCartButton, Container, Price, ProductGallery, useInitialProduct } from "selldoes/theme"
 
 /** Minimal product page — a narrow, centred column: image, name, price, buy. */
 export default function ProductPage() {

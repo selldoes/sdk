@@ -1,5 +1,5 @@
-import * as React from "react"
 import { ExternalLink, RefreshCw, SquareTerminal, X } from "lucide-react"
+import * as React from "react"
 import "@xterm/xterm/css/xterm.css"
 import { Button } from "@/components/ui/button"
 import { dev } from "@/lib/api"
@@ -55,7 +55,9 @@ export function TerminalDrawer() {
 
         const protocol = window.location.protocol === "https:" ? "wss" : "ws"
         const projectId = workspace?.current?.project.id
-        const path = workspaceMode ? `/__ws/terminal${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}` : "/__dev/terminal"
+        const path = workspaceMode
+          ? `/__ws/terminal${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`
+          : "/__dev/terminal"
         socket = new WebSocket(`${protocol}://${window.location.host}${path}`)
         socket.onopen = () => {
           setError(null)
@@ -127,19 +129,40 @@ export function TerminalDrawer() {
         <SquareTerminal className="h-3.5 w-3.5" />
         <span className="font-semibold">Terminal</span>
         {mode === "pipes" ? (
-          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300" title="node-pty is unavailable — shell runs without a TTY">
+          <span
+            className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300"
+            title="node-pty is unavailable — shell runs without a TTY"
+          >
             limited mode
           </span>
         ) : null}
         {error ? <span className="truncate text-red-400">{error}</span> : null}
         <span className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-300 hover:bg-white/10 hover:text-white" title="Reconnect" onClick={() => setAttempt((value) => value + 1)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-zinc-300 hover:bg-white/10 hover:text-white"
+            title="Reconnect"
+            onClick={() => setAttempt((value) => value + 1)}
+          >
             <RefreshCw className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-300 hover:bg-white/10 hover:text-white" title="Open an OS terminal instead" onClick={openOsTerminal}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-zinc-300 hover:bg-white/10 hover:text-white"
+            title="Open an OS terminal instead"
+            onClick={openOsTerminal}
+          >
             <ExternalLink className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-300 hover:bg-white/10 hover:text-white" title="Close" onClick={() => setTerminalOpen(false)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-zinc-300 hover:bg-white/10 hover:text-white"
+            title="Close"
+            onClick={() => setTerminalOpen(false)}
+          >
             <X className="h-3 w-3" />
           </Button>
         </span>

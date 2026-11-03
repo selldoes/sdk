@@ -1,8 +1,8 @@
+import { execFile } from "node:child_process"
+import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import crypto from "node:crypto"
-import { execFile } from "node:child_process"
 import { resolveAsset } from "./plugin/dev/assets.mjs"
 import { applyUserSettingsPatch, loadUserSettings } from "./user-settings.mjs"
 
@@ -110,7 +110,10 @@ export function loadWorkspace() {
     }
     // v1 → v2: legacy 12-hex ids ("79fefc289e48") become YouTube-style ids
     // ("Xk9Qm2ZpL7A") — regenerated once and persisted, currentId remapped.
-    if (Number(stored.version ?? 1) < 2 && data.projects.some((project) => typeof project.id === "string" && !NEW_ID.test(project.id))) {
+    if (
+      Number(stored.version ?? 1) < 2 &&
+      data.projects.some((project) => typeof project.id === "string" && !NEW_ID.test(project.id))
+    ) {
       const remap = new Map()
       for (const project of data.projects) {
         if (typeof project.id === "string" && !NEW_ID.test(project.id)) {

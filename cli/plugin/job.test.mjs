@@ -4,8 +4,8 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { createQueue } from "../../src/job.js"
-import { MockDb } from "./dev/mock-db.mjs"
 import { createMockContext } from "./dev/mock-context.mjs"
+import { MockDb } from "./dev/mock-db.mjs"
 
 function setup({ maxAttempts = 2 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "selldoes-queue-"))
@@ -28,7 +28,10 @@ test("queue: push → claim → complete lifecycle", async () => {
 
   const claimed = await queue.claim(2)
   assert.equal(claimed.length, 2)
-  assert.deepEqual(claimed.map((item) => item.ref), ["OTR-1", "OTR-2"])
+  assert.deepEqual(
+    claimed.map((item) => item.ref),
+    ["OTR-1", "OTR-2"],
+  )
   assert.deepEqual(claimed[0].data, { url: "https://example.com/p/1" })
   assert.equal(claimed[0].status, "processing")
   assert.equal(claimed[0].attempts, 1)

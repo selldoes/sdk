@@ -1,7 +1,7 @@
-import * as React from "react"
 import { BarChart3, Loader2, ScanLine, Search, Shield } from "lucide-react"
+import * as React from "react"
 import { ManifestSaveBar } from "@/components/manifest-save-bar"
-import { PageHead, Callout } from "@/components/shared"
+import { Callout, PageHead } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,8 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { scanPermissions, type PermissionScanResult } from "@/lib/permission-scan"
-import { PERMISSION_INFO, PERMISSION_ORDER, RISK_STYLES, filterPermissions, highestRisk } from "@/lib/permissions"
+import { type PermissionScanResult, scanPermissions } from "@/lib/permission-scan"
+import { filterPermissions, highestRisk, PERMISSION_INFO, PERMISSION_ORDER, RISK_STYLES } from "@/lib/permissions"
 import { useManifestDraft } from "@/lib/use-manifest-draft"
 import { useVisit } from "@/lib/use-visit"
 import { cn } from "@/lib/utils"
@@ -128,7 +128,8 @@ export function PermissionsPage() {
                     className="mt-0.5"
                     checked={checked}
                     onCheckedChange={(value) => {
-                      const next = value === true ? [...permissions, permission] : permissions.filter((entry) => entry !== permission)
+                      const next =
+                        value === true ? [...permissions, permission] : permissions.filter((entry) => entry !== permission)
                       set({ permissions: next })
                     }}
                   />
@@ -136,7 +137,12 @@ export function PermissionsPage() {
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-[13px] font-semibold">{info.label}</span>
                       <code className="text-[10.5px] text-muted-foreground">{permission}</code>
-                      <span className={cn("rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", styles.badge)}>
+                      <span
+                        className={cn(
+                          "rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          styles.badge,
+                        )}
+                      >
                         {info.risk} risk
                       </span>
                     </span>
@@ -171,8 +177,8 @@ export function PermissionsPage() {
                 }
               />
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Comma-separated platform tables the plugin may read/write. Your own <code>plugin_&lt;slug&gt;_*</code> tables are always
-                available and don't need listing.
+                Comma-separated platform tables the plugin may read/write. Your own <code>plugin_&lt;slug&gt;_*</code> tables are
+                always available and don't need listing.
               </p>
             </div>
           </CardContent>
@@ -210,8 +216,8 @@ export function PermissionsPage() {
                 Scan code
               </CardTitle>
               <CardDescription>
-                Greps your source for ctx.* capability calls and reports permissions the code needs but plugin.json
-                doesn&apos;t declare yet.
+                Greps your source for ctx.* capability calls and reports permissions the code needs but plugin.json doesn&apos;t
+                declare yet.
               </CardDescription>
             </CardHeader>
             <CardContent>

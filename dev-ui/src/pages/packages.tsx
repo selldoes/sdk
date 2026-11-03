@@ -1,15 +1,15 @@
-import * as React from "react"
 import { AlertCircle, AlertTriangle, Check, Loader2, Package, RefreshCw, Search, Trash2 } from "lucide-react"
+import * as React from "react"
+import { Callout, EmptyState, PageHead } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Callout, EmptyState, PageHead } from "@/components/shared"
 import { dev } from "@/lib/api"
+import type { NpmSearchResult, PackageInfo, PackageStatus, PackagesResponse } from "@/lib/types"
 import { useBusySet } from "@/lib/use-busy"
 import { useVisit } from "@/lib/use-visit"
 import { useApp } from "@/state/app"
-import type { NpmSearchResult, PackageInfo, PackageStatus, PackagesResponse } from "@/lib/types"
 
 const STATUS: Record<PackageStatus, { label: string; className: string; icon: typeof Check }> = {
   ok: { label: "Works", className: "border-emerald-200 bg-emerald-50 text-emerald-700", icon: Check },
@@ -58,7 +58,8 @@ export function PackagesPage() {
 
   React.useEffect(() => {
     setAssistantPage({
-      context: "The developer is on the Packages page: they search npm and add/remove plugin dependencies, with sandbox compatibility ratings.",
+      context:
+        "The developer is on the Packages page: they search npm and add/remove plugin dependencies, with sandbox compatibility ratings.",
       quick: ["Which npm packages can my plugin use?", "Add a package to parse HTML"],
     })
   }, [setAssistantPage])
@@ -143,18 +144,20 @@ export function PackagesPage() {
       />
 
       <Callout kind="info">
-        Plugins run in a sandbox without filesystem or raw network access; jobs with <code>runtime: "node"</code> run in
-        a full Node environment instead. The checker rates each package against the runtime your plugin uses, so{" "}
-        <code>playwright</code> or <code>sharp</code> show as Node packages. QuickJS packages that need <code>fs</code>,{" "}
-        <code>net</code>, native addons, or a runtime global the sandbox does not carry (<code>navigator</code>,{" "}
-        <code>crypto</code>, <code>async_hooks</code>) are refused at build time with the reason — use <code>ctx.db</code>,{" "}
-        <code>ctx.http</code> and <code>ctx.files</code>, or a browser-friendly alternative.
+        Plugins run in a sandbox without filesystem or raw network access; jobs with <code>runtime: "node"</code> run in a full
+        Node environment instead. The checker rates each package against the runtime your plugin uses, so <code>playwright</code>{" "}
+        or <code>sharp</code> show as Node packages. QuickJS packages that need <code>fs</code>, <code>net</code>, native addons,
+        or a runtime global the sandbox does not carry (<code>navigator</code>, <code>crypto</code>, <code>async_hooks</code>) are
+        refused at build time with the reason — use <code>ctx.db</code>, <code>ctx.http</code> and <code>ctx.files</code>, or a
+        browser-friendly alternative.
       </Callout>
 
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Search npm</CardTitle>
-          <CardDescription>Type at least two characters. Adding installs with {data?.manager ?? "npm"} and updates plugin.json.</CardDescription>
+          <CardDescription>
+            Type at least two characters. Adding installs with {data?.manager ?? "npm"} and updates plugin.json.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="relative">
@@ -165,7 +168,9 @@ export function PackagesPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-            {searching ? <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" /> : null}
+            {searching ? (
+              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+            ) : null}
           </div>
           {searchError ? <p className="text-xs text-destructive">{searchError}</p> : null}
           {results.length > 0 ? (
@@ -178,11 +183,20 @@ export function PackagesPage() {
                       <div className="flex flex-wrap items-baseline gap-2">
                         <code className="text-sm font-semibold">{result.name}</code>
                         {result.version ? <span className="text-[11px] text-muted-foreground">v{result.version}</span> : null}
-                        {result.publisher ? <span className="text-[11px] text-muted-foreground">by {result.publisher}</span> : null}
+                        {result.publisher ? (
+                          <span className="text-[11px] text-muted-foreground">by {result.publisher}</span>
+                        ) : null}
                       </div>
-                      {result.description ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{result.description}</p> : null}
+                      {result.description ? (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{result.description}</p>
+                      ) : null}
                     </div>
-                    <Button size="sm" variant={added ? "outline" : "default"} disabled={added || busy.isBusy(result.name)} onClick={() => void add(result.name)}>
+                    <Button
+                      size="sm"
+                      variant={added ? "outline" : "default"}
+                      disabled={added || busy.isBusy(result.name)}
+                      onClick={() => void add(result.name)}
+                    >
                       {busy.isBusy(result.name) ? <Loader2 className="animate-spin" /> : null}
                       {added ? "Added" : "Add"}
                     </Button>
@@ -264,7 +278,7 @@ export function PackagesPage() {
               </ul>
             </Callout>
           ) : null}
-          {sandbox && sandbox.ok && sandbox.warnings.length > 0 ? (
+          {sandbox?.ok && sandbox.warnings.length > 0 ? (
             <Callout kind="warn">
               <ul className="list-disc space-y-0.5 pl-4">
                 {sandbox.warnings.map((warning) => (

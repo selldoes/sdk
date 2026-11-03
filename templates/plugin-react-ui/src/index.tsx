@@ -9,7 +9,7 @@
  * `ui/assets/index.js` (+ `assets/index.css` when you import CSS). There is no
  * separate Vite/webpack step — edit files and the preview rebuilds.
  */
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { type FormEvent, useCallback, useEffect, useState } from "react"
 import "./styles.css"
 
 const params = new URLSearchParams(location.search)

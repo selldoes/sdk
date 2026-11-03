@@ -458,7 +458,10 @@ no test job is declared.
 `selldoes.config.json` also controls:
 
 - `storeId` / `storeSlug` / `storeName` — the mock store identity.
-- `port`, `host` — where the server listens.
+- `port`, `host` — where the server listens. The dev server is **loopback-only**:
+  it exposes file writes, `npm install` and a terminal, so a non-loopback `host`
+  (e.g. `0.0.0.0`) is ignored and falls back to `127.0.0.1`. Requests whose
+  `Host` header is not a loopback name are refused (DNS-rebinding guard).
 - `ai.mockReply`, `email.disabled` — runtime mocks for `ctx.ai` / `ctx.email`.
   `ai.mockReply` is only used while the preview runs on the local mock store —
   connect a real store and `ctx.ai` uses the store's real provider.

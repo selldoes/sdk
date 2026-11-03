@@ -1,8 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { parseArgs, findPluginRoot, openBrowser, die } from "./util.mjs"
 import { getUpdateInfo, printUpdateNotice } from "./update-check.mjs"
+import { die, findPluginRoot, openBrowser, parseArgs } from "./util.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** The SDK install/repo this CLI is running from. */
@@ -165,17 +165,10 @@ export async function main() {
   if (argv.length === 0 || (argv[0].startsWith("--") && !TOP_LEVEL_FLAGS.has(argv[0]))) argv.unshift("workspace")
   const { command, args, flags } = parseArgs(argv)
   const normalized =
-    command === "--help" || command === "-h"
-      ? "help"
-      : command === "--version" || command === "-v"
-        ? "version"
-        : command
+    command === "--help" || command === "-h" ? "help" : command === "--version" || command === "-v" ? "version" : command
 
   const checkForUpdates =
-    normalized !== "help" &&
-    normalized !== "version" &&
-    normalized !== "update" &&
-    !process.env.SELLDOES_NO_UPDATE_CHECK
+    normalized !== "help" && normalized !== "version" && normalized !== "update" && !process.env.SELLDOES_NO_UPDATE_CHECK
   const updatePromise = checkForUpdates ? getUpdateInfo() : null
 
   try {
@@ -316,7 +309,9 @@ async function workspaceCommand(args, flags) {
     })
   }
   console.log(`\n  Selldoes workspace → ${server.url}`)
-  console.log(devMode ? "  SDK-dev mode — dev-ui served by Vite (hot reload)" : "  Web workspace — projects, previews, AI assistant")
+  console.log(
+    devMode ? "  SDK-dev mode — dev-ui served by Vite (hot reload)" : "  Web workspace — projects, previews, AI assistant",
+  )
   console.log("  Ctrl+C stops the server and any running previews\n")
   // DEV_OPEN_SUPPRESS is set by process supervisors when they restart the
   // command — the tab from the first launch is already open.
@@ -472,9 +467,7 @@ async function runProjectCommand(command, args, flags) {
       const { buildPlugin } = await import("./plugin/build.mjs")
       const zip = command === "pack" || flags.zip === true
       const built = await buildPlugin(projectDir, { zip })
-      console.log(
-        `✓ ${built.manifest.slug} → ${path.relative(process.cwd(), built.outDir)}/ (bundle.js ${built.sizeKb} KB)`
-      )
+      console.log(`✓ ${built.manifest.slug} → ${path.relative(process.cwd(), built.outDir)}/ (bundle.js ${built.sizeKb} KB)`)
       if (built.zipPath) console.log(`  → ${path.relative(process.cwd(), built.zipPath)}`)
       return
     }
@@ -500,7 +493,7 @@ async function runProjectCommand(command, args, flags) {
       const result = await publishPlugin({
         pluginDir: projectDir,
         appUrl: flags["app-url"] ? String(flags["app-url"]) : auth.appUrl,
-        token: flags.token ? String(flags.token) : auth.token ?? undefined,
+        token: flags.token ? String(flags.token) : (auth.token ?? undefined),
         notes: flags.notes ? String(flags.notes) : undefined,
         // Pricing flags override plugin.json's `pricing` block; omitted flags
         // fall back to the manifest (then to free/USD/one_time).

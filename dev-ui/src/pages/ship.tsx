@@ -1,5 +1,3 @@
-import * as React from "react"
-import { Link } from "react-router-dom"
 import {
   AlertCircle,
   Check,
@@ -13,6 +11,8 @@ import {
   Rocket,
   Terminal,
 } from "lucide-react"
+import * as React from "react"
+import { Link } from "react-router-dom"
 import { Callout, CopyButton, PageHead, PriceBadge } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,8 +25,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { dev } from "@/lib/api"
 import { bumpVersion } from "@/lib/bump-version"
 import type { BumpMode, DevAccount, PublishResult } from "@/lib/types"
-import { cn } from "@/lib/utils"
 import { useVisit } from "@/lib/use-visit"
+import { cn } from "@/lib/utils"
 import { ws } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
@@ -121,8 +121,9 @@ function ConnectForm({
       />
       {error ? <p className="text-[10.5px] text-destructive">{error}</p> : null}
       <p className="text-[10.5px] leading-snug text-muted-foreground">
-        Developer tokens start with <code className="text-[11px]">sk_dev_</code> — create one in the developer portal → API tokens. Saved
-        to <code className="text-[11px]">~/.selldoes.json</code>, the same place as <code className="text-[11px]">selldoes login</code>.
+        Developer tokens start with <code className="text-[11px]">sk_dev_</code> — create one in the developer portal → API
+        tokens. Saved to <code className="text-[11px]">~/.selldoes.json</code>, the same place as{" "}
+        <code className="text-[11px]">selldoes login</code>.
       </p>
     </div>
   )
@@ -256,7 +257,8 @@ export function ShipPage() {
                 Release
               </CardTitle>
               <CardDescription>
-                Publishing uploads to your developer account and opens a marketplace review. Stores can update once an admin approves.
+                Publishing uploads to your developer account and opens a marketplace review. Stores can update once an admin
+                approves.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -307,9 +309,7 @@ export function ShipPage() {
                 <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Listing price</p>
                 <PriceBadge pricing={manifest.pricing} />
                 <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-                  {isFree
-                    ? "Free — this is what the marketplace card shows."
-                    : "From plugin.json — this is what publish sends."}
+                  {isFree ? "Free — this is what the marketplace card shows." : "From plugin.json — this is what publish sends."}
                 </p>
                 {isFree ? null : (
                   <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
@@ -318,8 +318,8 @@ export function ShipPage() {
                 )}
               </div>
               <p className="text-[10.5px] leading-snug text-muted-foreground">
-                The default comes from Settings → Releases. Publishing the same version again is rejected by the platform — keep this
-                checked unless you are intentionally re-submitting an identical build.
+                The default comes from Settings → Releases. Publishing the same version again is rejected by the platform — keep
+                this checked unless you are intentionally re-submitting an identical build.
               </p>
 
               <div className="space-y-1.5">
@@ -366,7 +366,9 @@ export function ShipPage() {
 
               {result && !result.ok ? (
                 <Callout kind="danger">
-                  <p className="font-semibold">{result.code === "not-connected" ? "Developer account needed" : "Publish failed"}</p>
+                  <p className="font-semibold">
+                    {result.code === "not-connected" ? "Developer account needed" : "Publish failed"}
+                  </p>
                   <p className="mt-0.5">{result.error}</p>
                   {result.violations && result.violations.length > 0 ? (
                     <ul className="mt-1 list-disc space-y-0.5 pl-4">
@@ -416,10 +418,16 @@ export function ShipPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                {validation.errors.length > 0 ? <AlertCircle className="h-4 w-4 text-destructive" /> : <Check className="h-4 w-4 text-emerald-600" />}
+                {validation.errors.length > 0 ? (
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                ) : (
+                  <Check className="h-4 w-4 text-emerald-600" />
+                )}
                 Validation
               </CardTitle>
-              <CardDescription>The same checks the platform runs when you upload. Errors block; warnings are advisory.</CardDescription>
+              <CardDescription>
+                The same checks the platform runs when you upload. Errors block; warnings are advisory.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {validation.errors.length > 0 ? (
@@ -461,14 +469,19 @@ export function ShipPage() {
               <CardTitle className="flex items-center gap-2 text-base">
                 <Terminal className="h-4 w-4" />
                 Do it from the terminal
-                <ChevronDown className={cn("ml-auto h-4 w-4 text-muted-foreground transition-transform", showCommands && "rotate-180")} />
+                <ChevronDown
+                  className={cn("ml-auto h-4 w-4 text-muted-foreground transition-transform", showCommands && "rotate-180")}
+                />
               </CardTitle>
               <CardDescription>The same release steps as `selldoes` commands, for scripts and CI.</CardDescription>
             </CardHeader>
             {showCommands ? (
               <CardContent className="space-y-2">
                 {commands.map(([label, command]) => (
-                  <div key={command} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                  <div
+                    key={command}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+                  >
                     <div className="min-w-0">
                       <p className="text-[12.5px] font-semibold">{label}</p>
                       <code className="text-[10.5px] text-muted-foreground">{command}</code>
@@ -492,14 +505,15 @@ export function ShipPage() {
           <CardContent className="space-y-4">
             <ol className="list-decimal space-y-2 pl-4 text-[12.5px] leading-relaxed">
               <li>
-                <strong>Publish</strong> — builds the bundle, bumps <code>version</code> and uploads the release. The marketplace listing
-                goes <code>pending</code>.
+                <strong>Publish</strong> — builds the bundle, bumps <code>version</code> and uploads the release. The marketplace
+                listing goes <code>pending</code>.
               </li>
               <li>
                 <strong>Review</strong> — an admin approves it; the previous approved version is kept for rollback.
               </li>
               <li>
-                <strong>Store update</strong> — stores that installed the plugin see <em>Update available</em> and update in one click.
+                <strong>Store update</strong> — stores that installed the plugin see <em>Update available</em> and update in one
+                click.
               </li>
               <li>
                 <strong>Keep iterating</strong> — bump again and publish; pulling the published source is{" "}

@@ -1,40 +1,39 @@
+import { AlertCircle, Puzzle, RefreshCw } from "lucide-react"
 import * as React from "react"
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom"
-import { AlertCircle, Puzzle, RefreshCw } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { CommandPalette, SearchDialog } from "@/components/command-palette"
+import { AssistantPanel } from "@/components/layout/assistant"
+import { GlossaryDialog } from "@/components/layout/glossary"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Topbar } from "@/components/layout/topbar"
-import { GlossaryDialog } from "@/components/layout/glossary"
-import { AssistantPanel } from "@/components/layout/assistant"
 import { WorkspaceDialog } from "@/components/layout/workspace-dialog"
 import { DashboardSkeleton } from "@/components/skeletons"
-import { CommandPalette, SearchDialog } from "@/components/command-palette"
 import { TerminalDrawer } from "@/components/terminal-drawer"
-import { AppProvider, Toaster, useApp } from "@/state/app"
+import { Button } from "@/components/ui/button"
 import { PAGE_TITLES } from "@/lib/pages"
 import { urlPage, urlProjectId } from "@/lib/project-url"
-import { OverviewPage } from "@/pages/overview"
-import { CodePage } from "@/pages/code"
-import { PackagesPage } from "@/pages/packages"
-import { ConsolePage } from "@/pages/console"
-import { DetailsPage } from "@/pages/details"
-import { PermissionsPage } from "@/pages/permissions"
-import { ListingPage } from "@/pages/listing"
-import { DashboardPage } from "@/pages/dashboard"
-import { StorefrontPage } from "@/pages/storefront"
-import { SettingsDialogPage } from "@/pages/settings-dialog"
 import { ApiPage } from "@/pages/api-console"
-import { JobsPage } from "@/pages/jobs"
-import { JobLogsPage } from "@/pages/job-logs"
-import { HooksPage } from "@/pages/hooks"
+import { CodePage } from "@/pages/code"
+import { ConsolePage } from "@/pages/console"
+import { DashboardPage } from "@/pages/dashboard"
 import { DataPage } from "@/pages/data"
+import { DetailsPage } from "@/pages/details"
 import { EmailPage } from "@/pages/email"
-import { RealtimePage } from "@/pages/realtime"
-import { ShipPage } from "@/pages/ship"
-import { SettingsPage } from "@/pages/settings"
-import { UserSettingsPage } from "@/pages/user-settings"
+import { HooksPage } from "@/pages/hooks"
+import { JobLogsPage } from "@/pages/job-logs"
+import { JobsPage } from "@/pages/jobs"
+import { ListingPage } from "@/pages/listing"
 import { NotFoundPage } from "@/pages/not-found"
+import { OverviewPage } from "@/pages/overview"
+import { PackagesPage } from "@/pages/packages"
+import { PermissionsPage } from "@/pages/permissions"
+import { RealtimePage } from "@/pages/realtime"
+import { SettingsPage } from "@/pages/settings"
+import { SettingsDialogPage } from "@/pages/settings-dialog"
+import { ShipPage } from "@/pages/ship"
+import { StorefrontPage } from "@/pages/storefront"
+import { UserSettingsPage } from "@/pages/user-settings"
+import { AppProvider, Toaster, useApp } from "@/state/app"
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { bootstrap, loading, error, refresh } = useApp()
@@ -127,7 +126,11 @@ function Shell() {
                 noProject ? (
                   /* First run: the locked onboarding dialog floats over a placeholder
                      dashboard so the shell reads as "coming up", not empty. */
-                  workspaceDialogOpen ? <DashboardSkeleton /> : <EmptyWorkspace />
+                  workspaceDialogOpen ? (
+                    <DashboardSkeleton />
+                  ) : (
+                    <EmptyWorkspace />
+                  )
                 ) : (
                   <Gate>
                     <Routes>

@@ -1,7 +1,7 @@
 import * as React from "react"
-import { dev } from "@/lib/api"
-import type { JobRun, JobTelemetry } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
+import type { JobRun, JobTelemetry } from "@/lib/api"
+import { dev } from "@/lib/api"
 
 export interface JobRunState {
   running?: boolean
@@ -15,22 +15,25 @@ export function useJobRunner() {
   const [state, setState] = React.useState<JobRunState>({})
 
   /** Runs a job; resolves with the error (if any) so callers can self-heal. */
-  const run = React.useCallback(async (type: string, input?: unknown, maxTicks?: number): Promise<{ error?: string } | undefined> => {
-    setState({ running: true, type })
-    try {
-      const data = await dev.runJob({ type, input: input ?? {}, maxTicks: maxTicks ?? 5 })
-      if (data.error) {
-        setState({ error: data.error, type })
-        return { error: data.error }
+  const run = React.useCallback(
+    async (type: string, input?: unknown, maxTicks?: number): Promise<{ error?: string } | undefined> => {
+      setState({ running: true, type })
+      try {
+        const data = await dev.runJob({ type, input: input ?? {}, maxTicks: maxTicks ?? 5 })
+        if (data.error) {
+          setState({ error: data.error, type })
+          return { error: data.error }
+        }
+        setState({ run: data.run, telemetry: data.telemetry, type })
+        return {}
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        setState({ error: message, type })
+        return { error: message }
       }
-      setState({ run: data.run, telemetry: data.telemetry, type })
-      return {}
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      setState({ error: message, type })
-      return { error: message }
-    }
-  }, [])
+    },
+    [],
+  )
 
   return { state, run, reset: () => setState({}) }
 }
@@ -40,9 +43,7 @@ export function JobTranscript({ state }: { state: JobRunState }) {
     return <p className="mt-3 text-xs text-muted-foreground">Running…</p>
   }
   if (state.error) {
-    return (
-      <pre className="mt-3 overflow-auto rounded-lg border border-border bg-muted p-3 text-[11.5px]">{state.error}</pre>
-    )
+    return <pre className="mt-3 overflow-auto rounded-lg border border-border bg-muted p-3 text-[11.5px]">{state.error}</pre>
   }
   if (!state.run) return null
 
@@ -56,7 +57,10 @@ export function JobTranscript({ state }: { state: JobRunState }) {
   return (
     <div className="mt-3 space-y-2">
       <div className="flex items-center gap-2">
-        <Badge variant="outline" className={run.done ? "border-0 bg-emerald-100 text-emerald-700" : "border-0 bg-amber-100 text-amber-700"}>
+        <Badge
+          variant="outline"
+          className={run.done ? "border-0 bg-emerald-100 text-emerald-700" : "border-0 bg-amber-100 text-amber-700"}
+        >
           {run.done ? "completed" : "paused at tick limit"}
         </Badge>
         <span className="text-xs text-muted-foreground">
@@ -105,7 +109,9 @@ export function JobTranscript({ state }: { state: JobRunState }) {
               ))}
             </tbody>
           </table>
-          {items.length > 20 ? <p className="px-2.5 py-1.5 text-[10.5px] text-muted-foreground">… {items.length - 20} more</p> : null}
+          {items.length > 20 ? (
+            <p className="px-2.5 py-1.5 text-[10.5px] text-muted-foreground">… {items.length - 20} more</p>
+          ) : null}
         </div>
       ) : null}
 

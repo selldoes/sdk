@@ -10,6 +10,29 @@ export function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"))
 }
 
+/**
+ * Writes a file that may hold credentials with owner-only permissions (0600).
+ * The mode is best-effort: Windows and some filesystems ignore POSIX modes, so
+ * a failed chmod is not fatal. Parent directories are created as needed.
+ */
+export function writePrivateFile(file, content) {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, content, { encoding: "utf8", mode: 0o600 })
+  try {
+    fs.chmodSync(file, 0o600)
+  } catch {
+    // POSIX modes are unavailable here — the write itself succeeded.
+  }
+}
+
+/** Escapes text for safe interpolation into HTML (null/undefined → ""). */
+export function escapeHtml(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
+  )
+}
+
 export function fileExists(file) {
   try {
     return fs.statSync(file).isFile()
@@ -102,7 +125,5 @@ export function packageManagerEnv(env = process.env) {
 export function openBrowser(url) {
   const platform = process.platform
   const command = platform === "win32" ? `start "" "${url}"` : platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`
-  import("node:child_process")
-    .then(({ exec }) => exec(command))
-    .catch(() => {})
+  import("node:child_process").then(({ exec }) => exec(command)).catch(() => {})
 }

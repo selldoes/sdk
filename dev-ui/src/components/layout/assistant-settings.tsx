@@ -1,5 +1,5 @@
-import * as React from "react"
 import { CheckCircle2, Loader2, XCircle } from "lucide-react"
+import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -117,7 +117,12 @@ export function AssistantSettingsDialog({ open, onOpenChange, onSaved }: Assista
 
           <div className="space-y-1.5">
             <Label htmlFor="assistant-model">Model</Label>
-            <Input id="assistant-model" value={model} placeholder={activeProvider?.placeholder ?? "model id"} onChange={(event) => setModel(event.target.value)} />
+            <Input
+              id="assistant-model"
+              value={model}
+              placeholder={activeProvider?.placeholder ?? "model id"}
+              onChange={(event) => setModel(event.target.value)}
+            />
           </div>
 
           {provider !== "ollama" ? (
@@ -135,20 +140,31 @@ export function AssistantSettingsDialog({ open, onOpenChange, onSaved }: Assista
 
           <div className="space-y-1.5">
             <Label htmlFor="assistant-base">Base URL (advanced)</Label>
-            <Input id="assistant-base" value={baseUrl} placeholder="default" onChange={(event) => setBaseUrl(event.target.value)} />
+            <Input
+              id="assistant-base"
+              value={baseUrl}
+              placeholder="default"
+              onChange={(event) => setBaseUrl(event.target.value)}
+            />
           </div>
 
           {testResult ? (
-            <p className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-2 text-[11.5px] ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}>
-              {testResult.ok ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+            <p
+              className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-2 text-[11.5px] ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
+            >
+              {testResult.ok ? (
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              )}
               {testResult.message}
             </p>
           ) : null}
 
           <p className="text-[11px] text-muted-foreground">
             Keys are read locally by the dev server and only sent to the provider you choose. They live in{" "}
-            <code>~/.selldoes/settings.json</code> (User settings) — never inside a project folder, so nothing leaks into git. A project can
-            pin a different model in Project settings.
+            <code>~/.selldoes/settings.json</code> (User settings) — never inside a project folder, so nothing leaks into git. A
+            project can pin a different model in Project settings.
           </p>
         </div>
 

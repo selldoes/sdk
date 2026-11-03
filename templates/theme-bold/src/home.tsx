@@ -1,4 +1,4 @@
-import { useStore, useProducts, ProductCard } from "selldoes/theme"
+import { ProductCard, useProducts, useStore } from "selldoes/theme"
 
 /**
  * Bold home — dark canvas, oversized type and a promo banner. Designed to
@@ -11,17 +11,46 @@ export default function HomePage() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: "#0a0a0a", color: "#fafafa", minHeight: "100vh" }}>
-      <div style={{ background: "#facc15", color: "#0a0a0a", textAlign: "center", padding: "10px 16px", fontSize: 13, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+      <div
+        style={{
+          background: "#facc15",
+          color: "#0a0a0a",
+          textAlign: "center",
+          padding: "10px 16px",
+          fontSize: 13,
+          fontWeight: 800,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}
+      >
         Free shipping over $50 — today only
       </div>
 
-      <header style={{ maxWidth: 1120, margin: "0 auto", padding: "26px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <header
+        style={{
+          maxWidth: 1120,
+          margin: "0 auto",
+          padding: "26px 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
         <strong style={{ fontSize: 18, letterSpacing: "-0.02em" }}>{store?.name}</strong>
         <span style={{ color: "#a3a3a3", fontSize: 13 }}>Shop</span>
       </header>
 
       <section style={{ maxWidth: 1120, margin: "0 auto", padding: "48px 24px 72px" }}>
-        <h1 style={{ fontSize: "clamp(48px, 9vw, 104px)", lineHeight: 0.95, fontWeight: 900, letterSpacing: "-0.04em", margin: 0, textTransform: "uppercase" }}>
+        <h1
+          style={{
+            fontSize: "clamp(48px, 9vw, 104px)",
+            lineHeight: 0.95,
+            fontWeight: 900,
+            letterSpacing: "-0.04em",
+            margin: 0,
+            textTransform: "uppercase",
+          }}
+        >
           New
           <br />
           <span style={{ color: "#facc15" }}>drop.</span>

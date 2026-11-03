@@ -3,12 +3,8 @@ import { useCart } from "./sdk.js"
 
 export function Price({ amount, currency = "$", className = "" }) {
   const value = parseFloat(amount || "0")
-  if (isNaN(value)) return null
-  return React.createElement(
-    "span",
-    { className },
-    `${currency}${value.toFixed(2)}`
-  )
+  if (Number.isNaN(value)) return null
+  return React.createElement("span", { className }, `${currency}${value.toFixed(2)}`)
 }
 
 export function ProductCard({ product, onClick }) {
@@ -49,20 +45,16 @@ export function ProductCard({ product, onClick }) {
       React.createElement(
         "p",
         { style: { margin: 0, fontSize: 14, fontWeight: 600, lineHeight: 1.4, minHeight: 40 } },
-        product?.name || ""
+        product?.name || "",
       ),
       React.createElement(
         "p",
         { style: { margin: "6px 0 0", fontSize: 15, fontWeight: 700 } },
-        React.createElement(Price, { amount: product?.price })
-      )
-    )
+        React.createElement(Price, { amount: product?.price }),
+      ),
+    ),
   )
-  return React.createElement(
-    "div",
-    { style: { height: "100%" } },
-    el
-  )
+  return React.createElement("div", { style: { height: "100%" } }, el)
 }
 
 export function ProductGrid({ products = [], renderItem, columns = 4 }) {
@@ -78,7 +70,7 @@ export function ProductGrid({ products = [], renderItem, columns = 4 }) {
     (products || []).map((p, i) => {
       const child = renderItem ? renderItem(p, i) : React.createElement(ProductCard, { product: p, key: p.sku || i })
       return React.createElement(React.Fragment, { key: p.sku || i }, child)
-    })
+    }),
   )
 }
 
@@ -117,9 +109,9 @@ export function ProductGallery({ images = [], alt = "" }) {
               cursor: "pointer",
               border: i === active ? "2px solid #2563eb" : "1px solid #e2e8f0",
             },
-          })
-        )
-      )
+          }),
+        ),
+      ),
   )
 }
 
@@ -140,9 +132,9 @@ export function CategoryList({ categories = [] }) {
             background: "#fff",
           },
         },
-        `${c.name} (${c.productCount || 0})`
-      )
-    )
+        `${c.name} (${c.productCount || 0})`,
+      ),
+    ),
   )
 }
 
@@ -151,6 +143,7 @@ export function AddToCartButton({ product, quantity = 1, children }) {
   return React.createElement(
     "button",
     {
+      type: "button",
       onClick: () => cart.add(product, quantity),
       style: {
         background: "#0f172a",
@@ -163,7 +156,7 @@ export function AddToCartButton({ product, quantity = 1, children }) {
         cursor: "pointer",
       },
     },
-    children || "Add to cart"
+    children || "Add to cart",
   )
 }
 
@@ -193,10 +186,13 @@ export function CartDrawer({ open, onClose }) {
         "div",
         { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } },
         React.createElement("strong", null, "Cart"),
-        React.createElement("button", { onClick: onClose, style: { background: "none", border: "none", cursor: "pointer", fontSize: 16 } }, "✕")
+        React.createElement(
+          "button",
+          { type: "button", onClick: onClose, style: { background: "none", border: "none", cursor: "pointer", fontSize: 16 } },
+          "✕",
+        ),
       ),
-      cart.items.length === 0 &&
-        React.createElement("p", { style: { color: "#64748b" } }, "Your cart is empty."),
+      cart.items.length === 0 && React.createElement("p", { style: { color: "#64748b" } }, "Your cart is empty."),
       cart.items.map((i) =>
         React.createElement(
           "div",
@@ -214,28 +210,31 @@ export function CartDrawer({ open, onClose }) {
             { style: { flex: 1 } },
             React.createElement("p", { style: { margin: 0, fontSize: 13, fontWeight: 600 } }, i.name),
             React.createElement("p", { style: { margin: "4px 0 0", fontSize: 13, color: "#64748b" } }, `Qty ${i.quantity}`),
-            React.createElement("p", { style: { margin: "4px 0 0", fontSize: 13, fontWeight: 700 } },
-              React.createElement(Price, { amount: String((parseFloat(i.price) || 0) * i.quantity) })
-            )
+            React.createElement(
+              "p",
+              { style: { margin: "4px 0 0", fontSize: 13, fontWeight: 700 } },
+              React.createElement(Price, { amount: String((parseFloat(i.price) || 0) * i.quantity) }),
+            ),
           ),
           React.createElement(
             "button",
             {
+              type: "button",
               onClick: () => cart.remove(i.sku),
               style: { background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 13 },
             },
-            "Remove"
-          )
-        )
+            "Remove",
+          ),
+        ),
       ),
       cart.items.length > 0 &&
         React.createElement(
           "div",
           { style: { marginTop: 16, display: "flex", justifyContent: "space-between", fontWeight: 700 } },
           React.createElement("span", null, "Total"),
-          React.createElement(Price, { amount: String(cart.total) })
-        )
-    )
+          React.createElement(Price, { amount: String(cart.total) }),
+        ),
+    ),
   )
 }
 
@@ -248,24 +247,20 @@ export function Breadcrumbs({ items = [] }) {
         React.Fragment,
         { key: i },
         i > 0 && React.createElement("span", null, "/"),
-        React.createElement("span", { style: i === items.length - 1 ? { color: "#0f172a", fontWeight: 600 } : undefined }, item)
-      )
-    )
+        React.createElement("span", { style: i === items.length - 1 ? { color: "#0f172a", fontWeight: 600 } : undefined }, item),
+      ),
+    ),
   )
 }
 
 export function Container({ children, maxWidth = 960, padding = 24, style = {} }) {
-  return React.createElement(
-    "div",
-    { style: { maxWidth, margin: "0 auto", padding, ...style } },
-    children
-  )
+  return React.createElement("div", { style: { maxWidth, margin: "0 auto", padding, ...style } }, children)
 }
 
 export function Section({ children, background = "#fff", padding = "48px 0", style = {} }) {
   return React.createElement(
     "section",
     { style: { background, padding, ...style } },
-    React.createElement(Container, null, children)
+    React.createElement(Container, null, children),
   )
 }

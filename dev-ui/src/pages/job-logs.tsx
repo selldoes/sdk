@@ -1,14 +1,14 @@
-import * as React from "react"
 import { History, RefreshCw } from "lucide-react"
+import * as React from "react"
+import { PageHead } from "@/components/shared"
+import { SkeletonCards } from "@/components/skeletons"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { PageHead } from "@/components/shared"
-import { SkeletonCards } from "@/components/skeletons"
 import { dev } from "@/lib/api"
-import { timeAgo } from "@/lib/utils"
 import type { JobRunDetail, JobRunRow } from "@/lib/types"
 import { useVisit } from "@/lib/use-visit"
+import { timeAgo } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
 /** Badge colours per job status (the same vocabulary as the platform). */
@@ -80,8 +80,8 @@ export function JobLogsPage() {
         title="Job logs"
         description={
           <>
-            Every background job run of this plugin — status, counters, duration and the transcript of each run. The{" "}
-            <em>Jobs</em> page renders the declared jobs; this page shows what actually ran.
+            Every background job run of this plugin — status, counters, duration and the transcript of each run. The <em>Jobs</em>{" "}
+            page renders the declared jobs; this page shows what actually ran.
           </>
         }
         action={

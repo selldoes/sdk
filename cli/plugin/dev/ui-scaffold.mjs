@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { escapeHtml } from "../../util.mjs"
 
 /**
  * Dashboard-UI scaffolding + friendly fallback pages.
@@ -142,7 +143,8 @@ export function applyNotesPlan(pluginDir, plan) {
   const written = []
   for (const target of plan.targets) {
     const full = path.resolve(pluginDir, target.path)
-    if (!full.startsWith(path.resolve(pluginDir) + path.sep)) throw new Error(`Refusing to write outside the plugin: ${target.path}`)
+    if (!full.startsWith(path.resolve(pluginDir) + path.sep))
+      throw new Error(`Refusing to write outside the plugin: ${target.path}`)
     if (fs.existsSync(full)) continue
     fs.mkdirSync(path.dirname(full), { recursive: true })
     fs.writeFileSync(full, target.content)
@@ -173,10 +175,6 @@ export function resolveUiAsset(uiRoot, requested) {
     if (resolved.startsWith(root + path.sep) && fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved
   }
   return null
-}
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char])
 }
 
 /**
@@ -235,13 +233,15 @@ export function uiFallbackHtml({ title, entry, reason, slug, context = "dashboar
   // Never offer the notes scaffold for a stale-kit-runtime 404 — the fix is a
   // rebuild, and scaffolding would overwrite the page the user built.
   const isStaleKitPath = isMissing && /\/kit\/ui\//.test(String(entry ?? ""))
-  const scaffoldButton = isSettings || isStaleKitPath
-    ? ""
-    : `
+  const scaffoldButton =
+    isSettings || isStaleKitPath
+      ? ""
+      : `
       <button id="scaffold" type="button">Create the notes dashboard UI</button>`
-  const scaffoldScript = isSettings || isStaleKitPath
-    ? ""
-    : `
+  const scaffoldScript =
+    isSettings || isStaleKitPath
+      ? ""
+      : `
     <script>
       (function () {
         var button = document.getElementById("scaffold")

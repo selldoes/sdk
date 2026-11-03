@@ -3,7 +3,14 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
-import { applyNotesPlan, detectUiFlavor, normalizePageEntry, planNotesUi, resolveUiAsset, uiFallbackHtml } from "./ui-scaffold.mjs"
+import {
+  applyNotesPlan,
+  detectUiFlavor,
+  normalizePageEntry,
+  planNotesUi,
+  resolveUiAsset,
+  uiFallbackHtml,
+} from "./ui-scaffold.mjs"
 
 function tempPlugin({ react = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "selldoes-ui-scaffold-"))

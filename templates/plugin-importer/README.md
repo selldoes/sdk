@@ -26,14 +26,17 @@ listing page ──► product URLs ──► one product per job step ──►
 
 ## Make it yours
 
-This example targets OTRCat. Adapt one of these in `index.js`:
+This example targets OTRCat. The code is split into small modules under `lib/`
+so the pieces are easy to find; adapt one of these:
 
-| Function | Job |
-|---|---|
-| `extractProductUrls(html)` | pulls product URLs out of a listing page |
-| `findNextPageUrl(html)` | follows pagination |
-| `parseProductPage(html, url)` | maps a product page to `{ title, price, variations, volumes, … }` |
-| `buildVariationGroups(...)` / `buildCustomAttributes(...)` | shapes the store payload |
+| Module | Function | Job |
+|---|---|---|
+| `lib/listing.js` | `extractProductUrls(html)` | pulls product URLs out of a listing page |
+| `lib/listing.js` | `findNextPageUrl(html)` | follows pagination |
+| `lib/product.js` | `parseProductPage(html, url)` | maps a product page to `{ title, price, variations, volumes, … }` |
+| `lib/payload.js` | `buildVariationGroups(...)` / `buildCustomAttributes(...)` | shapes the store payload |
+| `lib/pipeline.js` | `importStep(...)` | one product per step (fetch → AI → image → save) |
+| `index.js` | `jobs` / `apiRoutes` | the job definitions and dashboard API |
 
 The pipeline, queueing, AI steps and product writes stay the same. The parser
 uses targeted regexes because the QuickJS sandbox has no `node_modules`; a Node
@@ -53,4 +56,4 @@ npx selldoes dev     # run Test fetch first, then Preview a parse, then Import
 ```
 
 Mock AI replies come from `selldoes.config.json`; `sampleJobs` prefills the
-Jobs page. `npm run typecheck` checks `index.js` against the SDK types.
+Jobs page. `npm run typecheck` checks `index.js` and `lib/` against the SDK types.

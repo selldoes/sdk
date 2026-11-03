@@ -27,7 +27,10 @@ async function api(path, options = {}) {
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char])
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
+  )
 }
 
 async function refresh() {
@@ -36,9 +39,7 @@ async function refresh() {
     notes.length === 0
       ? '<li class="muted empty">No notes yet.</li>'
       : notes
-          .map(
-            (note) => `<li><span>${escapeHtml(note.body)}</span><button data-id="${note.id}" title="Delete">×</button></li>`,
-          )
+          .map((note) => `<li><span>${escapeHtml(note.body)}</span><button data-id="${note.id}" title="Delete">×</button></li>`)
           .join("")
 }
 

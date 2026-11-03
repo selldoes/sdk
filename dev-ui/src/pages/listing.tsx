@@ -1,25 +1,16 @@
+import { AlertTriangle, Check, LayoutDashboard, Puzzle, ShieldAlert, ShoppingBag, Sparkles, Store } from "lucide-react"
 import * as React from "react"
 import { Link } from "react-router-dom"
-import {
-  AlertTriangle,
-  Check,
-  LayoutDashboard,
-  Puzzle,
-  ShieldAlert,
-  ShoppingBag,
-  Sparkles,
-  Store,
-} from "lucide-react"
 import { AppIcon } from "@/components/app-icon"
 import { PermissionList } from "@/components/permission-list"
-import { PageHead, PriceBadge, Stars, SectionTitle } from "@/components/shared"
+import { PageHead, PriceBadge, SectionTitle, Stars } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { permissionInfo, sortByRisk } from "@/lib/permissions"
-import { billingLabel, mediaUrl, priceBadge } from "@/lib/utils"
+import { permissionInfo } from "@/lib/permissions"
 import { useVisit } from "@/lib/use-visit"
+import { billingLabel, mediaUrl, priceBadge } from "@/lib/utils"
 import { useApp } from "@/state/app"
 
 export function ListingPage() {
@@ -110,7 +101,10 @@ export function ListingPage() {
               <DidYouKnow />
               {pages.length > 0 ? (
                 pages.map((page) => (
-                  <div key={page.path} className="mt-1.5 flex items-center gap-2 rounded-lg bg-primary px-2.5 py-1.5 text-[11.5px] font-semibold text-primary-foreground">
+                  <div
+                    key={page.path}
+                    className="mt-1.5 flex items-center gap-2 rounded-lg bg-primary px-2.5 py-1.5 text-[11.5px] font-semibold text-primary-foreground"
+                  >
                     <Puzzle className="h-3.5 w-3.5" />
                     {page.label}
                   </div>
@@ -219,8 +213,8 @@ export function ListingPage() {
           <div className="text-xs text-orange-800">
             <p className="font-semibold">This plugin is not verified by Selldoes.</p>
             <p className="mt-1">
-              Its code is unreviewed and will run with the permissions below. It cannot read other stores or platform credentials, but it
-              can still change or export anything it is granted here.
+              Its code is unreviewed and will run with the permissions below. It cannot read other stores or platform credentials,
+              but it can still change or export anything it is granted here.
             </p>
           </div>
         </div>
@@ -264,8 +258,8 @@ export function ListingPage() {
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
         <Sparkles className="h-4 w-4 text-primary" />
         <p className="text-[12.5px]">
-          <strong>Tip:</strong> ask the AI assistant to tighten your permissions, rewrite the description or add screenshots — it proposes
-          edits you can review first.
+          <strong>Tip:</strong> ask the AI assistant to tighten your permissions, rewrite the description or add screenshots — it
+          proposes edits you can review first.
         </p>
         <Button asChild size="sm" variant="outline" className="ml-auto">
           <Link to="/details">Edit details</Link>
@@ -276,7 +270,5 @@ export function ListingPage() {
 }
 
 function DidYouKnow() {
-  return (
-    <p className="pt-2 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Plugins</p>
-  )
+  return <p className="pt-2 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Plugins</p>
 }

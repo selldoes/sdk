@@ -206,7 +206,7 @@ export function useCart() {
 
   const updateQuantity = (sku, quantity) =>
     setItems((prev) =>
-      quantity <= 0 ? prev.filter((i) => i.sku !== sku) : prev.map((i) => (i.sku === sku ? { ...i, quantity } : i))
+      quantity <= 0 ? prev.filter((i) => i.sku !== sku) : prev.map((i) => (i.sku === sku ? { ...i, quantity } : i)),
     )
 
   const clear = () => setItems([])
@@ -246,7 +246,16 @@ export function useWishlist() {
     setItems((prev) =>
       prev.some((i) => i.sku === product.sku)
         ? prev.filter((i) => i.sku !== product.sku)
-        : [...prev, { sku: product.sku, name: product.name, price: product.price, category: product.category, image: product.image || null }]
+        : [
+            ...prev,
+            {
+              sku: product.sku,
+              name: product.name,
+              price: product.price,
+              category: product.category,
+              image: product.image || null,
+            },
+          ],
     )
 
   const removeWishlist = (sku) => setItems((prev) => prev.filter((i) => i.sku !== sku))
@@ -261,13 +270,13 @@ export function useWishlist() {
  */
 export function useStoreLink() {
   const { payload } = useBridge()
-  const clean = !!(payload.theme && payload.theme.cleanLinks)
+  const clean = !!payload.theme?.cleanLinks
   return React.useCallback(
     (slug, path, region) => {
       if (clean) return region ? `/${region}${path}` : path
       if (region) return `/store/${slug}/${region}${path}`
       return `/store/${slug}${path}`
     },
-    [clean]
+    [clean],
   )
 }

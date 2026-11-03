@@ -1,23 +1,21 @@
-import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import test from "node:test"
 
 // Point the user-settings store at a temp file BEFORE any test runs.
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "selldoes-user-settings-"))
 process.env.SELLDOES_SETTINGS_FILE = path.join(tempDir, "settings.json")
 
-const {
-  applyUserSettingsPatch,
-  loadUserSettings,
-  maskApiKey,
-  migrateProjectAssistantConfigs,
-  userSettingsView,
-} = await import("./user-settings.mjs")
+const { applyUserSettingsPatch, loadUserSettings, maskApiKey, migrateProjectAssistantConfigs, userSettingsView } = await import(
+  "./user-settings.mjs"
+)
 
 test("assistant settings: set, keep (undefined) and clear (null)", () => {
-  applyUserSettingsPatch({ assistant: { provider: "openrouter", model: "anthropic/claude-sonnet-4", apiKey: "sk-test-1234567890" } })
+  applyUserSettingsPatch({
+    assistant: { provider: "openrouter", model: "anthropic/claude-sonnet-4", apiKey: "sk-test-1234567890" },
+  })
   let stored = loadUserSettings()
   assert.equal(stored.assistant.provider, "openrouter")
   assert.equal(stored.assistant.apiKey, "sk-test-1234567890")

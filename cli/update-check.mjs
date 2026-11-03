@@ -27,7 +27,11 @@ export async function fetchLatestVersion(timeoutMs = CHECK_TIMEOUT_MS) {
 
 /** Numeric x.y.z comparison; prerelease suffixes are ignored. Returns -1, 0 or 1. */
 export function compareVersions(a, b) {
-  const parse = (value) => String(value).split("-")[0].split(".").map((part) => parseInt(part, 10) || 0)
+  const parse = (value) =>
+    String(value)
+      .split("-")[0]
+      .split(".")
+      .map((part) => parseInt(part, 10) || 0)
   const left = parse(a)
   const right = parse(b)
   for (let i = 0; i < 3; i++) {
@@ -38,7 +42,9 @@ export function compareVersions(a, b) {
 
 /** How this CLI is running: a global install, a project dependency, or the npx cache. */
 export function detectInstallMode() {
-  const here = fileURLToPath(import.meta.url).split(path.sep).join("/")
+  const here = fileURLToPath(import.meta.url)
+    .split(path.sep)
+    .join("/")
   if (here.includes("/_npx/")) return "npx"
   const marker = "/node_modules/"
   const index = here.lastIndexOf(marker)

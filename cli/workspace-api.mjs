@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
-import { contentTypeFor } from "./util.mjs"
 import { saveAsset } from "./plugin/dev/assets.mjs"
+import { contentTypeFor } from "./util.mjs"
 
 /**
  * Writes a base64 icon uploaded during the New-workspace wizard into the
@@ -214,7 +214,8 @@ export async function route({ req, res, pathname, readBody, json, ctx }) {
         if (previousCurrent) workspaceLib.setCurrentProject(previousCurrent)
         else workspaceLib.clearCurrentProject()
       }
-      const project = workspaceLib.listProjects().find((entry) => entry.path === workspaceLib.normalizePath(created.targetDir)) ?? null
+      const project =
+        workspaceLib.listProjects().find((entry) => entry.path === workspaceLib.normalizePath(created.targetDir)) ?? null
       return json(res, 200, { project, needsInstall: kind === "plugin" && body.uiFlavor === "react", iconError: icon.error })
     }
 

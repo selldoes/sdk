@@ -82,7 +82,10 @@ function parseField(spec, field) {
 
 /** Parses a five-field cron expression. Throws on invalid input. */
 export function parseCron(expression) {
-  const fields = String(expression ?? "").trim().split(/\s+/).filter(Boolean)
+  const fields = String(expression ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
   if (fields.length !== 5) {
     throw new Error(`cron must have exactly 5 fields (minute hour day-of-month month day-of-week), got ${fields.length}`)
   }

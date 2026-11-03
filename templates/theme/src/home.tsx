@@ -1,4 +1,4 @@
-import { useStore, useProducts, ProductGrid } from "selldoes/theme"
+import { ProductGrid, useProducts, useStore } from "selldoes/theme"
 
 export default function HomePage() {
   const store = useStore()

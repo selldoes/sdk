@@ -1,24 +1,24 @@
+import { CalendarClock, Loader2, Play, Plus } from "lucide-react"
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { CalendarClock, Loader2, Play, Plus } from "lucide-react"
 import { MonacoEditor } from "@/components/code/monaco-editor"
 import { CreateJobDialog } from "@/components/create-dialogs"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { JobTranscript, useJobRunner } from "@/components/job-runner"
+import { Callout, EmptyState, PageHead } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
-import { JobTranscript, useJobRunner } from "@/components/job-runner"
-import { Callout, EmptyState, PageHead } from "@/components/shared"
 import { dev } from "@/lib/api"
 import { healMissingDeclaration, parseMissingDeclaration } from "@/lib/self-heal"
 import type { PluginJobDefinition, PluginManifest, PluginScheduleDefinition, Validation } from "@/lib/types"
 import { useDevStream } from "@/lib/use-dev-stream"
 import { useVisit } from "@/lib/use-visit"
-import { ws } from "@/lib/ws-api"
 import type { WsBootstrap } from "@/lib/ws-api"
+import { ws } from "@/lib/ws-api"
 import { useApp } from "@/state/app"
 
 /**
@@ -72,7 +72,9 @@ async function runWithDeclarationHeal(
       // Already on disk, still refused: this process booted before it existed.
       try {
         restarted = true
-        onNote?.(`The running preview was started before "${missing.value}" was declared — restarting it to apply the declaration…`)
+        onNote?.(
+          `The running preview was started before "${missing.value}" was declared — restarting it to apply the declaration…`,
+        )
         await ws.restart()
         await deps.refreshWorkspace()
       } catch (error) {
@@ -138,9 +140,9 @@ export function JobsPage() {
         title="Jobs"
         description={
           <>
-            Background workers rendered from their source — QuickJS jobs (<code>jobs/&lt;type&gt;.js</code>) tick through work in chunks;
-            Node jobs (<code>server/&lt;type&gt;.js</code>) run once with full npm access. <em>Test</em> runs against the mock store
-            (persisted to <code>.selldoes-dev/db.json</code>). Schedules show the next fire time and can be run now.
+            Background workers rendered from their source — QuickJS jobs (<code>jobs/&lt;type&gt;.js</code>) tick through work in
+            chunks; Node jobs (<code>server/&lt;type&gt;.js</code>) run once with full npm access. <em>Test</em> runs against the
+            mock store (persisted to <code>.selldoes-dev/db.json</code>). Schedules show the next fire time and can be run now.
           </>
         }
         action={
@@ -168,7 +170,7 @@ export function JobsPage() {
           title="No jobs declared"
           message={
             <>
-              Declare jobs in plugin.json and export <code>jobs: {"{ \"type\": { init, step, finalize } }"}</code> (or an{" "}
+              Declare jobs in plugin.json and export <code>jobs: {'{ "type": { init, step, finalize } }'}</code> (or an{" "}
               <code>async (input, ctx)</code> function) from your entry — or scaffold one.
             </>
           }
@@ -321,7 +323,9 @@ function JobCard({ job, bump }: { job: PluginJobDefinition; bump: number }) {
   // in the entry file (the common case — jobs exported straight from index.js).
   const conventional = nodeJob ? `server/${job.type}.js` : `jobs/${job.type}.js`
   const alternate = nodeJob ? `jobs/${job.type}.js` : `server/${job.type}.js`
-  const entry = String(bootstrap!.manifest.entry ?? "index.js").replace(/^\.\//, "").replace(/\\/g, "/")
+  const entry = String(bootstrap!.manifest.entry ?? "index.js")
+    .replace(/^\.\//, "")
+    .replace(/\\/g, "/")
   const [source, setSource] = React.useState<{ path: string; label: string; content: string; inline: boolean } | null>(null)
   const [missing, setMissing] = React.useState(false)
 
@@ -428,8 +432,8 @@ function JobCard({ job, bump }: { job: PluginJobDefinition; bump: number }) {
         ) : missing ? (
           <Callout kind="warn">
             <p>
-              Source not found — looked for <code>{conventional}</code>, <code>{alternate}</code> and <code>{entry}</code>. If the job is
-              defined inline, make sure the entry exports it as <code>jobs["{job.type}"]</code>.
+              Source not found — looked for <code>{conventional}</code>, <code>{alternate}</code> and <code>{entry}</code>. If the
+              job is defined inline, make sure the entry exports it as <code>jobs["{job.type}"]</code>.
             </p>
           </Callout>
         ) : (
@@ -442,7 +446,8 @@ function JobCard({ job, bump }: { job: PluginJobDefinition; bump: number }) {
             Test
           </Button>
           <span className="text-[11px] text-muted-foreground">
-            runs against the mock store{sample ? ` · sample input · max ${sample.maxTicks ?? 5} ticks` : " · empty input · 5 ticks"}
+            runs against the mock store
+            {sample ? ` · sample input · max ${sample.maxTicks ?? 5} ticks` : " · empty input · 5 ticks"}
           </span>
         </div>
 

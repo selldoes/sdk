@@ -1,15 +1,15 @@
-import * as React from "react"
 import { ExternalLink, Loader2, Settings2, Sparkles } from "lucide-react"
+import * as React from "react"
+import { SectionBuilder } from "@/components/kit/section-builder"
+import { SectionKit } from "@/components/kit/section-kit"
 import { EmptyState, PageHead } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { SectionKit } from "@/components/kit/section-kit"
-import { SectionBuilder } from "@/components/kit/section-builder"
-import { useVisit } from "@/lib/use-visit"
 import { dev } from "@/lib/api"
-import { useDevStream } from "@/lib/use-dev-stream"
 import type { PluginManifest } from "@/lib/types"
+import { useDevStream } from "@/lib/use-dev-stream"
+import { useVisit } from "@/lib/use-visit"
 import { useApp } from "@/state/app"
 
 /**
@@ -100,8 +100,8 @@ export function SettingsDialogPage() {
         title="Settings"
         description={
           <>
-            Design the dialog merchants open from <strong>Plugins → Settings</strong> in the Selldoes dashboard.
-            Without one, Settings takes them to your plugin&apos;s home page — so this is optional polish, not a requirement.
+            Design the dialog merchants open from <strong>Plugins → Settings</strong> in the Selldoes dashboard. Without one,
+            Settings takes them to your plugin&apos;s home page — so this is optional polish, not a requirement.
           </>
         }
       />
@@ -112,10 +112,9 @@ export function SettingsDialogPage() {
           title="No plugin settings menu yet"
           message={
             <>
-              Merchants open this dialog from the plugin manager&apos;s <strong>Settings</strong> button on the Plugins
-              page. Create one to give them a focused, branded dialog instead of the default plugin home — a settings
-              form component renders your <code>configSchema</code>, then add text, stats, links or anything else from
-              the components kit.
+              Merchants open this dialog from the plugin manager&apos;s <strong>Settings</strong> button on the Plugins page.
+              Create one to give them a focused, branded dialog instead of the default plugin home — a settings form component
+              renders your <code>configSchema</code>, then add text, stats, links or anything else from the components kit.
             </>
           }
           action={
@@ -139,13 +138,13 @@ export function SettingsDialogPage() {
                 <CardDescription>
                   {isHandWritten ? (
                     <>
-                      Served from the hand-written entry <code>{entry}</code> — the plugin manager opens this file
-                      exactly as-is. Edit it directly; kit components only take over when no entry is declared.
+                      Served from the hand-written entry <code>{entry}</code> — the plugin manager opens this file exactly as-is.
+                      Edit it directly; kit components only take over when no entry is declared.
                     </>
                   ) : source ? (
                     <>
-                      Compiled from <code>settingsDialog.sections</code> into <code>{entry}</code> — the exact dialog
-                      the plugin manager serves. Edit components or ask the AI to rearrange.
+                      Compiled from <code>settingsDialog.sections</code> into <code>{entry}</code> — the exact dialog the plugin
+                      manager serves. Edit components or ask the AI to rearrange.
                     </>
                   ) : sections.length > 0 ? (
                     <>
@@ -188,8 +187,8 @@ export function SettingsDialogPage() {
                 <Settings2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
                 <p className="text-sm font-medium">No dialog designed yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add components (a <code>settings</code> component renders your configSchema form) — the kit compiles
-                  them into <code>ui/kit/settings.html</code> on save.
+                  Add components (a <code>settings</code> component renders your configSchema form) — the kit compiles them into{" "}
+                  <code>ui/kit/settings.html</code> on save.
                 </p>
                 <Button size="sm" className="mt-3" onClick={() => setBuilderOpen(true)}>
                   <Sparkles />

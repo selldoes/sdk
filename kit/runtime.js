@@ -12,6 +12,9 @@
  *             GET  .../jobs/{id} (node jobs are polled, quickjs jobs tick)
  *   settings→ GET/PUT /api/plugins/{slug}/config?storeId
  *   logs    → GET  /api/plugins/{slug}/jobs?storeId + .../jobs/{id}
+ *
+ * Generated from kit/src/*.js by `npm run build:kit` (scripts/build-kit.mjs).
+ * Edit the fragments in kit/src/, not this file.
  */
 (function () {
   "use strict"
