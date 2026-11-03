@@ -295,8 +295,8 @@ export function SectionBuilder({
   const askAi = () => {
     setAssistantPage({
       context: scope === "settings"
-        ? `The developer is building the components of their plugin's settings dialog in the visual builder. Current draft sections JSON:\n${JSON.stringify(draft).slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?}, job {job, title?, input?, maxTicks?}, settings (renders configSchema), logs {lines?}, links {items:[{label,href}]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new settingsDialog.sections array.`
-        : `The developer is building the components of dashboard page "${pageLabel}" (${pagePath}) in the visual builder. Current draft sections JSON:\n${JSON.stringify(draft).slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?}, job {job, title?, input?, maxTicks?}, settings (renders configSchema), logs {lines?}, links {items:[{label,href}]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new dashboardPages[].sections array (keep "entry" as fallback).`,
+        ? `The developer is building the components of their plugin's settings dialog in the visual builder. Current draft sections JSON:\n${JSON.stringify(draft).slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?}, job {job, title?, input?, maxTicks?}, settings (renders the whole configSchema form), field {key, title?, description?} (one configSchema field, saves on change), logs {lines?}, links {items:[{label,href}]}, group {title, sections:[…]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new settingsDialog.sections array.`
+        : `The developer is building the components of dashboard page "${pageLabel}" (${pagePath}) in the visual builder. Current draft sections JSON:\n${JSON.stringify(draft).slice(0, 2000)}\nKit types: text {title, body}, stats {items:[{label,value,hint}]}, table {route, columns?, title?, maxRows?}, job {job, title?, input?, maxTicks?}, settings (renders the whole configSchema form), field {key, title?, description?} (one configSchema field, saves on change), logs {lines?}, links {items:[{label,href}]}, group {title, sections:[…]}. When they ask for changes, reply with a selldoes-edits block whose "manifest" is the FULL updated plugin.json with the new dashboardPages[].sections array (keep "entry" as fallback).`,
       quick: scope === "settings"
         ? [
             "Add my configSchema form and a docs link",
@@ -871,6 +871,43 @@ function SectionSettings({
           {manifest.configSchema?.length === 1 ? "" : "s"}) — values are saved per store. No options to configure here.
         </Callout>
       )
+    case "field": {
+      const configFields = manifest.configSchema ?? []
+      const key = str(settings.key)
+      return (
+        <>
+          <Field label="Config field" hint="One configSchema field, saved immediately — compose a form inside a Group.">
+            {configFields.length > 0 ? (
+              <Select value={key} onValueChange={(value) => onChange({ key: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a field…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {configFields.map((entry) => (
+                    <SelectItem key={entry.key} value={entry.key}>
+                      {entry.label || entry.key}
+                    </SelectItem>
+                  ))}
+                  {key && !configFields.some((entry) => entry.key === key) ? <SelectItem value={key}>{key} (custom)</SelectItem> : null}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={key} placeholder="aiModel" onChange={(event) => onChange({ key: event.target.value })} />
+            )}
+          </Field>
+          <Field label="Title">
+            <Input value={str(settings.title)} placeholder="Optional card title" onChange={(event) => onChange({ title: event.target.value })} />
+          </Field>
+          <Field label="Description">
+            <Input
+              value={str(settings.description)}
+              placeholder="Optional helper text under the title"
+              onChange={(event) => onChange({ description: event.target.value })}
+            />
+          </Field>
+        </>
+      )
+    }
     case "group":
       return (
         <>

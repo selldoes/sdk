@@ -32,6 +32,55 @@ const DEFAULT_MOCK_PROMPTS = [
 ]
 
 /**
+ * Dev-preview model catalog for `ctx.ai.listModels` (override: `ai.mockModels`).
+ * Mirrors the shape the platform's `ai_models` catalog exposes.
+ */
+const DEFAULT_MOCK_MODELS = [
+  {
+    provider: "apiraven",
+    modelId: "anthropic/claude-4.5-sonnet",
+    name: "Claude 4.5 Sonnet",
+    type: "text",
+    vendor: "Anthropic",
+    contextLength: 200000,
+    maxCompletionTokens: 8192,
+    inputCostPer1M: "3.000000",
+    outputCostPer1M: "15.000000",
+    description: null,
+    supportedParameters: ["tools", "vision"],
+    supportsReferenceImage: false,
+  },
+  {
+    provider: "apiraven",
+    modelId: "amazon/nova-micro",
+    name: "Nova Micro",
+    type: "text",
+    vendor: "Amazon",
+    contextLength: 128000,
+    maxCompletionTokens: 8192,
+    inputCostPer1M: "0.035000",
+    outputCostPer1M: "0.140000",
+    description: null,
+    supportedParameters: [],
+    supportsReferenceImage: false,
+  },
+  {
+    provider: "apiraven",
+    modelId: "black-forest-labs/flux-3-image",
+    name: "FLUX 3",
+    type: "image",
+    vendor: "Black Forest Labs",
+    contextLength: null,
+    maxCompletionTokens: null,
+    inputCostPer1M: null,
+    outputCostPer1M: null,
+    description: "$0.0288 per image",
+    supportedParameters: [],
+    supportsReferenceImage: true,
+  },
+]
+
+/**
  * Builds a `PluginContext` that mirrors the production sandbox for local
  * development: permission checks, store scoping, allowed-tables enforcement,
  * and mocked AI/email/realtime/files behaviour.
@@ -261,6 +310,19 @@ export function createMockContext({ pluginDir, manifest, getManifest, db, storeI
         if (live.prompts) return live.prompts.get(id)
         const prompts = await this.listPrompts()
         return prompts.find((prompt) => prompt.id === Number(id)) ?? null
+      },
+      async listModels(opts = {}) {
+        requirePermission("ai:use", "ctx.ai.listModels")
+        // Live store: the store's enabled AI models (with pricing).
+        if (live.models) {
+          const models = await live.models.list(opts)
+          log(`[live] ai.listModels → ${models.length} model(s)`)
+          return models
+        }
+        log(`[ai] listModels(${opts.type ?? "all"}) (mock)`)
+        // Dev mock catalog — override with `ai.mockModels` in selldoes.config.json.
+        const models = Array.isArray(config.ai?.mockModels) ? config.ai.mockModels : DEFAULT_MOCK_MODELS
+        return opts.type ? models.filter((model) => model.type === String(opts.type)) : models
       },
     },
 

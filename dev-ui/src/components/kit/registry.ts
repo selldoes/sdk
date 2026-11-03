@@ -9,6 +9,7 @@ import {
   Play,
   ScrollText,
   Settings,
+  SlidersHorizontal,
   Table,
   type LucideIcon,
 } from "lucide-react"
@@ -37,7 +38,8 @@ export const KIT_COMPONENTS: KitComponentMeta[] = [
   { type: "table", label: "Table", description: "Live rows from one of your API routes.", icon: Table, group: "Data" },
   { type: "logs", label: "Logs", description: "Recent dev-server output in a monospace panel.", icon: ScrollText, group: "Data" },
   { type: "job", label: "Job runner", description: "Run a declared job with a live transcript.", icon: Play, group: "Actions" },
-  { type: "settings", label: "Settings form", description: "Renders your configSchema fields, saved per store.", icon: Settings, group: "Actions" },
+  { type: "settings", label: "Settings form", description: "Renders your whole configSchema form, saved per store.", icon: Settings, group: "Actions" },
+  { type: "field", label: "Config field", description: "A single configSchema field on its own — compose a form inside a Group.", icon: SlidersHorizontal, group: "Actions" },
 ]
 
 export function kitComponent(type: string): KitComponentMeta | undefined {
@@ -66,6 +68,8 @@ export function defaultSettings(type: string, manifest: PluginManifest): Record<
       return { entry: "ui/panel.html", title: "Embedded UI" }
     case "group":
       return { title: "Group", collapsible: true, defaultOpen: true, sections: [] }
+    case "field":
+      return { key: manifest.configSchema?.[0]?.key ?? "", title: "" }
     case "links":
       return { items: [{ label: "Documentation", href: "https://selldoes.com" }] }
     default:
@@ -120,5 +124,22 @@ export const KIT_TEMPLATES: KitTemplate[] = [
     description: "The configSchema form for this plugin.",
     icon: Settings,
     build: () => [{ type: "settings", settings: {} }],
+  },
+  {
+    id: "settings-fields",
+    label: "Settings (composed)",
+    description: "A group with one Config field per configSchema entry — compose the form.",
+    icon: SlidersHorizontal,
+    build: (manifest) => [
+      {
+        type: "group",
+        settings: {
+          title: "Settings",
+          collapsible: true,
+          defaultOpen: true,
+          sections: (manifest.configSchema ?? []).map((field) => ({ type: "field", settings: { key: field.key } })),
+        },
+      },
+    ],
   },
 ]

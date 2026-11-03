@@ -9,7 +9,7 @@ import { openInEditor, openTerminal } from "../../open-editor.mjs"
 import { buildPlugin, collectUiEntries } from "../build.mjs"
 import { MockDb, seedDemoTables } from "./mock-db.mjs"
 import { createMockContext } from "./mock-context.mjs"
-import { connectStore, createLiveAiBridge, createLiveProductsBridge, createLivePromptsBridge, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import { connectStore, createLiveAiBridge, createLiveModelsBridge, createLiveProductsBridge, createLivePromptsBridge, findLocalPlatformDir, LOCAL_PLATFORM_URL, readStoreBlock, resolveLiveAppUrl, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
 import { PluginRunner, cleanPath, matchDeclaredRoute } from "./runner.mjs"
 import { ManifestStore } from "./manifest-store.mjs"
 import { DevState } from "./dev-state.mjs"
@@ -282,25 +282,34 @@ export async function startDevServer({ pluginDir, port, host } = {}) {
    * cli/plugin/dev/live-store.mjs. The bridge object is swapped in place so
    * connect/disconnect applies to running jobs immediately.
    */
-  const liveStore = { bridge: null, prompts: null, ai: null, connection: null }
+  const liveStore = { bridge: null, prompts: null, ai: null, models: null, connection: null }
   const applyLiveStore = () => {
     const block = readStoreBlock(readConfig())
-    if (block.live && block.appUrl && block.apiKey && block.storeId) {
+    // A local Selldesk checkout (selldesk.net/next on :9582) wins over the
+    // hosted URL — see resolveLiveAppUrl. SELLDOES_APP_URL always overrides.
+    const appUrl = resolveLiveAppUrl(block.appUrl)
+    if (block.live && appUrl && block.apiKey && block.storeId) {
       liveStore.connection = {
-        appUrl: block.appUrl,
+        appUrl,
         apiKey: block.apiKey,
         storeId: block.storeId,
         storeSlug: block.storeSlug,
       }
       liveStore.bridge = createLiveProductsBridge(liveStore.connection, log)
       liveStore.prompts = createLivePromptsBridge(liveStore.connection, log)
+      liveStore.models = createLiveModelsBridge(liveStore.connection, log)
       liveStore.ai = createLiveAiBridge(liveStore.connection, log)
-      log(`live store connected — ctx.products + ctx.ai → ${block.appUrl} (store ${block.storeSlug || block.storeId})`)
+      log(`live store connected — ctx.products + ctx.ai → ${appUrl} (store ${block.storeSlug || block.storeId})`)
+      const localDir = findLocalPlatformDir()
+      if (appUrl === LOCAL_PLATFORM_URL && localDir) {
+        log(`local Selldesk platform detected at ${localDir} — using ${LOCAL_PLATFORM_URL} instead of ${block.appUrl || "the hosted platform"} (set SELLDOES_LOCAL_PLATFORM=off to disable)`)
+      }
       return true
     }
     if (liveStore.bridge) log("live store disconnected — ctx.products back on the local mock")
     liveStore.bridge = null
     liveStore.prompts = null
+    liveStore.models = null
     liveStore.ai = null
     liveStore.connection = null
     return false

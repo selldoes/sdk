@@ -147,3 +147,26 @@ test("mock context: ai.listPrompts honors ai.mockPrompts overrides and ai:use", 
   const bare = setup([])
   await assert.rejects(() => bare.ctx.ai.listPrompts(), /ai:use/)
 })
+
+test("mock context: ai.listModels serves the dev model catalog, filtered by type", async () => {
+  const { ctx } = setup(["ai:use"])
+  const all = await ctx.ai.listModels()
+  assert.ok(all.length >= 3)
+  assert.ok(all.every((model) => model.provider && model.modelId && model.name && model.type))
+  const text = await ctx.ai.listModels({ type: "text" })
+  assert.ok(text.length >= 1)
+  assert.ok(text.every((model) => model.type === "text"))
+  const images = await ctx.ai.listModels({ type: "image" })
+  assert.ok(images.length >= 1)
+  assert.ok(images.every((model) => model.type === "image"))
+})
+
+test("mock context: ai.listModels honors ai.mockModels overrides and ai:use", async () => {
+  const { ctx } = setup(["ai:use"], { ai: { mockModels: [{ provider: "mock", modelId: "m-1", name: "Mock One", type: "text" }] } })
+  const models = await ctx.ai.listModels()
+  assert.equal(models.length, 1)
+  assert.equal(models[0].modelId, "m-1")
+
+  const bare = setup([])
+  await assert.rejects(() => bare.ctx.ai.listModels(), /ai:use/)
+})

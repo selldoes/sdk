@@ -22,11 +22,14 @@ export type PluginPermission =
 export interface PluginConfigField {
   key: string
   label: string
-  type: "string" | "text" | "number" | "boolean" | "select" | "secret"
+  type: "string" | "text" | "number" | "boolean" | "select" | "model-select" | "secret"
   description?: string
   placeholder?: string
   default?: string | number | boolean
-  options?: { value: string; label: string }[]
+  /** Static options. `model-select` rows may also carry title/subtitle/meta/price/pinned. */
+  options?: { value: string; label: string; title?: string; subtitle?: string; meta?: string; price?: number | null; pinned?: boolean }[]
+  /** A plugin API route the kit fetches options from at render time (e.g. "/ai/models?type=text"). */
+  optionsFrom?: string
   required?: boolean
   /** "Learn more" link rendered under the field (e.g. where to get an API key). */
   learnMoreUrl?: string

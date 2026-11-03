@@ -207,6 +207,8 @@ export interface PluginAI {
     /** Requested size, e.g. "2048x2048". Models may snap to a supported size. */
     size?: string
     aspectRatio?: string
+    /** Image model id (`ctx.ai.listModels({ type: "image" })`); defaults to the store's image model. */
+    model?: string
   }): Promise<{ url?: string; base64?: string }>
   /**
    * List the store's saved AI prompts (Dashboard → AI Prompts) plus the system
@@ -216,6 +218,36 @@ export interface PluginAI {
   listPrompts(opts?: { type?: "text" | "image" }): Promise<PluginAIPrompt[]>
   /** Fetch one saved prompt by id; null when missing or not visible to the store. */
   getPrompt(id: number): Promise<PluginAIPrompt | null>
+  /**
+   * List the enabled, non-deprecated AI models the merchant can pick — with
+   * pricing, context window and capabilities. Surface a model dropdown instead
+   * of hard-coding model ids; pass the chosen `modelId` to `complete`/`image`.
+   * Requires `ai:use`.
+   */
+  listModels(opts?: { type?: "text" | "image"; provider?: string }): Promise<PluginAIModel[]>
+}
+
+/** An enabled AI model as exposed to plugins (`ctx.ai.listModels`). */
+export interface PluginAIModel {
+  /** Model provider, e.g. "apiraven", "openrouter", "openai". */
+  provider: string
+  /** The id passed to `ctx.ai.complete({ model })` / `ctx.ai.image({ model })`. */
+  modelId: string
+  name: string
+  /** "text" or "image". */
+  type: string
+  /** Model vendor / brand, e.g. "OpenAI". */
+  vendor: string | null
+  contextLength: number | null
+  maxCompletionTokens: number | null
+  /** USD per 1M input tokens (null for image models / unknown). */
+  inputCostPer1M: string | null
+  /** USD per 1M output tokens (null for image models / unknown). */
+  outputCostPer1M: string | null
+  /** Free-text note — for image models this carries the per-image price. */
+  description: string | null
+  supportedParameters: string[] | null
+  supportsReferenceImage: boolean
 }
 
 /** A saved AI prompt as exposed to plugins (`ctx.ai.listPrompts` / `ctx.ai.getPrompt`). */

@@ -177,7 +177,10 @@ the plugin's main page as *Job logs*. The page name follows the path
 
 Kit types: `text` (markdown), `stats`, `table` (your `apiRoutes` path — the
 handler returns an array or `{ rows: [...] }` / `{ items: [...] }`), `job`
-(run button + live transcript), `settings` (renders `configSchema`), `logs`
+(run button + live transcript), `settings` (renders the whole `configSchema`
+form), `field` (one `configSchema` field on its own — `{ key, title?,
+description?, field? }`, saving immediately; compose a form inside a `group`),
+`logs`
 (**job history** — every background job of the plugin for this store: status
 badge, name, counters, runtime, duration and "x ago"; click a run for its
 transcript, per-item results and the final result. Settings: `title?`,
@@ -502,8 +505,9 @@ settings → Store** connects a real Selldoes store to the preview:
   product is written.
 - `ctx.ai` goes to the **real** AI as well: `ctx.ai.complete` and
   `ctx.ai.image` run through the platform's AI runner with the merchant API
-  key, using the store's saved provider and model, and `ctx.ai.listPrompts`
-  reads the store's prompt library. The preview therefore writes **real copy**
+  key, using the store's saved provider and model, and `ctx.ai.listPrompts` /
+  `ctx.ai.listModels` read the store's prompt library and model catalog. The
+  preview therefore writes **real copy**
   — a plugin whose AI copy is wrong shows it here, not only after publishing.
   (`ai.mockReply` in `selldoes.config.json` is only the fallback for the
   offline mock.)
@@ -517,6 +521,23 @@ settings → Store** connects a real Selldoes store to the preview:
 This is the fastest loop for import/sync plugins: run the real job against
 real SKUs, inspect results, iterate — and only publish when it behaves.
 
+#### Local platform auto-detection
+
+When the Selldesk platform is checked out on the same machine
+(`~/Desktop/selldesk.net/next`, run with `npm run dev` on port 9582), the dev
+server **prefers that local instance over the hosted URL** — no config edit
+needed. The resolved URL is logged on connect (`live store connected — … →
+http://localhost:9582`) and shown on the Store card. Overrides:
+
+- `SELLDOES_LOCAL_PLATFORM=http://localhost:3000` — use that URL directly.
+- `SELLDOES_LOCAL_PLATFORM=/path/to/selldesk.net` — use that checkout (the
+  `next/` sub-directory is picked up automatically).
+- `SELLDOES_LOCAL_PLATFORM=off` — disable detection and use the saved URL.
+- `SELLDOES_APP_URL=…` — always wins over detection.
+
+This is a convenience for platform developers; plugin authors without the
+platform repo keep using the hosted store they connected.
+
 ## Runtime capabilities
 
 | Permission | Grants |
@@ -524,7 +545,7 @@ real SKUs, inspect results, iterate — and only publish when it behaves.
 | `db:read` / `db:write` | Read/write permitted tables + own `plugin_<slug>_*` tables |
 | `db:schema` | `ctx.db.ensureTable(name, columns)` |
 | `api:external` | `ctx.http.get/post` (60s default timeout, `opts.timeoutMs` capped at 60s, 4 MB responses) |
-| `ai:use` | `ctx.ai.complete` / `ctx.ai.image` (generated images are saved to media storage and returned as a URL) / `ctx.ai.listPrompts` / `ctx.ai.getPrompt` (the store's saved prompt library from Dashboard → AI Prompts, so settings can offer a picker instead of a hard-coded prompt id) |
+| `ai:use` | `ctx.ai.complete` / `ctx.ai.image` (generated images are saved to media storage and returned as a URL) / `ctx.ai.listPrompts` / `ctx.ai.getPrompt` (the store's saved prompt library from Dashboard → AI Prompts, so settings can offer a picker instead of a hard-coded prompt id) / `ctx.ai.listModels` (the store's enabled models with pricing, so settings can offer a model picker) |
 | `email:send` | `ctx.email.send` through the platform SMTP |
 | `files:read` / `files:write` | `ctx.files` (S3 media) |
 | `products:read` / `products:write` | `ctx.products` |
@@ -553,6 +574,20 @@ merchants for a numeric prompt id, then pass the chosen id to
 `ctx.ai.image({ promptId })`. `ctx.ai.getPrompt(id)` fetches one prompt (null
 when missing or not visible to the store).
 
+`ctx.ai.listModels({ type: "text" | "image", provider? })` returns the store's
+enabled, non-deprecated AI models — `{ provider, modelId, name, type, vendor,
+contextLength, maxCompletionTokens, inputCostPer1M, outputCostPer1M,
+description, supportedParameters, supportsReferenceImage }`. Pricing is USD per
+1M tokens (`inputCostPer1M` / `outputCostPer1M` are strings, null for image
+models and unknown costs; `description` carries the per-image price for image
+models). Use it to build a model dropdown with pricing and pass the chosen
+`modelId` to `ctx.ai.complete({ model })` or `ctx.ai.image({ model })` — leaving
+it unset uses the store's saved model. Pair it with an `optionsFrom` select:
+
+```json
+{ "key": "aiModel", "type": "select", "optionsFrom": "/ai/models?type=text" }
+```
+
 `ctx.products.upsertBySku()` is the idempotent import primitive (create or
 update keyed by SKU); `create`/`update` also accept `categories: ["A", "B"]` —
 missing categories are created for the store, linked to the product and the
@@ -578,13 +613,34 @@ populates the dropdown from its `{ options: [{ value, label }] }` (or
 disabled "None found" when the route answers empty or fails, e.g.
 `{ "key": "aiImagePromptId", "type": "select", "optionsFrom": "/ai/prompts?type=image" }`.
 
+**Rich model select.** For model pickers (AI models, etc.) use the
+`model-select` field type instead of `select`: it renders a custom, searchable
+dropdown — each row shows the **name** (bold), a **subtitle** (pricing, green)
+and a muted **meta** column (vendor), with a sort control (price ascending by
+default). The route returns richer options:
+
+```json
+{ "options": [
+  { "value": "anthropic/claude-4.5-sonnet", "title": "Claude 4.5 Sonnet",
+    "subtitle": "$3/$15 per 1M", "meta": "Anthropic", "price": 3 },
+  { "value": "", "title": "Store default", "subtitle": "Use the store's saved model",
+    "pinned": true }
+] }
+```
+
+`price` (a number) drives the "lowest price first" sort; `pinned: true` keeps a
+row (e.g. "Store default") on top. `label` is still accepted and used as the
+plain fallback. In `plugin.json`:
+`{ "key": "aiModel", "type": "model-select", "optionsFrom": "/ai/models?type=text" }`.
+Both `select` and `model-select` also accept a static `options` array.
+
 The `optionsFrom` path is a **plugin API route**: it must be declared in the
 manifest's `apiRoutes` *and* exported from the plugin — the dev server and the
 platform both answer `404` for undeclared routes, so a missing declaration
 shows up as an empty dropdown ("None found"). The route's `query` is passed
 through, so `?type=image` can narrow the list server-side. When the saved
-value is not in the list (never set, or the id was deleted), the dropdown
-falls back to the first option instead of staying blank.
+value is not in the list (never set, or the id was deleted), the control
+falls back to the top of the sorted list instead of staying blank.
 
 ## API routes
 

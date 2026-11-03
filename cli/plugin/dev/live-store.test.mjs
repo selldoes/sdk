@@ -4,7 +4,73 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { connectStore, createLiveAiBridge, createLiveProductsBridge, createLivePromptsBridge, maskKey, readStoreBlock, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+import { connectStore, createLiveAiBridge, createLiveModelsBridge, createLiveProductsBridge, createLivePromptsBridge, findLocalPlatformDir, LOCAL_PLATFORM_URL, maskKey, readStoreBlock, resolveLiveAppUrl, storeView, verifyStoreKey, writeStoreBlock } from "./live-store.mjs"
+
+/** Run `fn` with the given env vars set (undefined deletes), restoring after. */
+function withEnv(vars, fn) {
+  const previous = {}
+  for (const key of Object.keys(vars)) {
+    previous[key] = process.env[key]
+    if (vars[key] === undefined) delete process.env[key]
+    else process.env[key] = vars[key]
+  }
+  try {
+    return fn()
+  } finally {
+    for (const key of Object.keys(vars)) {
+      if (previous[key] === undefined) delete process.env[key]
+      else process.env[key] = previous[key]
+    }
+  }
+}
+
+test("findLocalPlatformDir: detects a checkout via SELLDOES_LOCAL_PLATFORM and 'next' nesting", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "local-platform-"))
+  const nextDir = path.join(repo, "next")
+  fs.mkdirSync(nextDir)
+  fs.writeFileSync(path.join(nextDir, "package.json"), "{}")
+
+  // Pointing at the repo root finds the nested next/ dir.
+  assert.equal(withEnv({ SELLDOES_LOCAL_PLATFORM: repo }, () => findLocalPlatformDir()), nextDir)
+  // Pointing straight at next/ works too.
+  assert.equal(withEnv({ SELLDOES_LOCAL_PLATFORM: nextDir }, () => findLocalPlatformDir()), nextDir)
+  // off disables detection entirely.
+  assert.equal(withEnv({ SELLDOES_LOCAL_PLATFORM: "off" }, () => findLocalPlatformDir()), null)
+  fs.rmSync(repo, { recursive: true, force: true })
+})
+
+test("resolveLiveAppUrl: explicit > SELLDOES_APP_URL > local platform > saved", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "local-platform-"))
+  fs.writeFileSync(path.join(repo, "package.json"), "{}")
+  const base = { SELLDOES_LOCAL_PLATFORM: undefined, SELLDOES_APP_URL: undefined }
+
+  // Explicit argument wins over everything.
+  assert.equal(
+    withEnv({ ...base, SELLDOES_LOCAL_PLATFORM: repo }, () => resolveLiveAppUrl("https://saved.com", "https://explicit.com")),
+    "https://explicit.com",
+  )
+  // SELLDOES_APP_URL wins over a local checkout (trailing slash stripped).
+  assert.equal(
+    withEnv({ ...base, SELLDOES_LOCAL_PLATFORM: repo, SELLDOES_APP_URL: "https://env.com/" }, () => resolveLiveAppUrl("https://saved.com")),
+    "https://env.com",
+  )
+  // A local checkout wins over the saved URL.
+  assert.equal(
+    withEnv({ ...base, SELLDOES_LOCAL_PLATFORM: repo }, () => resolveLiveAppUrl("https://saved.com")),
+    LOCAL_PLATFORM_URL,
+  )
+  // SELLDOES_LOCAL_PLATFORM as a URL is used directly.
+  assert.equal(
+    withEnv({ ...base, SELLDOES_LOCAL_PLATFORM: "http://localhost:3000" }, () => resolveLiveAppUrl("https://saved.com")),
+    "http://localhost:3000",
+  )
+  // Disabled → the saved URL.
+  assert.equal(
+    withEnv({ ...base, SELLDOES_LOCAL_PLATFORM: "off" }, () => resolveLiveAppUrl("https://saved.com")),
+    "https://saved.com",
+  )
+  fs.rmSync(repo, { recursive: true, force: true })
+})
 
 test("readStoreBlock: defaults, env fallback and normalization", () => {
   assert.deepEqual(readStoreBlock(null), { live: false, appUrl: "", apiKey: "", storeId: null, storeSlug: "" })
@@ -307,6 +373,69 @@ test("prompts bridge: get filters the listed library by id", async () => {
 test("prompts bridge: an older host surfaces a deploy hint instead of an empty list", async () => {
   await withStubPrompts({ mode: "missing" }, async (base) => {
     const bridge = createLivePromptsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    await assert.rejects(() => bridge.list(), /deploy the latest Selldesk/)
+  })
+})
+
+/**
+ * Stub platform AI-models API (`/api/external/ai/models`). `mode: "missing"`
+ * mimics an older host that answers a plain 404 page.
+ */
+async function withStubModels(options, fn) {
+  if (typeof options === "function") {
+    fn = options
+    options = {}
+  }
+  const { mode = "full" } = options ?? {}
+  const requests = []
+  const MODELS = [
+    { provider: "apiraven", modelId: "amazon/nova-micro", name: "Nova Micro", type: "text", vendor: "Amazon", contextLength: 128000, maxCompletionTokens: 8192, inputCostPer1M: "0.035000", outputCostPer1M: "0.140000", supportedParameters: [], supportsReferenceImage: false },
+    { provider: "apiraven", modelId: "black-forest-labs/flux-3-image", name: "FLUX 3", type: "image", vendor: "Black Forest Labs", contextLength: null, maxCompletionTokens: null, inputCostPer1M: null, outputCostPer1M: null, supportedParameters: [], supportsReferenceImage: true },
+  ]
+  const server = http
+    .createServer((req, res) => {
+      requests.push({ method: req.method, url: req.url })
+      if (mode === "missing") {
+        res.statusCode = 404
+        return res.end("<html>Not Found</html>")
+      }
+      if (!req.url?.startsWith("/api/external/ai/models")) {
+        res.statusCode = 404
+        res.setHeader("content-type", "application/json")
+        return res.end(JSON.stringify({ error: "not found" }))
+      }
+      res.setHeader("content-type", "application/json")
+      const url = new URL(req.url, "http://stub")
+      const type = url.searchParams.get("type")
+      const models = type ? MODELS.filter((model) => model.type === type) : MODELS
+      res.end(JSON.stringify({ models }))
+    })
+    .listen(0)
+  await new Promise((resolve) => server.once("listening", resolve))
+  const base = `http://127.0.0.1:${server.address().port}`
+  try {
+    return await fn(base, requests)
+  } finally {
+    server.close()
+  }
+}
+
+test("models bridge: list is store-scoped and type-filterable", async () => {
+  await withStubModels(async (base, requests) => {
+    const bridge = createLiveModelsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
+    const all = await bridge.list()
+    assert.deepEqual(all.map((model) => model.modelId), ["amazon/nova-micro", "black-forest-labs/flux-3-image"])
+    const images = await bridge.list({ type: "image" })
+    assert.equal(images.length, 1)
+    assert.equal(images[0].modelId, "black-forest-labs/flux-3-image")
+    assert.ok(requests.every((request) => request.url.startsWith("/api/external/ai/models?storeId=6")))
+    assert.ok(requests[1].url.includes("type=image"))
+  })
+})
+
+test("models bridge: an older host surfaces a deploy hint instead of an empty list", async () => {
+  await withStubModels({ mode: "missing" }, async (base) => {
+    const bridge = createLiveModelsBridge({ appUrl: base, apiKey: "sk_k", storeId: 6 })
     await assert.rejects(() => bridge.list(), /deploy the latest Selldesk/)
   })
 })

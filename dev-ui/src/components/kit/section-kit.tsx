@@ -79,6 +79,8 @@ function SectionView({ slug, store, section }: { slug: string; store: KitProps["
       return <JobSection settings={settings} />
     case "settings":
       return <SettingsSection />
+    case "field":
+      return <FieldSection settings={settings} />
     case "logs":
       return <LogsSection settings={settings} />
     case "links":
@@ -438,19 +440,26 @@ function SettingsSection() {
                 checked={Boolean(form[field.key])}
                 onCheckedChange={(checked) => setForm((previous) => ({ ...previous, [field.key]: checked }))}
               />
-            ) : field.type === "select" ? (
-              <Select value={String(form[field.key] ?? "")} onValueChange={(value) => setForm((previous) => ({ ...previous, [field.key]: value }))}>
-                <SelectTrigger id={`kit-${field.key}`}>
-                  <SelectValue placeholder={field.placeholder || "Select…"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(field.options ?? []).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            ) : field.type === "select" || field.type === "model-select" ? (
+              <>
+                <Select value={String(form[field.key] ?? "")} onValueChange={(value) => setForm((previous) => ({ ...previous, [field.key]: value }))}>
+                  <SelectTrigger id={`kit-${field.key}`}>
+                    <SelectValue placeholder={field.placeholder || "Select…"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(field.options ?? []).map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {field.optionsFrom ? (
+                  <p className="text-[10.5px] text-muted-foreground">
+                    <code>{field.optionsFrom}</code> — options and the rich layout load in the compiled page.
+                  </p>
+                ) : null}
+              </>
             ) : field.type === "text" ? (
               <Textarea
                 id={`kit-${field.key}`}
@@ -475,6 +484,35 @@ function SettingsSection() {
         <Button size="sm" onClick={() => void save()} disabled={saving}>
           {saving ? "Saving…" : "Save settings"}
         </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Field — a single configSchema field on its own, so a form can be composed
+ * inside a Group (container + fields). The builder canvas shows which config
+ * key it edits; the compiled page renders the real control and saves on change.
+ */
+function FieldSection({ settings }: { settings: Record<string, unknown> }) {
+  const key = str(settings.key)
+  const title = str(settings.title)
+  return (
+    <Card>
+      {title ? (
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{title}</CardTitle>
+          {settings.description ? <CardDescription>{str(settings.description)}</CardDescription> : null}
+        </CardHeader>
+      ) : null}
+      <CardContent className={title ? "" : "pt-6"}>
+        <div className="space-y-1.5">
+          <Label>Config field</Label>
+          <div className="flex h-9 items-center rounded-md border border-dashed border-border bg-muted/30 px-3 text-sm">
+            {key ? <code>{key}</code> : <span className="text-muted-foreground">No key set — pick a configSchema field</span>}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Renders the real control in the compiled page and saves on change.</p>
+        </div>
       </CardContent>
     </Card>
   )

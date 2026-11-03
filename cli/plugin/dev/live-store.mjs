@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 
 /**
@@ -16,7 +17,7 @@ import path from "node:path"
  *   ctx.ai.complete / ctx.ai.image                                 → live
  *     (the store's own AI provider + model, authenticated with the same
  *     merchant API key — the preview writes REAL copy)
- *   ctx.ai.listPrompts / getPrompt                                 → live
+ *   ctx.ai.listPrompts / getPrompt / listModels                    → live
  *   ctx.files.importFromUrl                                        → passthrough
  *     (the URL is kept as-is; the platform re-hosts it into store media)
  *   ctx.db (plugin-owned tables, e.g. staging)                     → local mock
@@ -26,14 +27,95 @@ import path from "node:path"
  *   "store": { "live": true, "appUrl": "…", "storeId": 6, "storeSlug": "otrjoy" }
  * The API key itself is stored per-project next to it (treat the folder like
  * a secret store — or set SELLDOES_STORE_API_KEY to keep it out of the file).
+ *
+ * A local Selldesk checkout (selldesk.net/next on :9582) is preferred over the
+ * saved URL — see resolveLiveAppUrl. SELLDOES_APP_URL / SELLDOES_LOCAL_PLATFORM
+ * override the detection.
  */
 
 const EXTERNAL_PRODUCTS = "/api/external/products"
 const EXTERNAL_AI_PROMPTS = "/api/external/ai/prompts"
+const EXTERNAL_AI_MODELS = "/api/external/ai/models"
 /** The merchant API also exposes the AI runner (the same one the dashboard uses). */
 const AI_EXECUTE = "/api/ai/execute"
 /** Fields `full=1` returns — mirrors what plugins read back from findBySku. */
 const FULL_FIELDS = ["id", "sku", "name", "price", "status", "category", "subCategory", "image", "mainImage", "variationGroups", "customAttributes"]
+
+/**
+ * Local platform auto-detection.
+ *
+ * `selldoes dev` can bridge to a real Selldesk instance. When the platform repo
+ * is checked out on the developer's machine (`selldesk.net/next`, started with
+ * `npm run dev` on port 9582) the dev server prefers that local instance over
+ * the hosted selldoes.com — so a plugin dev working on the platform gets the
+ * local build without editing `selldoes.config.json`.
+ *
+ * Overrides:
+ *   SELLDOES_LOCAL_PLATFORM=http://localhost:3000  → use that URL directly
+ *   SELLDOES_LOCAL_PLATFORM=/path/to/selldesk.net  → use that checkout
+ *   SELLDOES_LOCAL_PLATFORM=off                     → disable detection
+ *   SELLDOES_APP_URL=…                              → always wins
+ */
+export const LOCAL_PLATFORM_PORT = 9582
+export const LOCAL_PLATFORM_URL = `http://localhost:${LOCAL_PLATFORM_PORT}`
+
+function localPlatformSetting() {
+  return String(process.env.SELLDOES_LOCAL_PLATFORM ?? "").trim()
+}
+
+function localPlatformDisabled() {
+  return ["off", "0", "false", "no"].includes(localPlatformSetting().toLowerCase())
+}
+
+/** Candidate `next/` dirs of a local Selldesk platform checkout. */
+function localPlatformCandidates() {
+  const setting = localPlatformSetting()
+  const candidates = []
+  // An explicit path (not a URL, not the disable flag) is checked first.
+  if (setting && !localPlatformDisabled() && !/^https?:\/\//i.test(setting)) candidates.push(setting)
+  const home = os.homedir()
+  candidates.push(
+    path.join(home, "Desktop", "selldesk.net", "next"),
+    path.join(home, "OneDrive", "Desktop", "selldesk.net", "next"),
+    path.join(home, "Documents", "selldesk.net", "next"),
+    path.join(home, "selldesk.net", "next"),
+  )
+  return candidates
+}
+
+/**
+ * The local platform `next/` directory when a checkout is present, else null.
+ * A candidate counts when it holds a `package.json` directly, or a `next/`
+ * sub-directory that does (so the repo root works too).
+ */
+export function findLocalPlatformDir() {
+  if (localPlatformDisabled()) return null
+  for (const candidate of localPlatformCandidates()) {
+    if (!candidate) continue
+    if (fs.existsSync(path.join(candidate, "package.json"))) return candidate
+    const nested = path.join(candidate, "next")
+    if (fs.existsSync(path.join(nested, "package.json"))) return nested
+  }
+  return null
+}
+
+/**
+ * The app URL the live bridge should talk to. Precedence:
+ *   1. the `explicit` argument
+ *   2. `SELLDOES_APP_URL`
+ *   3. `SELLDOES_LOCAL_PLATFORM` when it is a URL
+ *   4. a detected local platform checkout → http://localhost:9582
+ *   5. the saved `store.appUrl`
+ */
+export function resolveLiveAppUrl(saved, explicit) {
+  const clean = (value) => String(value ?? "").replace(/\/+$/, "") || null
+  const explicitUrl = clean(explicit) || clean(process.env.SELLDOES_APP_URL)
+  if (explicitUrl) return explicitUrl
+  const setting = localPlatformSetting()
+  if (!localPlatformDisabled() && /^https?:\/\//i.test(setting)) return clean(setting)
+  if (findLocalPlatformDir()) return LOCAL_PLATFORM_URL
+  return clean(saved)
+}
 
 export function readStoreBlock(config) {
   const store = config && typeof config.store === "object" && config.store !== null ? config.store : {}
@@ -212,6 +294,55 @@ export function createLivePromptsBridge(connection, log = () => {}) {
 }
 
 /**
+ * Builds the live `ctx.ai.listModels` bridge — the store's enabled AI models
+ * (with pricing, context window and capabilities). Backed by the platform's
+ * merchant API (`/api/external/ai/models`) — an older host that answers 404
+ * surfaces a clear "deploy the latest Selldesk" error instead of an empty list.
+ */
+export function createLiveModelsBridge(connection, log = () => {}) {
+  const { appUrl, apiKey, storeId } = connection
+
+  const call = async (search = "") => {
+    const params = new URLSearchParams({ storeId: String(storeId) })
+    const extra = String(search ?? "").replace(/^\?/, "")
+    if (extra) {
+      for (const [key, value] of new URLSearchParams(extra)) params.append(key, value)
+    }
+    const url = `${appUrl}${EXTERNAL_AI_MODELS}?${params.toString()}`
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    })
+    const text = await res.text()
+    let data = null
+    try {
+      data = JSON.parse(text)
+    } catch {
+      // non-JSON body
+    }
+    if (res.status === 404 && !data?.error) {
+      throw new Error("the store's platform does not expose AI model listing — deploy the latest Selldesk (GET /api/external/ai/models)")
+    }
+    if (!res.ok) {
+      const detail = data?.error || res.statusText || "request failed"
+      throw new Error(`${detail} [${res.status} GET ${url}]`)
+    }
+    return data
+  }
+
+  return {
+    async list(opts = {}) {
+      const params = new URLSearchParams()
+      if (opts.type) params.set("type", String(opts.type))
+      if (opts.provider) params.set("provider", String(opts.provider))
+      const data = await call(params.toString())
+      return Array.isArray(data?.models) ? data.models : []
+    },
+  }
+}
+
+/**
  * Builds the live `ctx.ai` bridge — text and image generation through the
  * store's own AI provider. Backed by the platform's AI runner
  * (`POST /api/ai/execute`, authenticated with the merchant API key), which
@@ -264,6 +395,7 @@ export function createLiveAiBridge(connection, log = () => {}) {
         ...(opts.referenceImage ? { referenceImage: opts.referenceImage } : {}),
         ...(opts.size ? { size: opts.size } : {}),
         ...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
+        ...(opts.model ? { model: opts.model } : {}),
       })
       log("[live] ai.image → generated")
       return {

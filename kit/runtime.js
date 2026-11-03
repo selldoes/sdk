@@ -143,10 +143,12 @@
   }
 
   /**
-   * Dynamic <select> options (field.optionsFrom): GETs a plugin API route and
-   * accepts `{ options: [{ value, label }] }`, a raw array in the same shape,
-   * or `{ prompts: [...] }` (the ctx.ai prompt library — id/name rows). Any
-   * failure resolves to null so the caller can show "None found".
+   * Dynamic options for a field/section: GETs a plugin API route and accepts
+   * `{ options: [...] }`, a raw array, or `{ prompts: [...] }` (the ctx.ai
+   * prompt library). Options may be plain `{ value, label }` or rich rows
+   * `{ value, title, subtitle, meta, price, pinned }` — the rich select renders
+   * title (bold), subtitle (e.g. green pricing), meta (muted) and sorts by
+   * `price`. Any failure resolves to null so the caller can show "None found".
    */
   function fetchOptions(source) {
     var path = String(source)
@@ -165,10 +167,18 @@
               : null
         if (!list) return null
         return list.map(function (item) {
-          return {
-            value: item && item.value !== undefined ? item.value : item,
-            label: item && item.label !== undefined ? item.label : String(item && item.value !== undefined ? item.value : item),
+          if (item === null || item === undefined || typeof item !== "object") {
+            return { value: item, label: String(item) }
           }
+          var value = item.value !== undefined ? item.value : item
+          var label = item.label !== undefined ? item.label : item.title !== undefined ? item.title : String(value)
+          var option = { value: value, label: label }
+          if (item.title !== undefined) option.title = item.title
+          if (item.subtitle !== undefined) option.subtitle = item.subtitle
+          if (item.meta !== undefined) option.meta = item.meta
+          if (item.price !== undefined) option.price = item.price
+          if (item.pinned !== undefined) option.pinned = item.pinned
+          return option
         })
       })
       .catch(function () {
@@ -575,6 +585,383 @@
     return view.root
   }
 
+  // ── rich model select ───────────────────────────────────────────────────────
+  //
+  // A custom dropdown for model-style options: each row shows the name (bold),
+  // a subtitle (pricing, rendered green) and a muted meta column (vendor), with
+  // search and a price/name sort. The native <select> can't style option rows,
+  // so this is built from a trigger + an in-flow listbox (it grows the page
+  // instead of floating, so it can't be clipped by the dashboard iframe).
+  //
+  // Options come from `optionsFrom` (or a static `options` array):
+  //   { value, title, subtitle, meta, price, pinned }
+  // `price` (number) drives the default "lowest price first" sort; `pinned`
+  // rows (e.g. "Store default") stay on top. Falls back to `label` for plain
+  // options.
+  function renderRichSelect(field, initialValue, onChange) {
+    var root = h("div", "kit-mselect")
+    var value = initialValue === undefined || initialValue === null ? "" : String(initialValue)
+    var options = []
+    var disabled = true
+    var open = false
+    var sort = field.sort || "price-asc"
+    var query = ""
+
+    function title(option) { return String(option.title !== undefined ? option.title : option.label !== undefined ? option.label : option.value) }
+    function subtitle(option) { return option.subtitle ? String(option.subtitle) : "" }
+    function meta(option) { return option.meta ? String(option.meta) : "" }
+    function price(option) {
+      var n = Number(option.price)
+      return Number.isFinite(n) ? n : null
+    }
+
+    var trigger = h("button", "kit-mselect-trigger")
+    trigger.type = "button"
+    trigger.id = "kit-" + field.key
+    trigger.setAttribute("aria-haspopup", "listbox")
+    trigger.setAttribute("aria-expanded", "false")
+    var triggerLabel = h("span", "kit-mselect-value")
+    trigger.appendChild(triggerLabel)
+    var caret = h("span", "kit-mselect-caret")
+    caret.appendChild(icon("chevron"))
+    trigger.appendChild(caret)
+    root.appendChild(trigger)
+
+    var panel = h("div", "kit-mselect-panel")
+    panel.hidden = true
+    var controls = h("div", "kit-mselect-controls")
+    var search = h("input", "kit-mselect-search")
+    search.type = "text"
+    search.placeholder = field.searchPlaceholder || "Search…"
+    search.setAttribute("aria-label", "Search options")
+    controls.appendChild(search)
+    var sortSelect = h("select", "kit-mselect-sort")
+    sortSelect.setAttribute("aria-label", "Sort options")
+    ;[
+      ["price-asc", "Price: low → high"],
+      ["price-desc", "Price: high → low"],
+      ["name", "Name (A–Z)"],
+    ].forEach(function (pair) {
+      var option = h("option", null, pair[1])
+      option.value = pair[0]
+      sortSelect.appendChild(option)
+    })
+    sortSelect.value = sort
+    controls.appendChild(sortSelect)
+    panel.appendChild(controls)
+    var list = h("div", "kit-mselect-list")
+    list.setAttribute("role", "listbox")
+    panel.appendChild(list)
+    var empty = h("p", "kit-mselect-empty", "No options match your search.")
+    empty.hidden = true
+    panel.appendChild(empty)
+    root.appendChild(panel)
+
+    function visibleOptions() {
+      var filtered = options.filter(function (option) {
+        if (!query) return true
+        var hay = (title(option) + " " + subtitle(option) + " " + meta(option)).toLowerCase()
+        return hay.indexOf(query) !== -1
+      })
+      return filtered.slice().sort(function (a, b) {
+        if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1
+        if (sort === "name") return title(a).localeCompare(title(b))
+        var pa = price(a)
+        var pb = price(b)
+        var va = pa === null ? Infinity : pa
+        var vb = pb === null ? Infinity : pb
+        if (va !== vb) return sort === "price-desc" ? vb - va : va - vb
+        return title(a).localeCompare(title(b))
+      })
+    }
+
+    function renderList() {
+      list.innerHTML = ""
+      var rows = visibleOptions()
+      empty.hidden = rows.length > 0
+      rows.forEach(function (option) {
+        var row = h("button", "kit-mselect-option")
+        row.type = "button"
+        row.setAttribute("role", "option")
+        if (String(option.value) === value) {
+          row.classList.add("is-selected")
+          row.setAttribute("aria-selected", "true")
+        }
+        var main = h("span", "kit-mselect-option-main")
+        main.appendChild(h("span", "kit-mselect-option-title", title(option)))
+        if (subtitle(option)) main.appendChild(h("span", "kit-mselect-option-sub", subtitle(option)))
+        row.appendChild(main)
+        if (meta(option)) row.appendChild(h("span", "kit-mselect-option-meta", meta(option)))
+        row.addEventListener("click", function () {
+          value = String(option.value)
+          updateTrigger()
+          close()
+          if (onChange) onChange(value)
+        })
+        list.appendChild(row)
+      })
+    }
+
+    function current() {
+      for (var i = 0; i < options.length; i++) {
+        if (String(options[i].value) === value) return options[i]
+      }
+      return null
+    }
+
+    function updateTrigger() {
+      triggerLabel.innerHTML = ""
+      var option = current()
+      if (!option) {
+        triggerLabel.appendChild(h("span", "kit-mselect-placeholder", value || field.placeholder || "Select…"))
+        return
+      }
+      triggerLabel.appendChild(h("span", "kit-mselect-option-title", title(option)))
+      if (subtitle(option)) triggerLabel.appendChild(h("span", "kit-mselect-option-sub", subtitle(option)))
+    }
+
+    function openPanel() {
+      if (disabled) return
+      open = true
+      panel.hidden = false
+      trigger.setAttribute("aria-expanded", "true")
+      root.classList.add("is-open")
+      renderList()
+      if (typeof search.focus === "function") search.focus()
+    }
+    function close() {
+      open = false
+      panel.hidden = true
+      trigger.setAttribute("aria-expanded", "false")
+      root.classList.remove("is-open")
+      query = ""
+      search.value = ""
+    }
+    trigger.addEventListener("click", function () {
+      if (open) close()
+      else openPanel()
+    })
+    search.addEventListener("input", function () {
+      query = search.value.trim().toLowerCase()
+      renderList()
+    })
+    sortSelect.addEventListener("change", function () {
+      sort = sortSelect.value
+      renderList()
+    })
+    root.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && open) {
+        close()
+        trigger.focus()
+      }
+    })
+    document.addEventListener("click", function (event) {
+      if (open && !root.contains(event.target)) close()
+    })
+
+    function setOptions(next) {
+      options = Array.isArray(next) ? next : []
+      if (options.length === 0) {
+        disabled = true
+        trigger.disabled = true
+        triggerLabel.innerHTML = ""
+        triggerLabel.appendChild(h("span", "kit-mselect-placeholder", "None found"))
+        return
+      }
+      disabled = false
+      trigger.disabled = false
+      var known = options.some(function (option) {
+        return String(option.value) === value
+      })
+      // Keep the saved value when it still exists; otherwise fall back to the
+      // top of the sorted list — a blank control would look unconfigured.
+      if (!known) value = String(visibleOptions()[0].value)
+      updateTrigger()
+      if (open) renderList()
+    }
+
+    trigger.disabled = true
+    triggerLabel.appendChild(h("span", "kit-mselect-placeholder", "Loading…"))
+    var loader = field.optionsFrom ? fetchOptions(field.optionsFrom) : Promise.resolve(field.options || [])
+    loader.then(function (next) {
+      setOptions(next === null ? [] : next)
+    })
+
+    return {
+      root: root,
+      read: function () { return value },
+      isDisabled: function () { return disabled },
+    }
+  }
+
+  /**
+   * Renders one configSchema field. Returns `{ root, field, read, isDisabled }`.
+   * `onChange` fires after a rich control changes (the standalone `field`
+   * section saves immediately; the settings form ignores it).
+   */
+  function renderField(field, initialValue, onChange) {
+    var wrap = h("div", "kit-field")
+    if (field.type !== "boolean") {
+      var label = h("label", null, field.label || field.key)
+      if (field.required) label.appendChild(h("span", "kit-required", " *"))
+      label.setAttribute("for", "kit-" + field.key)
+      wrap.appendChild(label)
+    }
+    var read
+    var isDisabled = function () { return false }
+    var isRich = field.type === "model-select" || (field.type === "select" && field.display === "rich")
+
+    if (field.type === "boolean") {
+      var switchWrap = h("label", "kit-switch")
+      var checkbox = h("input")
+      checkbox.type = "checkbox"
+      checkbox.checked = Boolean(initialValue !== undefined ? initialValue : field.default)
+      switchWrap.appendChild(checkbox)
+      switchWrap.appendChild(h("span", null, field.label || field.key))
+      wrap.appendChild(switchWrap)
+      read = function () { return checkbox.checked }
+      isDisabled = function () { return false }
+    } else if (isRich) {
+      var rich = renderRichSelect(field, initialValue, onChange)
+      wrap.appendChild(rich.root)
+      read = rich.read
+      isDisabled = rich.isDisabled
+    } else if (field.type === "select") {
+      var select = h("select")
+      var initial = String(initialValue !== undefined ? initialValue : field.default || "")
+      if (field.optionsFrom) {
+        // Skeleton while loading, the fetched list on success, or a disabled
+        // "None found" when the host/route has nothing.
+        var placeholder = h("option", null, "Loading…")
+        placeholder.disabled = true
+        select.appendChild(placeholder)
+        select.disabled = true
+        fetchOptions(field.optionsFrom).then(function (options) {
+          select.innerHTML = ""
+          if (!options || options.length === 0) {
+            var none = h("option", null, "None found")
+            none.disabled = true
+            select.appendChild(none)
+            select.disabled = true
+            return
+          }
+          select.disabled = false
+          options.forEach(function (option) {
+            var node = h("option", null, option.label)
+            node.value = String(option.value)
+            select.appendChild(node)
+          })
+          var known = false
+          for (var i = 0; i < options.length; i++) {
+            if (String(options[i].value) === initial) { known = true; break }
+          }
+          select.value = known ? initial : String(options[0].value)
+        })
+      } else {
+        ;(field.options || []).forEach(function (option) {
+          var node = h("option", null, option.label || option.value)
+          node.value = option.value
+          select.appendChild(node)
+        })
+        select.value = initial
+      }
+      wrap.appendChild(select)
+      read = function () { return select.value }
+      isDisabled = function () { return select.disabled }
+    } else if (field.type === "text") {
+      var textarea = h("textarea")
+      textarea.value = String(initialValue !== undefined ? initialValue : field.default || "")
+      textarea.placeholder = field.placeholder || ""
+      wrap.appendChild(textarea)
+      read = function () { return textarea.value }
+    } else {
+      var input = h("input")
+      input.type = field.type === "number" ? "number" : field.type === "secret" ? "password" : "text"
+      input.value = String(initialValue !== undefined ? initialValue : field.default || "")
+      input.placeholder = field.placeholder || ""
+      wrap.appendChild(input)
+      read = function () { return input.value }
+    }
+
+    // The label's `for` points at "kit-<key>" — give native controls that id
+    // (the rich select sets its own on the trigger).
+    var control = isRich ? null : wrap.querySelector("input, select, textarea")
+    if (field.type !== "boolean" && control) control.id = "kit-" + field.key
+    // A standalone `field` section saves on change; the settings form saves on
+    // submit (no onChange), so this is a no-op there.
+    if (onChange && control) control.addEventListener("change", function () { onChange(read()) })
+    if (field.description) wrap.appendChild(h("p", "kit-help", field.description))
+    return { root: wrap, field: field, read: read, isDisabled: isDisabled }
+  }
+
+  /**
+   * Field — a single configSchema field rendered on its own, so a form can be
+   * composed inside a `group` container (container + fields) instead of one
+   * monolithic `settings` form. Saves immediately on change.
+   *
+   * Settings: { key, title?, description?, field?: {…}, type?, label?,
+   *             optionsFrom?, options? } — the configSchema definition for
+   *             `key` is used as the base and any inline props override it.
+   */
+  function renderFieldSection(settings) {
+    var key = str(settings.key)
+    var view = card(str(settings.title, null) || undefined, str(settings.description, null) || undefined)
+    if (!key) {
+      var note = h("div", "kit-note")
+      note.appendChild(icon("alert"))
+      note.appendChild(h("span", null, "Set `key` to the configSchema field this section edits."))
+      view.body.appendChild(note)
+      return view.root
+    }
+    var status = h("p", "kit-muted", "Loading…")
+    view.body.appendChild(status)
+
+    api("/config")
+      .then(function (body) {
+        var schema = (body.plugin && body.plugin.configSchema) || []
+        var values = body.config || {}
+        var schemaField = null
+        for (var i = 0; i < schema.length; i++) {
+          if (schema[i].key === key) { schemaField = schema[i]; break }
+        }
+        var field = Object.assign(
+          {},
+          schemaField || { key: key, type: settings.type || "text", label: settings.label || key },
+          settings.field || {},
+        )
+        if (settings.type) field.type = settings.type
+        if (settings.label) field.label = settings.label
+        if (settings.optionsFrom) field.optionsFrom = settings.optionsFrom
+        if (settings.options) field.options = settings.options
+        field.key = key
+
+        var saved = h("span", "kit-field-status", "")
+        var rendered = renderField(field, values[key], save)
+        view.body.removeChild(status)
+        view.body.appendChild(rendered.root)
+        view.body.appendChild(saved)
+
+        function save() {
+          if (rendered.isDisabled()) return
+          saved.textContent = "Saving…"
+          saved.classList.remove("kit-error-text")
+          var payload = {}
+          payload[key] = field.type === "number" ? Number(rendered.read()) : rendered.read()
+          api("/config", { method: "PUT", body: JSON.stringify({ storeId: Number(storeId) || undefined, config: payload }) })
+            .then(function () { saved.textContent = "Saved ✓" })
+            .catch(function (error) {
+              saved.textContent = error.message
+              saved.classList.add("kit-error-text")
+            })
+        }
+      })
+      .catch(function (error) {
+        view.body.removeChild(status)
+        view.body.appendChild(h("p", "kit-error", error.message))
+      })
+    return view.root
+  }
+
   function renderSettings() {
     var view = card("Settings", "From configSchema — saved values merge into ctx.config.")
     var form = h("form", "kit-form")
@@ -589,86 +976,9 @@
         }
         var inputs = {}
         schema.forEach(function (field) {
-          var wrap = h("div", "kit-field")
-          if (field.type !== "boolean") {
-            var label = h("label", null, field.label || field.key)
-            if (field.required) {
-              var required = h("span", "kit-required", " *")
-              label.appendChild(required)
-            }
-            label.setAttribute("for", "kit-" + field.key)
-            wrap.appendChild(label)
-          }
-          var input
-          if (field.type === "boolean") {
-            var switchWrap = h("label", "kit-switch")
-            input = h("input")
-            input.type = "checkbox"
-            input.checked = Boolean(values[field.key] !== undefined ? values[field.key] : field.default)
-            switchWrap.appendChild(input)
-            switchWrap.appendChild(h("span", null, field.label || field.key))
-            wrap.appendChild(switchWrap)
-          } else if (field.type === "select") {
-            input = h("select")
-            var initial = String(values[field.key] !== undefined ? values[field.key] : field.default || "")
-            if (field.optionsFrom) {
-              // Dynamic options (e.g. the store's saved AI prompts): skeleton
-              // placeholder while loading, the fetched list on success, or a
-              // disabled "None found" when the host/route has nothing.
-              var placeholder = h("option", null, "Loading…")
-              placeholder.disabled = true
-              input.appendChild(placeholder)
-              fetchOptions(field.optionsFrom).then(function (options) {
-                input.innerHTML = ""
-                if (!options || options.length === 0) {
-                  var none = h("option", null, "None found")
-                  none.disabled = true
-                  input.appendChild(none)
-                  input.disabled = true
-                  return
-                }
-                options.forEach(function (option) {
-                  var node = h("option", null, option.label)
-                  node.value = String(option.value)
-                  input.appendChild(node)
-                })
-                // Keep the saved value when it still exists; otherwise fall
-                // back to the first option — the setting may be empty, or the
-                // saved id may be gone from the list. A blank select would
-                // otherwise look like "nothing is configured".
-                var known = false
-                for (var i = 0; i < options.length; i++) {
-                  if (String(options[i].value) === initial) { known = true; break }
-                }
-                input.value = known ? initial : String(options[0].value)
-              })
-            } else {
-              (field.options || []).forEach(function (option) {
-                var node = h("option", null, option.label || option.value)
-                node.value = option.value
-                input.appendChild(node)
-              })
-              input.value = initial
-            }
-            wrap.appendChild(input)
-          } else if (field.type === "text") {
-            input = h("textarea")
-            input.value = String(values[field.key] !== undefined ? values[field.key] : field.default || "")
-            input.placeholder = field.placeholder || ""
-            wrap.appendChild(input)
-          } else {
-            input = h("input")
-            input.type = field.type === "number" ? "number" : field.type === "secret" ? "password" : "text"
-            input.value = String(values[field.key] !== undefined ? values[field.key] : field.default || "")
-            input.placeholder = field.placeholder || ""
-            wrap.appendChild(input)
-          }
-          // The label's `for` points at "kit-<key>" — give the control that id
-          // so clicking the label focuses the field.
-          if (field.type !== "boolean") input.id = "kit-" + field.key
-          if (field.description) wrap.appendChild(h("p", "kit-help", field.description))
-          inputs[field.key] = { input: input, field: field }
-          form.appendChild(wrap)
+          var rendered = renderField(field, values[field.key])
+          inputs[field.key] = rendered
+          form.appendChild(rendered.root)
         })
 
         var save = h("button", "kit-button")
@@ -682,12 +992,12 @@
           var payload = {}
           Object.keys(inputs).forEach(function (key) {
             var entry = inputs[key]
-            // Disabled (a dynamic select still loading or showing "None found")
+            // Disabled (a dynamic control still loading or showing "None found")
             // carries no choice — never let it overwrite the stored value.
-            if (entry.input.disabled) return
-            if (entry.field.type === "boolean") payload[key] = entry.input.checked
-            else if (entry.field.type === "number") payload[key] = Number(entry.input.value)
-            else payload[key] = entry.input.value
+            if (entry.isDisabled()) return
+            if (entry.field.type === "boolean") payload[key] = entry.read()
+            else if (entry.field.type === "number") payload[key] = Number(entry.read())
+            else payload[key] = entry.read()
           })
           save.disabled = true
           save.textContent = "Saving…"
@@ -970,6 +1280,7 @@
       case "table": return renderTable(settings)
       case "job": return renderJob(settings)
       case "settings": return renderSettings()
+      case "field": return renderFieldSection(settings)
       case "logs": return renderLogs(settings)
       case "links": return renderLinks(settings)
       case "component": return renderComponent(settings)
