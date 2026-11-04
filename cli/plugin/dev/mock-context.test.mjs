@@ -168,6 +168,8 @@ test("mock context: ai.listModels serves the dev model catalog, filtered by type
   const images = await ctx.ai.listModels({ type: "image" })
   assert.ok(images.length >= 1)
   assert.ok(images.every((model) => model.type === "image"))
+  // Image models carry a per-image price (costPerImage) and no token cost.
+  assert.ok(images.every((model) => model.inputCostPer1M === null && "costPerImage" in model))
 })
 
 test("mock context: ai.listModels honors ai.mockModels overrides and ai:use", async () => {

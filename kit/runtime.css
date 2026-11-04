@@ -534,6 +534,14 @@ a.kit-button.kit-outline:active {
   color: var(--kit-muted-fg);
 }
 
+/* A `fields` section: several fields plus one Save button. */
+.kit-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .kit-error-text {
   color: var(--kit-destructive);
 }

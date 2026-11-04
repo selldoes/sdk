@@ -814,24 +814,32 @@
     var isDisabled = function () { return false }
     var isRich = field.type === "model-select" || (field.type === "select" && field.display === "rich")
 
+    // A saved empty value means "not set" — fall back to the declared default,
+    // the same way the runtime merges configSchema defaults into ctx.config.
+    // Without this, a field the merchant cleared (or that was stored as "")
+    // rendered blank even though the runtime used its default.
+    var initial = initialValue
+    if (initial === undefined || initial === null || initial === "") initial = field.default
+    var asText = function (value) { return value === undefined || value === null ? "" : String(value) }
+
     if (field.type === "boolean") {
       var switchWrap = h("label", "kit-switch")
       var checkbox = h("input")
       checkbox.type = "checkbox"
-      checkbox.checked = Boolean(initialValue !== undefined ? initialValue : field.default)
+      checkbox.checked = Boolean(initial)
       switchWrap.appendChild(checkbox)
       switchWrap.appendChild(h("span", null, field.label || field.key))
       wrap.appendChild(switchWrap)
       read = function () { return checkbox.checked }
       isDisabled = function () { return false }
     } else if (isRich) {
-      var rich = renderRichSelect(field, initialValue, onChange)
+      var rich = renderRichSelect(field, initial, onChange)
       wrap.appendChild(rich.root)
       read = rich.read
       isDisabled = rich.isDisabled
     } else if (field.type === "select") {
       var select = h("select")
-      var initial = String(initialValue !== undefined ? initialValue : field.default || "")
+      var initialChoice = asText(initial)
       if (field.optionsFrom) {
         // Skeleton while loading, the fetched list on success, or a disabled
         // "None found" when the host/route has nothing.
@@ -856,9 +864,9 @@
           })
           var known = false
           for (var i = 0; i < options.length; i++) {
-            if (String(options[i].value) === initial) { known = true; break }
+            if (String(options[i].value) === initialChoice) { known = true; break }
           }
-          select.value = known ? initial : String(options[0].value)
+          select.value = known ? initialChoice : String(options[0].value)
         })
       } else {
         ;(field.options || []).forEach(function (option) {
@@ -866,21 +874,21 @@
           node.value = option.value
           select.appendChild(node)
         })
-        select.value = initial
+        select.value = initialChoice
       }
       wrap.appendChild(select)
       read = function () { return select.value }
       isDisabled = function () { return select.disabled }
     } else if (field.type === "text") {
       var textarea = h("textarea")
-      textarea.value = String(initialValue !== undefined ? initialValue : field.default || "")
+      textarea.value = asText(initial)
       textarea.placeholder = field.placeholder || ""
       wrap.appendChild(textarea)
       read = function () { return textarea.value }
     } else {
       var input = h("input")
       input.type = field.type === "number" ? "number" : field.type === "secret" ? "password" : "text"
-      input.value = String(initialValue !== undefined ? initialValue : field.default || "")
+      input.value = asText(initial)
       input.placeholder = field.placeholder || ""
       wrap.appendChild(input)
       read = function () { return input.value }
@@ -957,6 +965,90 @@
               saved.classList.add("kit-error-text")
             })
         }
+      })
+      .catch(function (error) {
+        view.body.removeChild(status)
+        view.body.appendChild(h("p", "kit-error", error.message))
+      })
+    return view.root
+  }
+
+  /**
+   * Fields — several configSchema fields in one card with a single "Save
+   * settings" button. Unlike `field` (which saves on every change), nothing is
+   * written until the button is pressed — the grouped, explicit counterpart to
+   * `settings`. Nest it in a `group` for a collapsible panel.
+   *
+   * Settings: { keys: [...], title?, description?, saveLabel? } — `keys` are
+   * configSchema field keys, rendered in the order given.
+   */
+  function renderFieldsSection(settings) {
+    var keys = Array.isArray(settings.keys) ? settings.keys.map(String) : []
+    var view = card(str(settings.title, null) || undefined, str(settings.description, null) || undefined)
+    if (keys.length === 0) {
+      var note = h("div", "kit-note")
+      note.appendChild(icon("alert"))
+      note.appendChild(h("span", null, "Set `keys` to the configSchema fields this section edits."))
+      view.body.appendChild(note)
+      return view.root
+    }
+    var status = h("p", "kit-muted", "Loading…")
+    view.body.appendChild(status)
+
+    api("/config")
+      .then(function (body) {
+        var schema = (body.plugin && body.plugin.configSchema) || []
+        var values = body.config || {}
+        var inputs = []
+        keys.forEach(function (key) {
+          var schemaField = null
+          for (var i = 0; i < schema.length; i++) {
+            if (schema[i].key === key) { schemaField = schema[i]; break }
+          }
+          var field = schemaField || { key: key, type: "text", label: key }
+          var rendered = renderField(field, values[key])
+          inputs.push(rendered)
+          view.body.appendChild(rendered.root)
+        })
+
+        var label = str(settings.saveLabel, "Save settings")
+        var save = h("button", "kit-button")
+        save.type = "button"
+        save.textContent = label
+        var saved = h("span", "kit-field-status", "")
+        var actions = h("div", "kit-form-actions")
+        actions.appendChild(save)
+        actions.appendChild(saved)
+        view.body.removeChild(status)
+        view.body.appendChild(actions)
+
+        save.addEventListener("click", function () {
+          var payload = {}
+          inputs.forEach(function (entry) {
+            // Disabled (a dynamic control still loading or showing "None found")
+            // carries no choice — never let it overwrite the stored value.
+            if (entry.isDisabled()) return
+            var key = entry.field.key
+            if (entry.field.type === "number") payload[key] = Number(entry.read())
+            else payload[key] = entry.read()
+          })
+          save.disabled = true
+          save.textContent = "Saving…"
+          saved.textContent = ""
+          saved.classList.remove("kit-error-text")
+          api("/config", { method: "PUT", body: JSON.stringify({ storeId: Number(storeId) || undefined, config: payload }) })
+            .then(function () {
+              save.disabled = false
+              save.textContent = label
+              saved.textContent = "Saved ✓"
+            })
+            .catch(function (error) {
+              save.disabled = false
+              save.textContent = label
+              saved.textContent = error.message
+              saved.classList.add("kit-error-text")
+            })
+        })
       })
       .catch(function (error) {
         view.body.removeChild(status)
@@ -1284,6 +1376,7 @@
       case "job": return renderJob(settings)
       case "settings": return renderSettings()
       case "field": return renderFieldSection(settings)
+      case "fields": return renderFieldsSection(settings)
       case "logs": return renderLogs(settings)
       case "links": return renderLinks(settings)
       case "component": return renderComponent(settings)

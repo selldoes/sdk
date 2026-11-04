@@ -227,10 +227,11 @@ export interface PluginAI {
   /** Fetch one saved prompt by id; null when missing or not visible to the store. */
   getPrompt(id: number): Promise<PluginAIPrompt | null>
   /**
-   * List the enabled, non-deprecated AI models the merchant can pick — with
-   * pricing, context window and capabilities. Surface a model dropdown instead
-   * of hard-coding model ids; pass the chosen `modelId` to `complete`/`image`.
-   * Requires `ai:use`.
+   * List the AI models the merchant can pick — enabled, non-deprecated and
+   * available on the APIRaven gateway (unavailable/unpriced models are hidden).
+   * Each entry carries pricing, context window and capabilities. Surface a model
+   * dropdown instead of hard-coding model ids; pass the chosen `modelId` to
+   * `complete`/`image`. Requires `ai:use`.
    */
   listModels(opts?: { type?: "text" | "image"; provider?: string }): Promise<PluginAIModel[]>
 }
@@ -248,11 +249,13 @@ export interface PluginAIModel {
   vendor: string | null
   contextLength: number | null
   maxCompletionTokens: number | null
-  /** USD per 1M input tokens (null for image models / unknown). */
+  /** USD per 1M input tokens (null when unknown or the model is priced per image). */
   inputCostPer1M: string | null
-  /** USD per 1M output tokens (null for image models / unknown). */
+  /** USD per 1M output tokens (null when unknown or the model is priced per image). */
   outputCostPer1M: string | null
-  /** Free-text note — for image models this carries the per-image price. */
+  /** USD per generated image (image models; null for text models / unknown). */
+  costPerImage: string | null
+  /** Free-text note (the model blurb). */
   description: string | null
   supportedParameters: string[] | null
   supportsReferenceImage: boolean

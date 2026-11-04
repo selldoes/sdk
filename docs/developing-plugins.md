@@ -180,6 +180,9 @@ handler returns an array or `{ rows: [...] }` / `{ items: [...] }`), `job`
 (run button + live transcript), `settings` (renders the whole `configSchema`
 form), `field` (one `configSchema` field on its own — `{ key, title?,
 description?, field? }`, saving immediately; compose a form inside a `group`),
+`fields` (several `configSchema` fields in one card with a single **Save
+settings** button — `{ keys: [...], title?, description?, saveLabel? }`; the
+grouped, explicit counterpart to `field`, and the usual child of a `group`),
 `logs`
 (**job history** — every background job of the plugin for this store: status
 badge, name, counters, runtime, duration and "x ago"; click a run for its
@@ -475,7 +478,10 @@ host-page replica) are persisted to `.selldoes-dev/settings.json` and merged
 into `ctx.config`, so plugin code reads the same values the form shows. The
 manifest's `configSchema` **defaults are applied** to `ctx.config` — a setting
 that was never saved (or was saved empty) falls back to its declared default,
-exactly like the platform's runtime config.
+exactly like the platform's runtime config. The form follows the same rule: a
+field whose saved value is empty renders its declared default (a cleared text
+field with a default shows the default again), so the form always shows what
+the plugin actually uses.
 
 The mock context enforces the same rules as production: permissions must be
 declared, tables must be in `allowedTables` (or plugin-owned), rows are
@@ -577,15 +583,30 @@ merchants for a numeric prompt id, then pass the chosen id to
 `ctx.ai.image({ promptId })`. `ctx.ai.getPrompt(id)` fetches one prompt (null
 when missing or not visible to the store).
 
+`ctx.ai.image` takes either a saved `promptId` **or** a raw `prompt` string —
+use the raw form for a hand-written prompt (a merchant's own text instead of a
+library entry):
+
+```js
+await ctx.ai.image({
+  prompt: "Upscale picture to 1600x1600. Return with white background",
+  referenceImage,        // the scraped artwork, optional
+  size: "1600x1600",     // and aspectRatio / model apply to both forms
+})
+```
+
 `ctx.ai.listModels({ type: "text" | "image", provider? })` returns the store's
-enabled, non-deprecated AI models — `{ provider, modelId, name, type, vendor,
+AI models the merchant can actually use — enabled, non-deprecated, and available
+on the APIRaven gateway (models APIRaven refuses are hidden, so the list is
+already "callable only"). Each entry is `{ provider, modelId, name, type, vendor,
 contextLength, maxCompletionTokens, inputCostPer1M, outputCostPer1M,
-description, supportedParameters, supportsReferenceImage }`. Pricing is USD per
-1M tokens (`inputCostPer1M` / `outputCostPer1M` are strings, null for image
-models and unknown costs; `description` carries the per-image price for image
-models). Use it to build a model dropdown with pricing and pass the chosen
-`modelId` to `ctx.ai.complete({ model })` or `ctx.ai.image({ model })` — leaving
-it unset uses the store's saved model. Pair it with an `optionsFrom` select:
+costPerImage, description, supportedParameters, supportsReferenceImage }`.
+Pricing is USD: `inputCostPer1M` / `outputCostPer1M` are strings (null when
+unknown, and empty for image models priced per image); `costPerImage` is the
+per-image price for image models (null for text models). Use it to build a model
+dropdown with pricing and pass the chosen `modelId` to
+`ctx.ai.complete({ model })` or `ctx.ai.image({ model })` — leaving it unset
+uses the store's saved model. Pair it with an `optionsFrom` select:
 
 ```json
 { "key": "aiModel", "type": "select", "optionsFrom": "/ai/models?type=text" }

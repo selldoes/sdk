@@ -8,6 +8,7 @@
       case "job": return renderJob(settings)
       case "settings": return renderSettings()
       case "field": return renderFieldSection(settings)
+      case "fields": return renderFieldsSection(settings)
       case "logs": return renderLogs(settings)
       case "links": return renderLinks(settings)
       case "component": return renderComponent(settings)
