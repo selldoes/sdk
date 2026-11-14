@@ -20,14 +20,14 @@ import { WorkspaceRegistryCard } from "./user-settings/workspace-registry-card"
  * Stored in ~/.selldoes/settings.json; project folders never hold credentials.
  */
 export function UserSettingsPage() {
-  const { workspace, refreshWorkspace, refresh, toast, setAssistantPage } = useApp()
+  const { workspace, refreshWorkspace, refresh, toast, setAssistantPage, sidebarDense, setSidebarDense } = useApp()
   const workspaceMode = workspace !== null
   useVisit("user-settings")
 
   React.useEffect(() => {
     setAssistantPage({
       context:
-        "The developer is on the User settings page: assistant provider + API key, connected accounts (developer + theme lanes), workspace registry, editor preference and the default release bump. These apply to every project — project-specific settings live in Project settings.",
+        "The developer is on the User settings page: assistant provider + API key, connected accounts (developer + theme lanes), workspace registry, editor preference, default release bump and sidebar row density. These apply to every project — project-specific settings live in Project settings.",
       quick: ["Where are my assistant API keys stored?", "How do I change my default editor?"],
     })
   }, [setAssistantPage])
@@ -435,7 +435,7 @@ export function UserSettingsPage() {
       <PageHead
         title="User settings"
         description={
-          "Machine-level preferences that apply to every project — assistant credentials, connected accounts, workspace registry and editor. Stored in ~/.selldoes/settings.json, never in a project folder."
+          "Machine-level preferences that apply to every project — assistant credentials, connected accounts, workspace registry, editor and sidebar layout. Server-backed settings live in ~/.selldoes/settings.json; sidebar density stays in this browser."
         }
       />
 
@@ -469,6 +469,8 @@ export function UserSettingsPage() {
         releaseBump={releaseBump}
         onSaveEditor={saveEditor}
         onSaveBump={saveBump}
+        sidebarDense={sidebarDense}
+        onSidebarDenseChange={setSidebarDense}
       />
 
       {/* ── Remote: developer account ───────────────────────────────────── */}

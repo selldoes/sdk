@@ -30,6 +30,9 @@ interface AppContextValue {
   setAssistantTarget: (target: AssistantTarget | null) => void
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
+  /** Compact vertical spacing for the dev shell's navigation. */
+  sidebarDense: boolean
+  setSidebarDense: (dense: boolean) => void
   theme: "light" | "dark"
   toggleTheme: () => void
   toasts: Toast[]
@@ -84,6 +87,11 @@ function initialTheme(): "light" | "dark" {
   return "light"
 }
 
+/** Tight rows are the default; only an explicit "comfortable" choice is stored. */
+function initialSidebarDense(): boolean {
+  return localStorage.getItem("selldoes-dev-sidebar-density") !== "comfortable"
+}
+
 export function AppProvider({
   children,
   onRouteBump,
@@ -99,6 +107,7 @@ export function AppProvider({
   const [assistantQuick, setAssistantQuick] = React.useState<string[]>([])
   const [assistantContext, setAssistantContext] = React.useState("")
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
+  const [sidebarDense, setSidebarDense] = React.useState(initialSidebarDense)
   const [theme, setTheme] = React.useState<"light" | "dark">(() => initialTheme())
   const [toasts, setToasts] = React.useState<Toast[]>([])
   const [workspace, setWorkspace] = React.useState<WsBootstrap | null>(null)
@@ -115,6 +124,10 @@ export function AppProvider({
     document.documentElement.classList.toggle("dark", theme === "dark")
     localStorage.setItem("selldoes-dev-theme", theme)
   }, [theme])
+
+  React.useEffect(() => {
+    localStorage.setItem("selldoes-dev-sidebar-density", sidebarDense ? "dense" : "comfortable")
+  }, [sidebarDense])
 
   const refreshWorkspace = React.useCallback(async () => {
     try {
@@ -222,6 +235,8 @@ export function AppProvider({
     setAssistantTarget,
     sidebarOpen,
     setSidebarOpen,
+    sidebarDense,
+    setSidebarDense,
     theme,
     toggleTheme: () => setTheme((previous) => (previous === "dark" ? "light" : "dark")),
     toasts,

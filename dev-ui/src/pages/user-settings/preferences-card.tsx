@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import type { BumpMode } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { type BusySet, EDITOR_OPTIONS } from "./shared"
@@ -16,6 +17,8 @@ interface PreferencesCardProps {
   releaseBump: BumpMode | null
   onSaveEditor: () => void
   onSaveBump: (mode: BumpMode) => void
+  sidebarDense: boolean
+  onSidebarDenseChange: (dense: boolean) => void
 }
 
 export function PreferencesCard({
@@ -27,6 +30,8 @@ export function PreferencesCard({
   releaseBump,
   onSaveEditor,
   onSaveBump,
+  sidebarDense,
+  onSidebarDenseChange,
 }: PreferencesCardProps) {
   return (
     <Card>
@@ -36,7 +41,8 @@ export function PreferencesCard({
           Preferences
         </CardTitle>
         <CardDescription>
-          Defaults for this machine — `selldoes open` and the Ship page fall back to these when a project has no override.
+          Defaults for this machine — editor, release bump and how much of the sidebar fits on screen. `selldoes open` and the
+          Ship page fall back to these when a project has no override.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -106,6 +112,18 @@ export function PreferencesCard({
           </div>
           <p className="text-[10.5px] leading-snug text-muted-foreground">
             A project can override this in Project settings → Releases; when it doesn't, the Ship page pre-checks with this mode.
+          </p>
+        </div>
+
+        <div className="space-y-1.5 border-t border-border pt-4">
+          <div className="flex items-center gap-2">
+            <Switch id="user-sidebar-dense" checked={sidebarDense} onCheckedChange={onSidebarDenseChange} />
+            <Label htmlFor="user-sidebar-dense" className="cursor-pointer text-xs">
+              Tight sidebar rows
+            </Label>
+          </div>
+          <p className="text-[10.5px] leading-snug text-muted-foreground">
+            Fit more pages in the sidebar. Saved for this browser and shared by every project.
           </p>
         </div>
       </CardContent>
